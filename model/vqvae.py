@@ -237,16 +237,21 @@ class VQVAE(LightningModule):
 
     def training_step(self, batch, batch_idx):
         x_out, loss, metrics = self(batch)
+        self.log("loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        for name, val in metrics.items():
+            self.log(name, val,  on_step=True, on_epoch=True, logger=True)
         return loss
 
     def test_step(self, batch, batch_idx):
         x_out, loss, metrics = self(batch)
-        self.log("test_loss", loss)
+        self.log("test_loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
         x_out, loss, metrics = self(batch)
-        self.log("val_loss", loss)
+        self.log("val_loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        for name, val in metrics.items():
+            self.log("val_" + name, val,  on_step=True, on_epoch=True, prog_bar=True, logger=True)
         return loss
 
     def configure_optimizers(self):
