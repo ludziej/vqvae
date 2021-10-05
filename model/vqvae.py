@@ -251,7 +251,7 @@ class VQVAE(LightningModule):
         x_out, loss, metrics = self(batch)
         self.log("val_loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         for name, val in metrics.items():
-            self.log("val_" + name, val,  on_step=True, on_epoch=True, prog_bar=True, logger=True)
+            self.log("val_" + name, val,  on_step=True, on_epoch=True, prog_bar=False, logger=True)
         return loss
 
     def configure_optimizers(self):
