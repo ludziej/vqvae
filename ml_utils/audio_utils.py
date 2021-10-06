@@ -43,7 +43,7 @@ def calculate_bandwidth(dataset, hps, duration=600):
     bandwidth = dict(l2 = total_sq / n_seen - mean ** 2,
                      l1 = l1 / n_seen,
                      spec = spec_norm_total / spec_nelem)
-    print(bandwidth)
+    #print(bandwidth)
     return bandwidth
 
 def audio_preprocess(x, hps):
