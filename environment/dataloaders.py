@@ -22,7 +22,7 @@ class WaveDataset(Dataset):
         self.randgen = np.random.default_rng(os.getpid())
 
     def get_sons(self, dirs):
-        return flatten([[join(dir, f) for f in listdir(dir)] for dir in dirs])
+        return flatten([[join(dir, f) for f in listdir(dir)] for dir in dirs if os.path.isdir(dir)])
 
     def __len__(self):
         return len(self.files)
