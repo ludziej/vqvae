@@ -12,10 +12,11 @@ from hparams import hparams
 
 
 def run():
+    hparams["gpus"]=[0]
     train(**hparams,
           #train_path="resources/full_musicnet/musicnet/musicnet/train_data",
           #test_path="resources/full_musicnet/musicnet/musicnet/test_data")
-          train_path="resources/full_dataset", data_depth=2)
+          train_path="resources/", data_depth=3)
 
 
 if __name__ == "__main__":
