@@ -45,11 +45,11 @@ def process_single_file(infile, outfile=None, only_encoding=False, start_from=0,
     torchaudio.save(outfile, out_wave, hparams["sr"])
 
 
-def check_augment(infile, outfile=None, end_on=None):
+def check_augment(infile, outfile=None, end_on=None, level=1):
     wave = safe_load_mono(infile)
     wave = wave[:end_on] if end_on is not None else wave
     model = ready_model()
-    enc_signal = model_forward(model, wave, only_encoding=True).to('cuda').reshape(1, -1)
+    enc_signal = model_forward(model, wave, only_encoding=True, level=level).to('cuda').reshape(1, -1)
     aug_loss, aug_acc, out_wave = model.augmentation_is_close(wave.reshape(1, 1, -1), enc_signal, verbose=True)
     print("Aug acc: {}, Aug loss: {}".format(aug_acc, aug_loss))
     if outfile is not None:
@@ -108,7 +108,8 @@ if __name__ == "__main__":
     #coded = process_single_file("generated/input.wav", None, only_encoding=True)
     #print(coded.shape)
                                                           #chunk_size=220416//3//2, chunks_number=4, suffix_size=2)
-    for i in range(10):
+    for i in range(40):
+        print(i)
         check_augment("resources/cls_dataset/10.wav",  "generated/out_aug{}.wav".format(i), end_on=150500)
     #find_working_chunk_size("resources/cls_dataset/10.wav", start_i=working_chunk_05_s, chunks=10, suffix_size=4)
     #find_working_chunk_size("resources/cls_dataset/10.wav", start_i=working_chunk_05_s, chunks=10, suffix_size=10)

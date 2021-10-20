@@ -12,6 +12,8 @@ from ml_utils.logger import average_metrics
 from ml_utils.audio_utils import spectral_convergence, spectral_loss, multispectral_loss, audio_postprocess
 from optimization.opt_maker import get_optimizer
 
+repr = lambda x: "{}, {}, {}".format(x.shape, x.type(), x.device)
+
 def dont_update(params):
     for param in params:
         param.requires_grad = False
@@ -160,14 +162,17 @@ class VQVAE(LightningModule):
 
     def augment(self, signal, verbose=False):
         pace = np.random.uniform(0.5, 1.5)
-        gain = np.random.randint(20)
-        color = np.random.randint(20)
+        gain = np.random.randint(40)
+        color = np.random.randint(40)
         with_reverb = bool(np.random.randint(2))
-        #dither = bool(np.random.randint(2))
-        noise_red = bool(np.random.randint(2))
+        dither = bool(np.random.randint(2))
+        #flanger = bool(np.random.randint(2))
+        bass_gain = np.random.randint(20)
+        treble_gain = np.random.randint(20)
         if verbose:
             print("Augmented with {}".format(", ".join("{} = {}".format(k, v) for k, v in dict(
-                pace=pace, gain=gain, color=color, with_reverb=with_reverb, noise_red=noise_red
+                pace=pace, gain=gain, color=color, with_reverb=with_reverb,
+                dither=dither, bass_gain=bass_gain, treble_gain=treble_gain
             ).items())))
 
         # Define effects
@@ -177,10 +182,12 @@ class VQVAE(LightningModule):
             # This only changes sample rate, so it is necessary to
             # add `rate` effect with original sample rate after this.
             #["rate", f"{self.sr}"],
-            #["reverb", "-w"] if with_reverb else None,
-            #["overdrive", str(gain), str(color)] if gain > 0 else None,
-            #["noisered"] if noise_red else None,
-            #["dither"] if dither else None,
+            ["bass", str(bass_gain)] if bass_gain > 0 else None,
+            ["treble", str(treble_gain)] if treble_gain > 0 else None,
+            ["overdrive", str(gain), str(color)] if gain > 0 else None,
+            #["flanger"] if flanger else None,
+            ["reverb", "-w"] if with_reverb else None,
+            ["dither"] if dither else None,
         ] if e is not None]
 
         reduce_size = lambda x: ((x[0] + x[1])/2).unsqueeze(0) if x.shape[0] > 1 else x
@@ -192,21 +199,37 @@ class VQVAE(LightningModule):
         return aug_signal, pace
 
     def suit_pace(self, signal: torch.Tensor, pace: float, shape: tuple) -> torch.Tensor:
-        out = torch.zeros(shape).type_as(signal)
         if pace > 1.:  # we are now upsampling (tempo was increased)
-            positions = torch.round(torch.arange(shape[1]) * 1/pace).type(torch.long)
-            out[:, :] = signal[:, positions]
+ #           print("upsampling")
+            positions = torch.round(torch.arange(shape[1]) * 1/pace).type(torch.LongTensor).to("cuda")
+            positions[-1] = positions[-1] - 1 if positions[-1] >= signal.shape[1] else positions[-1]
+#            print("\n".join(list(map(repr, [signal, out, positions]))))
+            out = signal[:, positions]
         else:  # we are downsampling
-            positions = torch.round(torch.arange(signal.shape[1]) * pace).type(torch.long)
+#            print("downsampling")
+            out = torch.zeros(shape).type_as(signal).to("cuda")
+            positions = torch.round(torch.arange(signal.shape[1]) * pace).type(torch.LongTensor).to("cuda")
+            positions[-1] = positions[-1] - 1 if positions[-1] >= out.shape[1] else positions[-1]
+            positions[-2] = positions[-2] - 1 if positions[-2] >= out.shape[1] else positions[-2]
+ #           print("\n".join(list(map(repr, [signal, out, positions]))))
+  #          print(torch.min(positions), torch.max(positions))
             out[:, positions] = signal
         return out
 
     def augmentation_is_close(self, signal, encoded_signal, level=1, verbose=False):
         ax, pace = self.augment(signal, verbose=verbose)
         eax = self.encode(ax.permute(0, 2, 1).to("cuda"), start_level=level, end_level=level+1)[0]
+#        print(torch.min(encoded_signal), torch.max(encoded_signal))
+#        print(torch.min(eax), torch.max(eax))
+#        print("\n".join(list(map(repr, [signal, ax, eax, encoded_signal]))))
+ #       print("before suit pace")
         encoded_aug_signal = self.suit_pace(eax, pace, encoded_signal.shape)
+        #print("after suit pace")
+        #print(torch.min(encoded_aug_signal), torch.max(encoded_aug_signal))
         decoded_aug_signal = self.bottleneck.decode(encoded_aug_signal.unsqueeze(0), start_level=level, end_level=level+1)[0]
         decoded_signal = self.bottleneck.decode(encoded_signal.unsqueeze(0), start_level=level, end_level=level+1)[0]
+
+#        print("\n".join(list(map(repr, [encoded_aug_signal, decoded_aug_signal, decoded_signal]))))
         aug_acc = t.mean((encoded_signal == encoded_aug_signal).type(torch.float))
 
         aug_loss = t.mean((decoded_signal - decoded_aug_signal) ** 2)
