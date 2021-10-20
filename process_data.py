@@ -1,12 +1,13 @@
 import torch
 
-from environment.train_embeddings import get_model
+from environment.train_embeddings import get_model, VQVAE
 from hparams import hparams
 import torchaudio
 import numpy as np
+from tqdm import tqdm
 
 
-def ready_model():
+def ready_model() -> VQVAE:
     return get_model(**hparams, train_path="resources/full_dataset", data_depth=2).to("cuda").eval()
 
 
@@ -42,6 +43,17 @@ def process_single_file(infile, outfile=None, only_encoding=False, start_from=0,
     if only_encoding:
         return out_wave
     torchaudio.save(outfile, out_wave, hparams["sr"])
+
+
+def check_augment(infile, outfile=None, end_on=None):
+    wave = safe_load_mono(infile)
+    wave = wave[:end_on] if end_on is not None else wave
+    model = ready_model()
+    enc_signal = model_forward(model, wave, only_encoding=True).to('cuda').reshape(1, -1)
+    aug_loss, aug_acc, out_wave = model.augmentation_is_close(wave.reshape(1, 1, -1), enc_signal, verbose=True)
+    print("Aug acc: {}, Aug loss: {}".format(aug_acc, aug_loss))
+    if outfile is not None:
+        torchaudio.save(outfile, out_wave[0], hparams["sr"])
 
 
 def process_stream(input_stream, suffix_size=1/4, to_numpy=False, only_encoding=False):
@@ -96,9 +108,10 @@ if __name__ == "__main__":
     #coded = process_single_file("generated/input.wav", None, only_encoding=True)
     #print(coded.shape)
                                                           #chunk_size=220416//3//2, chunks_number=4, suffix_size=2)
-
-    find_working_chunk_size("resources/cls_dataset/10.wav", start_i=working_chunk_05_s, chunks=10, suffix_size=4)
-    find_working_chunk_size("resources/cls_dataset/10.wav", start_i=working_chunk_05_s, chunks=10, suffix_size=10)
-    find_working_chunk_size("resources/cls_dataset/10.wav", start_i=working_chunk_02_s, chunks=10, suffix_size=4)
-    find_working_chunk_size("resources/cls_dataset/10.wav", start_i=working_chunk_02_s, chunks=10, suffix_size=10)
+    for i in range(10):
+        check_augment("resources/cls_dataset/10.wav",  "generated/out_aug{}.wav".format(i), end_on=150500)
+    #find_working_chunk_size("resources/cls_dataset/10.wav", start_i=working_chunk_05_s, chunks=10, suffix_size=4)
+    #find_working_chunk_size("resources/cls_dataset/10.wav", start_i=working_chunk_05_s, chunks=10, suffix_size=10)
+    #find_working_chunk_size("resources/cls_dataset/10.wav", start_i=working_chunk_02_s, chunks=10, suffix_size=4)
+    #find_working_chunk_size("resources/cls_dataset/10.wav", start_i=working_chunk_02_s, chunks=50, suffix_size=10)
     pass

@@ -35,6 +35,7 @@ def get_model(sample_len, data_depth, sr, train_path, forward_params, with_train
     train_data = WaveDataset(train_path, sample_len=sample_len, depth=data_depth, sr=sr)
     calc_metaparams(train_data, forward_params)
     params["forward_params"] = forward_params
+    params["sr"] = sr
     model = create_vqvae(sample_len, **params)
     return (model, train_data) if with_train_data else model
 

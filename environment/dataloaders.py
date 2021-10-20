@@ -27,8 +27,6 @@ class WaveDataset(Dataset):
     def __len__(self):
         return len(self.files)
 
-
-
     def __getitem__(self, idx):
         whole_file, file_sr = torchaudio.load(self.files[idx])
         assert file_sr == self.sr

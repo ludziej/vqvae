@@ -1,7 +1,10 @@
 import numpy as np
+import torch
 import torch as t
 import torch.nn as nn
 from pytorch_lightning import LightningModule
+import torchaudio
+from torchaudio.sox_effects import  apply_effects_tensor
 
 from model.encdec import Encoder, Decoder, assert_shape
 from model.bottleneck import NoBottleneck, Bottleneck
@@ -43,18 +46,20 @@ def _loss_fn(loss_fn, x_target, x_pred, hps):
 
 
 class VQVAE(LightningModule):
-    def __init__(self, input_shape, levels, downs_t, strides_t, loss_fn,
-                 emb_width, l_bins, mu, commit, spectral, multispectral, forward_params,
+    def __init__(self, input_shape, levels, downs_t, strides_t, loss_fn, sr,
+                 emb_width, l_bins, mu, commit, spectral, multispectral, forward_params, augment_loss=1,
                  multipliers=None, use_bottleneck=True, **params):
         super().__init__()
 
         self.sample_length = input_shape[0]
+        self.sr = sr
         x_shape, x_channels = input_shape[:-1], input_shape[-1]
         self.x_shape = x_shape
+        self.augment_loss = augment_loss
 
         self.downsamples = calculate_strides(strides_t, downs_t)
         self.hop_lengths = np.cumprod(self.downsamples)
-        self.z_shapes = z_shapes = [(x_shape[0] // self.hop_lengths[level],) for level in range(levels)]
+        self.z_shapes = [(x_shape[0] // self.hop_lengths[level],) for level in range(levels)]
         self.levels = levels
         self.forward_params = forward_params
         self.loss_fn = loss_fn
@@ -153,6 +158,60 @@ class VQVAE(LightningModule):
         zs = [t.randint(0, self.l_bins, size=(n_samples, *z_shape), device='cuda') for z_shape in self.z_shapes]
         return self.decode(zs)
 
+    def augment(self, signal, verbose=False):
+        pace = np.random.uniform(0.5, 1.5)
+        gain = np.random.randint(20)
+        color = np.random.randint(20)
+        with_reverb = bool(np.random.randint(2))
+        #dither = bool(np.random.randint(2))
+        noise_red = bool(np.random.randint(2))
+        if verbose:
+            print("Augmented with {}".format(", ".join("{} = {}".format(k, v) for k, v in dict(
+                pace=pace, gain=gain, color=color, with_reverb=with_reverb, noise_red=noise_red
+            ).items())))
+
+        # Define effects
+        effects = [e for e in [
+#            ["lowpass", "-1", "300"],  # apply single-pole lowpass filter
+            ["tempo", str(pace)],  # reduce the speed
+            # This only changes sample rate, so it is necessary to
+            # add `rate` effect with original sample rate after this.
+            #["rate", f"{self.sr}"],
+            #["reverb", "-w"] if with_reverb else None,
+            #["overdrive", str(gain), str(color)] if gain > 0 else None,
+            #["noisered"] if noise_red else None,
+            #["dither"] if dither else None,
+        ] if e is not None]
+
+        reduce_size = lambda x: ((x[0] + x[1])/2).unsqueeze(0) if x.shape[0] > 1 else x
+
+        # Apply effects
+        aug_signal, srs = zip(*[apply_effects_tensor(s, self.sr, effects) for s in signal])
+        assert all(s == self.sr for s in srs)
+        aug_signal = t.stack(list(map(reduce_size, aug_signal)))
+        return aug_signal, pace
+
+    def suit_pace(self, signal: torch.Tensor, pace: float, shape: tuple) -> torch.Tensor:
+        out = torch.zeros(shape).type_as(signal)
+        if pace > 1.:  # we are now upsampling (tempo was increased)
+            positions = torch.round(torch.arange(shape[1]) * 1/pace).type(torch.long)
+            out[:, :] = signal[:, positions]
+        else:  # we are downsampling
+            positions = torch.round(torch.arange(signal.shape[1]) * pace).type(torch.long)
+            out[:, positions] = signal
+        return out
+
+    def augmentation_is_close(self, signal, encoded_signal, level=1, verbose=False):
+        ax, pace = self.augment(signal, verbose=verbose)
+        eax = self.encode(ax.permute(0, 2, 1).to("cuda"), start_level=level, end_level=level+1)[0]
+        encoded_aug_signal = self.suit_pace(eax, pace, encoded_signal.shape)
+        decoded_aug_signal = self.bottleneck.decode(encoded_aug_signal.unsqueeze(0), start_level=level, end_level=level+1)[0]
+        decoded_signal = self.bottleneck.decode(encoded_signal.unsqueeze(0), start_level=level, end_level=level+1)[0]
+        aug_acc = t.mean((encoded_signal == encoded_aug_signal).type(torch.float))
+
+        aug_loss = t.mean((decoded_signal - decoded_aug_signal) ** 2)
+        return aug_loss, aug_acc, ax
+
     def forward(self, x):
         hps = self.forward_params
         loss_fn = self.loss_fn
@@ -169,6 +228,9 @@ class VQVAE(LightningModule):
             xs.append(x_out[-1])
 
         zs, xs_quantised, commit_losses, quantiser_metrics = self.bottleneck(xs)
+
+        aug_loss, aug_acc, _ = self.augmentation_is_close(xs_quantised, zs) if self.augment_loss > 0 else 0
+
         x_outs = []
         for level in range(self.levels):
             decoder = self.decoders[level]
@@ -209,7 +271,8 @@ class VQVAE(LightningModule):
             multispec_loss += this_multispec_loss
 
         commit_loss = sum(commit_losses)
-        loss = recons_loss + self.spectral * spec_loss + self.multispectral * multispec_loss + self.commit * commit_loss
+        loss = recons_loss + self.spectral * spec_loss + self.multispectral * multispec_loss +\
+               self.commit * commit_loss + self.augment_loss * aug_loss
 
         with t.no_grad():
             sc = t.mean(spectral_convergence(x_target, x_out, hps))
@@ -220,6 +283,8 @@ class VQVAE(LightningModule):
         quantiser_metrics = average_metrics(quantiser_metrics)
 
         metrics.update(dict(
+            aug_loss=aug_loss,
+            aug_acc=aug_acc,
             recons_loss=recons_loss,
             spectral_loss=spec_loss,
             multispectral_loss=multispec_loss,
