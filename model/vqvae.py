@@ -158,15 +158,19 @@ class VQVAE(LightningModule):
         zs = [t.cat(zs_level_list, dim=0) for zs_level_list in zip(*zs_list)]
         return zs
 
-    def encode_vec_with_loss(self, x):
+    def encode_vec(self, x):
         x_in = self.preprocess(x)
         xs = []
         for level in range(self.levels):
             encoder = self.encoders[level]
             x_out = encoder(x_in)
             xs.append(x_out[-1])
+        return xs, x_in
+
+    def encode_vec_with_loss(self, x):
+        xs, x_in = self.encode_vec(x)
         zs, xs_quantised, commit_losses, quantiser_metrics = self.bottleneck(xs)
-        return commit_losses, xs_quantised, zs, quantiser_metrics, x_in
+        return commit_losses, xs_quantised, zs, quantiser_metrics, x_in, xs
 
     def sample(self, n_samples):
         zs = [t.randint(0, self.l_bins, size=(n_samples, *z_shape), device='cuda') for z_shape in self.z_shapes]
@@ -211,46 +215,40 @@ class VQVAE(LightningModule):
     def suit_pace(self, signal: torch.Tensor, pace: float, shape: tuple) -> torch.Tensor:
         if pace > 1.:  # we are now upsampling (tempo was increased)
             #print("upsampling")
-            positions = torch.round(torch.arange(shape[1]) * 1/pace).type(torch.LongTensor).to("cuda")
-            positions = torch.clamp(positions, max=signal.shape[1] - 1, min=0)
+            positions = torch.round(torch.arange(shape[2]) * 1/pace).type(torch.LongTensor).to("cuda")
+            positions = torch.clamp(positions, max=signal.shape[2] - 1, min=0)
             #positions[-1] = positions[-1] - 1 if positions[-1] >= signal.shape[1] else positions[-1
             #positions[-1] = positions[-2] - 1 if positions[-1] >= signal.shape[1] else positions[-1]
-            out = signal[:, positions]
+            out = signal[:, :, positions]
             #print("\n".join(list(map(repr, [signal, out, positions]))))
         else:  # we are downsampling
             #print("downsampling")
             out = torch.zeros(shape).type_as(signal).to("cuda")
-            positions = torch.round(torch.arange(signal.shape[1]) * pace).type(torch.LongTensor).to("cuda")
+            positions = torch.round(torch.arange(signal.shape[2]) * pace).type(torch.LongTensor).to("cuda")
 
-            positions = torch.clamp(positions, max=out.shape[1] - 1, min=0)
+            positions = torch.clamp(positions, max=out.shape[2] - 1, min=0)
             #positions[-1] = positions[-1] - 1 if positions[-1] >= out.shape[1] else positions[-1]
             #positions[-2] = positions[-2] - 1 if positions[-2] >= out.shape[1] else positions[-2]
             #print("\n".join(list(map(repr, [signal, out, positions]))))
             #print(torch.min(positions), torch.max(positions))
-            out[:, positions] = signal
+            out[:, :, positions] = signal
         return out
 
-    def augmentation_is_close(self, signal, encoded_signal, verbose=False):
-        ax, pace = self.augment(signal.permute(0, 2, 1).to("cpu"), verbose=verbose)
-        lvls = len(encoded_signal)
+    def augmentation_is_close(self, signal, enc_disc_signal, enc_signal, verbose=False):
+        lvls = len(enc_disc_signal)
+        aug_signal, pace = self.augment(signal.permute(0, 2, 1).to("cpu"), verbose=verbose)
 
-        commit_losses, decoded_aug_signal, stretched_enc_aug, _, _ = self.encode_vec_with_loss(ax.permute(0, 2, 1))
-        #eax = self.encode(ax.permute(0, 2, 1).to("cuda"), start_level=level, end_level=level+1)[0]
-        #print(torch.min(encoded_signal[0]), torch.max(encoded_signal[0]))
+        enc_aug_signal, _ = self.encode_vec(aug_signal.permute(0, 2, 1))
+        st_enc_aug_signal = [self.suit_pace(eas, pace, es.shape) for eas, es in zip(enc_aug_signal, enc_signal)]
+        aug_loss = sum([t.mean((seas - es) ** 2) for seas, es in zip(st_enc_aug_signal, enc_signal)]) / lvls
+
+        enc_aug_disc_signal, _, commit_losses, _ = self.bottleneck(st_enc_aug_signal)
+        aug_acc = sum([t.mean((es == eas).type(torch.float)) for es, eas in zip(enc_disc_signal, enc_aug_disc_signal)]) / lvls
+
+        return aug_loss, aug_acc, aug_signal, commit_losses
         #print(torch.min(stretched_enc_aug[0]), torch.max(stretched_enc_aug[0]))
         #print("\n".join(list(map(repr, [signal, ax, stretched_enc_aug[0], encoded_signal[0]]))))
-        #print("before suit pace")
-        encoded_aug_signal = [self.suit_pace(st, pace, es.shape) for st, es in zip(stretched_enc_aug, encoded_signal)]
-        #print("after suit pace")
-        #print(torch.min(encoded_aug_signal[0]), torch.max(encoded_aug_signal[0]))
-
-        aug_acc = sum([t.mean((es == eas).type(torch.float)) for es, eas in zip(encoded_signal, encoded_aug_signal)]) / lvls
-
-        decoded_aug_signal = self.bottleneck.decode(encoded_aug_signal)
-        decoded_signal = self.bottleneck.decode(encoded_signal)
         #print("\n".join(list(map(repr, [encoded_aug_signal[0], decoded_aug_signal[0], decoded_signal[0]]))))
-        aug_loss = sum([t.mean((ds - das) ** 2) for ds, das in zip(decoded_signal, decoded_aug_signal)]) / lvls
-        return aug_loss, aug_acc, ax, commit_losses
 
     def forward(self, x):
         hps = self.forward_params
@@ -260,9 +258,9 @@ class VQVAE(LightningModule):
         N = x.shape[0]
 
         # Encode/Decode
-        commit_losses, xs_quantised, zs, quantiser_metrics, x_in = self.encode_vec_with_loss(x)
+        commit_losses, xs_quantised, zs, quantiser_metrics, x_in, encoded_signal = self.encode_vec_with_loss(x)
 
-        aug_loss, aug_acc, _, aug_commit_losses = self.augmentation_is_close(x, zs) \
+        aug_loss, aug_acc, _, aug_commit_losses = self.augmentation_is_close(x, zs, encoded_signal) \
             if self.augment_loss > 0 else ([0], [0], 0, [0])
 
         x_outs = []
