@@ -172,8 +172,7 @@ class VQVAE(LightningModule):
         zs = [t.randint(0, self.l_bins, size=(n_samples, *z_shape), device='cuda') for z_shape in self.z_shapes]
         return self.decode(zs)
 
-    def augment(self, signal, verbose=False):
-        pace = np.random.uniform(0.5, 1.5)
+    def get_effects(self, pace, verbose=False):
         gain = np.random.randint(40)
         color = np.random.randint(40)
         with_reverb = bool(np.random.randint(2))
@@ -188,7 +187,7 @@ class VQVAE(LightningModule):
             ).items())))
 
         # Define effects
-        effects = [e for e in [
+        return [e for e in [
 #            ["lowpass", "-1", "300"],  # apply single-pole lowpass filter
             ["tempo", str(pace)],  # reduce the speed
             ["bass", str(bass_gain)] if bass_gain > 0 else None,
@@ -199,52 +198,55 @@ class VQVAE(LightningModule):
             ["dither"] if dither else None,
         ] if e is not None]
 
+    def augment(self, signal, verbose=False):
         reduce_size = lambda x: ((x[0] + x[1])/2).unsqueeze(0) if x.shape[0] > 1 else x
+        pace = np.random.uniform(0.5, 1.5)
 
         # Apply effects
-        aug_signal, srs = zip(*[apply_effects_tensor(s, self.sr, effects) for s in signal])
+        aug_signal, srs = zip(*[apply_effects_tensor(s, self.sr, self.get_effects(pace, verbose=verbose)) for s in signal])
         assert all(s == self.sr for s in srs)
         aug_signal = t.stack(list(map(reduce_size, aug_signal)))
         return aug_signal, pace
 
     def suit_pace(self, signal: torch.Tensor, pace: float, shape: tuple) -> torch.Tensor:
         if pace > 1.:  # we are now upsampling (tempo was increased)
- #           print("upsampling")
+            #print("upsampling")
             positions = torch.round(torch.arange(shape[1]) * 1/pace).type(torch.LongTensor).to("cuda")
             positions[-1] = positions[-1] - 1 if positions[-1] >= signal.shape[1] else positions[-1]
-#            print("\n".join(list(map(repr, [signal, out, positions]))))
             out = signal[:, positions]
+            #print("\n".join(list(map(repr, [signal, out, positions]))))
         else:  # we are downsampling
-#            print("downsampling")
+            #print("downsampling")
             out = torch.zeros(shape).type_as(signal).to("cuda")
             positions = torch.round(torch.arange(signal.shape[1]) * pace).type(torch.LongTensor).to("cuda")
             positions[-1] = positions[-1] - 1 if positions[-1] >= out.shape[1] else positions[-1]
             positions[-2] = positions[-2] - 1 if positions[-2] >= out.shape[1] else positions[-2]
- #           print("\n".join(list(map(repr, [signal, out, positions]))))
-  #          print(torch.min(positions), torch.max(positions))
+            #print("\n".join(list(map(repr, [signal, out, positions]))))
+ #          print(torch.min(positions), torch.max(positions))
             out[:, positions] = signal
         return out
 
-    def augmentation_is_close(self, signal, encoded_signal, level=0, verbose=False):
-        ax, pace = self.augment(signal.to("cpu"), verbose=verbose)
+    def augmentation_is_close(self, signal, encoded_signal, verbose=False):
+        ax, pace = self.augment(signal.permute(0, 2, 1).to("cpu"), verbose=verbose)
+        lvls = len(encoded_signal)
 
-        commit_losses, decoded_aug_signal, stretched_enc_aug, _, _ = self.encode_vec_with_loss(ax.permute(0,2,1))
+        commit_losses, decoded_aug_signal, stretched_enc_aug, _, _ = self.encode_vec_with_loss(ax.permute(0, 2, 1))
         #eax = self.encode(ax.permute(0, 2, 1).to("cuda"), start_level=level, end_level=level+1)[0]
-#        print(torch.min(encoded_signal), torch.max(encoded_signal))
-#        print(torch.min(eax), torch.max(eax))
-#        print("\n".join(list(map(repr, [signal, ax, eax, encoded_signal]))))
- #       print("before suit pace")
-        encoded_aug_signal = self.suit_pace(stretched_enc_aug[0], pace, encoded_signal.shape)
+        #print(torch.min(encoded_signal[0]), torch.max(encoded_signal[0]))
+        #print(torch.min(stretched_enc_aug[0]), torch.max(stretched_enc_aug[0]))
+        #print("\n".join(list(map(repr, [signal, ax, stretched_enc_aug[0], encoded_signal[0]]))))
+        #print("before suit pace")
+        encoded_aug_signal = [self.suit_pace(st, pace, es.shape) for st, es in zip(stretched_enc_aug, encoded_signal)]
         #print("after suit pace")
-        #print(torch.min(encoded_aug_signal), torch.max(encoded_aug_signal))
+        #print(torch.min(encoded_aug_signal[0]), torch.max(encoded_aug_signal[0]))
 
-        aug_acc = t.mean((encoded_signal == encoded_aug_signal).type(torch.float))
+        aug_acc = sum([t.mean((es == eas).type(torch.float)) for es, eas in zip(encoded_signal, encoded_aug_signal)]) / lvls
 
-        decoded_aug_signal = self.bottleneck.decode(encoded_aug_signal.unsqueeze(0), start_level=level, end_level=level+1)[0]
-        decoded_signal = self.bottleneck.decode(encoded_signal.unsqueeze(0), start_level=level, end_level=level+1)[0]
-#        print("\n".join(list(map(repr, [encoded_aug_signal, decoded_aug_signal, decoded_signal]))))
-        aug_loss = t.mean((decoded_signal - decoded_aug_signal) ** 2)
-        return aug_loss, aug_acc, ax, commit_losses[0]
+        decoded_aug_signal = self.bottleneck.decode(encoded_aug_signal)
+        decoded_signal = self.bottleneck.decode(encoded_signal)
+        #print("\n".join(list(map(repr, [encoded_aug_signal[0], decoded_aug_signal[0], decoded_signal[0]]))))
+        aug_loss = sum([t.mean((ds - das) ** 2) for ds, das in zip(decoded_signal, decoded_aug_signal)]) / lvls
+        return aug_loss, aug_acc, ax, commit_losses
 
     def forward(self, x):
         hps = self.forward_params
@@ -256,7 +258,8 @@ class VQVAE(LightningModule):
         # Encode/Decode
         commit_losses, xs_quantised, zs, quantiser_metrics, x_in = self.encode_vec_with_loss(x)
 
-        aug_loss, aug_acc, _, aug_commit_losses = self.augmentation_is_close(xs_quantised[0], zs[0]) if self.augment_loss > 0 else (0, 0, 0, 0)
+        aug_loss, aug_acc, _, aug_commit_losses = self.augmentation_is_close(x, zs) \
+            if self.augment_loss > 0 else ([0], [0], 0, [0])
 
         x_outs = []
         for level in range(self.levels):
@@ -297,7 +300,7 @@ class VQVAE(LightningModule):
             spec_loss += this_spec_loss
             multispec_loss += this_multispec_loss
 
-        commit_loss = sum(commit_losses) + aug_commit_losses
+        commit_loss = sum(commit_losses) + sum(aug_commit_losses)
         loss = recons_loss + self.spectral * spec_loss + self.multispectral * multispec_loss +\
                self.commit * commit_loss + self.augment_loss * aug_loss
 

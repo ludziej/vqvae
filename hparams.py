@@ -61,7 +61,7 @@ vqvaehparams = dict(
 new_vq_params = dict(
     levels = 1,
     loss_fn = "lmix",
-    downs_t = (3,),
+    downs_t = (5, 3,),
     strides_t = (2,),
     emb_width = 64,
     l_bins = 1024,
@@ -139,5 +139,5 @@ opt_hparams = dict(
     gpus=-1
 )
 
-hparams = {**opt_hparams, **new_vq_params}
+hparams = {**opt_hparams, **vqvaehparams}
 
