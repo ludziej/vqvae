@@ -104,6 +104,8 @@ class VQVAE(LightningModule):
         # x: NTC [-1,1] -> NCT [-1,1]
         assert len(x.shape) == 3
         x = x.permute(0,2,1).float()
+        if not x.is_cuda:
+            x = x.to("cuda")
         return x
 
     def postprocess(self, x):
@@ -156,6 +158,16 @@ class VQVAE(LightningModule):
         zs = [t.cat(zs_level_list, dim=0) for zs_level_list in zip(*zs_list)]
         return zs
 
+    def encode_vec_with_loss(self, x):
+        x_in = self.preprocess(x)
+        xs = []
+        for level in range(self.levels):
+            encoder = self.encoders[level]
+            x_out = encoder(x_in)
+            xs.append(x_out[-1])
+        zs, xs_quantised, commit_losses, quantiser_metrics = self.bottleneck(xs)
+        return commit_losses, xs_quantised, zs, quantiser_metrics, x_in
+
     def sample(self, n_samples):
         zs = [t.randint(0, self.l_bins, size=(n_samples, *z_shape), device='cuda') for z_shape in self.z_shapes]
         return self.decode(zs)
@@ -179,9 +191,6 @@ class VQVAE(LightningModule):
         effects = [e for e in [
 #            ["lowpass", "-1", "300"],  # apply single-pole lowpass filter
             ["tempo", str(pace)],  # reduce the speed
-            # This only changes sample rate, so it is necessary to
-            # add `rate` effect with original sample rate after this.
-            #["rate", f"{self.sr}"],
             ["bass", str(bass_gain)] if bass_gain > 0 else None,
             ["treble", str(treble_gain)] if treble_gain > 0 else None,
             ["overdrive", str(gain), str(color)] if gain > 0 else None,
@@ -216,24 +225,26 @@ class VQVAE(LightningModule):
             out[:, positions] = signal
         return out
 
-    def augmentation_is_close(self, signal, encoded_signal, level=1, verbose=False):
-        ax, pace = self.augment(signal, verbose=verbose)
-        eax = self.encode(ax.permute(0, 2, 1).to("cuda"), start_level=level, end_level=level+1)[0]
+    def augmentation_is_close(self, signal, encoded_signal, level=0, verbose=False):
+        ax, pace = self.augment(signal.to("cpu"), verbose=verbose)
+
+        commit_losses, decoded_aug_signal, stretched_enc_aug, _, _ = self.encode_vec_with_loss(ax.permute(0,2,1))
+        #eax = self.encode(ax.permute(0, 2, 1).to("cuda"), start_level=level, end_level=level+1)[0]
 #        print(torch.min(encoded_signal), torch.max(encoded_signal))
 #        print(torch.min(eax), torch.max(eax))
 #        print("\n".join(list(map(repr, [signal, ax, eax, encoded_signal]))))
  #       print("before suit pace")
-        encoded_aug_signal = self.suit_pace(eax, pace, encoded_signal.shape)
+        encoded_aug_signal = self.suit_pace(stretched_enc_aug[0], pace, encoded_signal.shape)
         #print("after suit pace")
         #print(torch.min(encoded_aug_signal), torch.max(encoded_aug_signal))
-        decoded_aug_signal = self.bottleneck.decode(encoded_aug_signal.unsqueeze(0), start_level=level, end_level=level+1)[0]
-        decoded_signal = self.bottleneck.decode(encoded_signal.unsqueeze(0), start_level=level, end_level=level+1)[0]
 
-#        print("\n".join(list(map(repr, [encoded_aug_signal, decoded_aug_signal, decoded_signal]))))
         aug_acc = t.mean((encoded_signal == encoded_aug_signal).type(torch.float))
 
+        decoded_aug_signal = self.bottleneck.decode(encoded_aug_signal.unsqueeze(0), start_level=level, end_level=level+1)[0]
+        decoded_signal = self.bottleneck.decode(encoded_signal.unsqueeze(0), start_level=level, end_level=level+1)[0]
+#        print("\n".join(list(map(repr, [encoded_aug_signal, decoded_aug_signal, decoded_signal]))))
         aug_loss = t.mean((decoded_signal - decoded_aug_signal) ** 2)
-        return aug_loss, aug_acc, ax
+        return aug_loss, aug_acc, ax, commit_losses[0]
 
     def forward(self, x):
         hps = self.forward_params
@@ -243,16 +254,9 @@ class VQVAE(LightningModule):
         N = x.shape[0]
 
         # Encode/Decode
-        x_in = self.preprocess(x)
-        xs = []
-        for level in range(self.levels):
-            encoder = self.encoders[level]
-            x_out = encoder(x_in)
-            xs.append(x_out[-1])
+        commit_losses, xs_quantised, zs, quantiser_metrics, x_in = self.encode_vec_with_loss(x)
 
-        zs, xs_quantised, commit_losses, quantiser_metrics = self.bottleneck(xs)
-
-        aug_loss, aug_acc, _ = self.augmentation_is_close(xs_quantised, zs) if self.augment_loss > 0 else 0
+        aug_loss, aug_acc, _, aug_commit_losses = self.augmentation_is_close(xs_quantised[0], zs[0]) if self.augment_loss > 0 else (0, 0, 0, 0)
 
         x_outs = []
         for level in range(self.levels):
@@ -293,7 +297,7 @@ class VQVAE(LightningModule):
             spec_loss += this_spec_loss
             multispec_loss += this_multispec_loss
 
-        commit_loss = sum(commit_losses)
+        commit_loss = sum(commit_losses) + aug_commit_losses
         loss = recons_loss + self.spectral * spec_loss + self.multispectral * multispec_loss +\
                self.commit * commit_loss + self.augment_loss * aug_loss
 

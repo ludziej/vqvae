@@ -58,6 +58,35 @@ vqvaehparams = dict(
     from_last_checkpot=True
 )
 
+new_vq_params = dict(
+    levels = 1,
+    loss_fn = "lmix",
+    downs_t = (3,),
+    strides_t = (2,),
+    emb_width = 64,
+    l_bins = 1024,
+    l_mu = 0.99,
+    commit = 0.02,
+    spectral = 0.0,
+    multispectral = 1.0,
+    width = 32,
+    depth = 4,
+    m_conv = 1.0,
+#    dilation_growth_rate = 3,
+#    hvqvae_multipliers=(2, 1, 1),
+#    lmix_l2=1.0,
+#    lmix_linf=0.02,
+    restore_vqvae='generated/jukebox/models/5b/vqvae.pth.tar',
+    batch_size=2,
+    sample_len=99840,
+    num_workers=4,
+    sr=22050,
+    fp16=False,
+    forward_params=forward_params,
+    from_last_checkpot=True
+)
+
+
 bigvqvaehparams = dict(
     levels=3,
     downs_t=(3, 2, 2),
@@ -110,5 +139,5 @@ opt_hparams = dict(
     gpus=-1
 )
 
-hparams = {**opt_hparams, **vqvaehparams}
+hparams = {**opt_hparams, **new_vq_params}
 
