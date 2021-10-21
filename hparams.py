@@ -32,7 +32,7 @@ forward_params = SimpleNamespace(
 
 vqvaehparams = dict(
     levels = 2,
-    loss_fn = "lmix",
+    loss_fn = 0,
     downs_t = (5, 3),
     strides_t = (2, 2),
     emb_width = 64,

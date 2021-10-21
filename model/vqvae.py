@@ -292,7 +292,7 @@ class VQVAE(LightningModule):
         for level in reversed(range(self.levels)):
             x_out = self.postprocess(x_outs[level])
             x_out = audio_postprocess(x_out, hps)
-            this_recons_loss = _loss_fn(loss_fn, x_target, x_out, hps)
+            this_recons_loss = _loss_fn(loss_fn, x_target, x_out, hps) if loss_fn != 0 else t.zeros(()).to(x.device)
             this_spec_loss = _spectral_loss(x_target, x_out, hps)
             this_multispec_loss = _multispectral_loss(x_target, x_out, hps)
             metrics[f'recons_loss_l{level + 1}'] = this_recons_loss
