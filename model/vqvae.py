@@ -212,17 +212,21 @@ class VQVAE(LightningModule):
         if pace > 1.:  # we are now upsampling (tempo was increased)
             #print("upsampling")
             positions = torch.round(torch.arange(shape[1]) * 1/pace).type(torch.LongTensor).to("cuda")
-            positions[-1] = positions[-1] - 1 if positions[-1] >= signal.shape[1] else positions[-1]
+            positions = torch.clamp(positions, max=signal.shape[1] - 1, min=0)
+            #positions[-1] = positions[-1] - 1 if positions[-1] >= signal.shape[1] else positions[-1
+            #positions[-1] = positions[-2] - 1 if positions[-1] >= signal.shape[1] else positions[-1]
             out = signal[:, positions]
             #print("\n".join(list(map(repr, [signal, out, positions]))))
         else:  # we are downsampling
             #print("downsampling")
             out = torch.zeros(shape).type_as(signal).to("cuda")
             positions = torch.round(torch.arange(signal.shape[1]) * pace).type(torch.LongTensor).to("cuda")
-            positions[-1] = positions[-1] - 1 if positions[-1] >= out.shape[1] else positions[-1]
-            positions[-2] = positions[-2] - 1 if positions[-2] >= out.shape[1] else positions[-2]
+
+            positions = torch.clamp(positions, max=out.shape[1] - 1, min=0)
+            #positions[-1] = positions[-1] - 1 if positions[-1] >= out.shape[1] else positions[-1]
+            #positions[-2] = positions[-2] - 1 if positions[-2] >= out.shape[1] else positions[-2]
             #print("\n".join(list(map(repr, [signal, out, positions]))))
- #          print(torch.min(positions), torch.max(positions))
+            #print(torch.min(positions), torch.max(positions))
             out[:, positions] = signal
         return out
 
@@ -300,7 +304,8 @@ class VQVAE(LightningModule):
             spec_loss += this_spec_loss
             multispec_loss += this_multispec_loss
 
-        commit_loss = sum(commit_losses) + sum(aug_commit_losses)
+        aug_commit_losses = sum(aug_commit_losses)
+        commit_loss = sum(commit_losses) + aug_commit_losses
         loss = recons_loss + self.spectral * spec_loss + self.multispectral * multispec_loss +\
                self.commit * commit_loss + self.augment_loss * aug_loss
 
@@ -323,6 +328,7 @@ class VQVAE(LightningModule):
             l1_loss=l1_loss,
             linf_loss=linf_loss,
             commit_loss=commit_loss,
+            aug_commit_losses=aug_commit_losses,
             **quantiser_metrics))
 
         for key, val in metrics.items():
