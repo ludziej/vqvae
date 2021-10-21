@@ -49,13 +49,14 @@ vqvaehparams = dict(
 #    lmix_l2=1.0,
 #    lmix_linf=0.02,
     restore_vqvae='generated/jukebox/models/5b/vqvae.pth.tar',
-    batch_size=1,
+    batch_size=5,
     sample_len=99840,
     num_workers=4,
     sr=22050,
     fp16=False,
     forward_params=forward_params,
-    from_last_checkpot=True
+    from_last_checkpot=True,
+    gpus=[0],
 )
 
 

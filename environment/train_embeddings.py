@@ -7,6 +7,7 @@ from torch.utils.data import random_split
 from ml_utils.audio_utils import calculate_bandwidth
 from itertools import takewhile, count
 from functools import reduce
+import torch
 import os
 from pytorch_lightning import loggers as pl_loggers
 from pytorch_lightning.callbacks import ModelCheckpoint
@@ -46,12 +47,12 @@ def train(batch_size, sample_len, num_workers,  data_depth, sr, gpus, test_path=
         test_data = WaveDataset(test_path, sample_len=sample_len, depth=data_depth, sr=sr)
     else:
         train_size = int(0.9 * len(train_data))
-        train_data, test_data = random_split(train_data, [train_size, len(train_data) - train_size])
+        train_data, test_data = random_split(train_data, [train_size, len(train_data) - train_size], generator=torch.Generator().manual_seed(42))
     train_dataloader = DataLoader(train_data, batch_size=batch_size, num_workers=num_workers)
     test_dataloader = DataLoader(test_data, batch_size=batch_size, num_workers=0)
 
     checkpoint_callback = ModelCheckpoint(dirpath='generated/best_checkpoint/', filename='best_model', monitor="val_loss")
     tb_logger = pl_loggers.TensorBoardLogger("generated/logs/")
     trainer = Trainer(gpus=gpus, log_every_n_steps=1, logger=tb_logger, default_root_dir="generated/checkpoints",
-                      callbacks=[checkpoint_callback])
+                      callbacks=[checkpoint_callback], max_epochs=10000)
     trainer.fit(model, train_dataloaders=train_dataloader, val_dataloaders=test_dataloader)
