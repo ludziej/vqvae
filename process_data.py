@@ -50,7 +50,7 @@ def check_augment(infile, outfile=None, end_on=None, level=0):
     wave = wave[:end_on] if end_on is not None else wave
     model = ready_model()
     enc_signal = model_forward(model, wave, only_encoding=True, level=level).to('cuda').reshape(1, -1)
-    aug_loss, aug_acc, out_wave, cl = model.augmentation_is_close(wave.reshape(1, 1, -1), enc_signal, verbose=True)
+    aug_loss, aug_acc, out_wave, cl,  sig_var, aug_rss = model.augmentation_is_close(wave.reshape(1, 1, -1), enc_signal, verbose=True)
     print("Aug acc: {}, Aug loss: {}".format(aug_acc, aug_loss))
     if outfile is not None:
         torchaudio.save(outfile, out_wave[0], hparams["sr"])

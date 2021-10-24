@@ -240,12 +240,18 @@ class VQVAE(LightningModule):
 
         enc_aug_signal, _ = self.encode_vec(aug_signal.permute(0, 2, 1))
         st_enc_aug_signal = [self.suit_pace(eas, pace, es.shape) for eas, es in zip(enc_aug_signal, enc_signal)]
-        aug_loss = sum([t.mean((seas - es) ** 2) for seas, es in zip(st_enc_aug_signal, enc_signal)]) / lvls
+
+        sig_mean = [t.mean(sig, dim=2) for sig in enc_signal]
+        sig_var = [t.mean((x - mean.unsqueeze(-1)) ** 2) for x, mean in zip(enc_signal, sig_mean)]
+        el_rss = [t.mean((seas - es) ** 2, dim=2) for seas, es in zip(st_enc_aug_signal, enc_signal)]
+        aug_rss = sum(t.mean(sig) for sig in el_rss) / lvls
+        aug_loss = sum(t.mean(sig/var) for sig, var in zip(el_rss, sig_var)) / lvls
+        mean_sig_var = sum(t.mean(x) for x in sig_var)
 
         enc_aug_disc_signal, _, commit_losses, _ = self.bottleneck(st_enc_aug_signal)
         aug_acc = sum([t.mean((es == eas).type(torch.float)) for es, eas in zip(enc_disc_signal, enc_aug_disc_signal)]) / lvls
 
-        return aug_loss, aug_acc, aug_signal, commit_losses
+        return aug_loss, aug_acc, aug_signal, commit_losses, mean_sig_var, aug_rss
         #print(torch.min(stretched_enc_aug[0]), torch.max(stretched_enc_aug[0]))
         #print("\n".join(list(map(repr, [signal, ax, stretched_enc_aug[0], encoded_signal[0]]))))
         #print("\n".join(list(map(repr, [encoded_aug_signal[0], decoded_aug_signal[0], decoded_signal[0]]))))
@@ -260,7 +266,7 @@ class VQVAE(LightningModule):
         # Encode/Decode
         commit_losses, xs_quantised, zs, quantiser_metrics, x_in, encoded_signal = self.encode_vec_with_loss(x)
 
-        aug_loss, aug_acc, _, aug_commit_losses = self.augmentation_is_close(x, zs, encoded_signal) \
+        aug_loss, aug_acc, _, aug_commit_losses, sig_var, aug_rss = self.augmentation_is_close(x, zs, encoded_signal) \
             if self.augment_loss > 0 else ([0], [0], 0, [0])
 
         x_outs = []
@@ -318,6 +324,8 @@ class VQVAE(LightningModule):
         metrics.update(dict(
             aug_loss=aug_loss,
             aug_acc=aug_acc,
+            sig_var=sig_var,
+            aug_rss=aug_rss,
             recons_loss=recons_loss,
             spectral_loss=spec_loss,
             multispectral_loss=multispec_loss,
