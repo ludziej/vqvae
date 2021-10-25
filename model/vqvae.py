@@ -49,12 +49,13 @@ def _loss_fn(loss_fn, x_target, x_pred, hps):
 
 class VQVAE(LightningModule):
     def __init__(self, input_shape, levels, downs_t, strides_t, loss_fn, sr,
-                 emb_width, l_bins, mu, commit, spectral, multispectral, forward_params, augment_loss=1,
+                 emb_width, l_bins, mu, commit, spectral, multispectral, forward_params, augment_loss=1, std_limit=10,
                  multipliers=None, use_bottleneck=True, **params):
         super().__init__()
 
         self.sample_length = input_shape[0]
         self.sr = sr
+        self.std_limit=std_limit
         x_shape, x_channels = input_shape[:-1], input_shape[-1]
         self.x_shape = x_shape
         self.augment_loss = augment_loss
@@ -246,12 +247,16 @@ class VQVAE(LightningModule):
         el_rss = [t.mean((seas - es) ** 2, dim=2) for seas, es in zip(st_enc_aug_signal, enc_signal)]
         aug_rss = sum(t.mean(sig) for sig in el_rss) / lvls
         aug_loss = sum(t.mean(sig/var) for sig, var in zip(el_rss, sig_var)) / lvls
-        mean_sig_var = sum(t.mean(x) for x in sig_var)
+        mean_sig_var = sum(t.mean(x) for x in sig_var)/lvls
+        mean_sig_std = torch.sqrt(mean_sig_var)
+        var_loss = mean_sig_std - mean_sig_std if mean_sig_var < self.std_limit else (mean_sig_var - self.std_limit)**2
 
         enc_aug_disc_signal, _, commit_losses, _ = self.bottleneck(st_enc_aug_signal)
-        aug_acc = sum([t.mean((es == eas).type(torch.float)) for es, eas in zip(enc_disc_signal, enc_aug_disc_signal)]) / lvls
+        aug_acc_all = [t.mean((es == eas).type(torch.float)) for es, eas in zip(enc_disc_signal, enc_aug_disc_signal)]
+        aug_acc = sum(aug_acc_all) / lvls
+        last_layer_acc = aug_acc_all[-1]
 
-        return aug_loss, aug_acc, aug_signal, commit_losses, mean_sig_var, aug_rss
+        return aug_loss, aug_acc, aug_signal, commit_losses, mean_sig_var, aug_rss, var_loss, last_layer_acc
         #print(torch.min(stretched_enc_aug[0]), torch.max(stretched_enc_aug[0]))
         #print("\n".join(list(map(repr, [signal, ax, stretched_enc_aug[0], encoded_signal[0]]))))
         #print("\n".join(list(map(repr, [encoded_aug_signal[0], decoded_aug_signal[0], decoded_signal[0]]))))
@@ -266,7 +271,7 @@ class VQVAE(LightningModule):
         # Encode/Decode
         commit_losses, xs_quantised, zs, quantiser_metrics, x_in, encoded_signal = self.encode_vec_with_loss(x)
 
-        aug_loss, aug_acc, _, aug_commit_losses, sig_var, aug_rss = self.augmentation_is_close(x, zs, encoded_signal) \
+        aug_loss, aug_acc, _, aug_commit_losses, sig_var, aug_rss, var_loss, last_layer_acc = self.augmentation_is_close(x, zs, encoded_signal) \
             if self.augment_loss > 0 else ([0], [0], 0, [0])
 
         x_outs = []
