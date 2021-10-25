@@ -316,7 +316,7 @@ class VQVAE(LightningModule):
         aug_commit_losses = sum(aug_commit_losses)
         commit_loss = sum(commit_losses) + aug_commit_losses
         loss = recons_loss + self.spectral * spec_loss + self.multispectral * multispec_loss +\
-               self.commit * commit_loss + self.augment_loss * aug_loss
+               self.commit * commit_loss + self.augment_loss * aug_loss + var_loss
 
         with t.no_grad():
             sc = t.mean(spectral_convergence(x_target, x_out, hps))
