@@ -339,6 +339,8 @@ class VQVAE(LightningModule):
             l1_loss=l1_loss,
             linf_loss=linf_loss,
             commit_loss=commit_loss,
+            var_loss=var_loss,
+            last_layer_acc=last_layer_acc,
             aug_commit_losses=aug_commit_losses,
             **quantiser_metrics))
 
