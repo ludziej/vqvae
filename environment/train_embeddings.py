@@ -51,7 +51,7 @@ def train(batch_size, sample_len, num_workers,  data_depth, sr, gpus, test_path=
     train_dataloader = DataLoader(train_data, batch_size=batch_size, num_workers=num_workers)
     test_dataloader = DataLoader(test_data, batch_size=batch_size, num_workers=0)
 
-    checkpoint_callback = ModelCheckpoint(dirpath='generated/best_checkpoint/', filename='best_model', monitor="val_loss")
+    checkpoint_callback = ModelCheckpoint(dirpath='generated/best_checkpoint/', filename='best_model', every_n_epochs=10)
     tb_logger = pl_loggers.TensorBoardLogger("generated/logs/")
     trainer = Trainer(gpus=gpus, log_every_n_steps=1, logger=tb_logger, default_root_dir="generated/checkpoints", accelerator='dp',
                       callbacks=[checkpoint_callback], max_epochs=50000)
