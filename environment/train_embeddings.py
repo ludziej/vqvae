@@ -47,12 +47,14 @@ def train(batch_size, sample_len, num_workers,  data_depth, sr, gpus, test_path=
         test_data = WaveDataset(test_path, sample_len=sample_len, depth=data_depth, sr=sr)
     else:
         train_size = int(0.9 * len(train_data))
+        d2 = train_data
         train_data, test_data = random_split(train_data, [train_size, len(train_data) - train_size], generator=torch.Generator().manual_seed(42))
+        print([d2.files[i] for i in  test_data.indices])
     train_dataloader = DataLoader(train_data, batch_size=batch_size, num_workers=num_workers)
     test_dataloader = DataLoader(test_data, batch_size=batch_size, num_workers=0)
 
     checkpoint_callback = ModelCheckpoint(dirpath='generated/best_checkpoint/', every_n_epochs=10,
-                                          filename='best_model-{epoch}-{val_aug_acc_epoch:.2f}-{val_multispectral_loss_epoch:.2f}-{spectral_loss_epoch:.2f}-{last_layer_acc:.2f}')
+                                          filename='best_model-{epoch}-{val_aug_acc_epoch:.2f}-{val_multispectral_loss_epoch:.2f}-{spectral_loss_epoch:.2f}-{val_last_layer_acc:.2f}')
     tb_logger = pl_loggers.TensorBoardLogger("generated/logs/")
     trainer = Trainer(gpus=gpus, log_every_n_steps=1, logger=tb_logger, default_root_dir="generated/checkpoints", accelerator='dp',
                       callbacks=[checkpoint_callback], max_epochs=50000)
