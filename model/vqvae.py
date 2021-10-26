@@ -349,7 +349,7 @@ class VQVAE(LightningModule):
             **quantiser_metrics))
 
         for key, val in metrics.items():
-            metrics[key] = val.detach()
+            metrics[key] = val.detach() if isinstance(val, torch.Tensor) else val
 
         return x_out, loss, metrics
 
