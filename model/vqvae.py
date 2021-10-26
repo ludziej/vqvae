@@ -240,7 +240,7 @@ class VQVAE(LightningModule):
         lvls = len(enc_disc_signal)
         aug_signal, pace = self.augment(signal.permute(0, 2, 1).to("cpu"), verbose=verbose)
 
-        enc_aug_signal, _ = self.encode_vec(aug_signal.permute(0, 2, 1))
+        commit_losses_og, xs_quantised, zs, quantiser_metrics, x_in, enc_aug_signal = self.encode_vec_with_loss(aug_signal.permute(0, 2, 1))
         st_enc_aug_signal = [self.suit_pace(eas, pace, es.shape) for eas, es in zip(enc_aug_signal, enc_signal)]
 
         sig_mean = [t.mean(sig, dim=2) for sig in enc_signal]
@@ -256,10 +256,14 @@ class VQVAE(LightningModule):
         aug_acc_all = [t.mean((es == eas).type(torch.float)) for es, eas in zip(enc_disc_signal, enc_aug_disc_signal)]
         aug_acc = sum(aug_acc_all) / lvls
         last_layer_acc = aug_acc_all[-1]
+        commit_losses += commit_losses_og
 
         last_layer_usage = torch.unique(enc_disc_signal[-1].reshape(-1)).shape[0] / self.l_bins
 
-        return aug_loss, aug_acc, aug_signal, commit_losses, mean_sig_var, aug_rss, var_loss, last_layer_acc, last_layer_usage
+        ins_stack = commit_losses, xs_quantised, zs, quantiser_metrics, x_in, enc_aug_signal
+
+        return aug_loss, aug_acc, aug_signal, commit_losses, mean_sig_var, aug_rss, var_loss, last_layer_acc, last_layer_usage, ins_stack
+
         #print(torch.min(stretched_enc_aug[0]), torch.max(stretched_enc_aug[0]))
         #print("\n".join(list(map(repr, [signal, ax, stretched_enc_aug[0], encoded_signal[0]]))))
         #print("\n".join(list(map(repr, [encoded_aug_signal[0], decoded_aug_signal[0], decoded_signal[0]]))))
@@ -272,17 +276,26 @@ class VQVAE(LightningModule):
         N = x.shape[0]
 
         # Encode/Decode
-        commit_losses, xs_quantised, zs, quantiser_metrics, x_in, encoded_signal = self.encode_vec_with_loss(x)
+        commit_losses_prev, xs_quantised, zs, quantiser_metrics, x_in, encoded_signal = self.encode_vec_with_loss(x)
 
-        aug_loss, aug_acc, _, aug_commit_losses, sig_var, aug_rss, var_loss, last_layer_acc, last_layer_usage =\
+        aug_loss, aug_acc, aug_signal, aug_commit_losses, sig_var, aug_rss, var_loss, last_layer_acc, last_layer_usage, ins_stack =\
             self.augmentation_is_close(x, zs, encoded_signal) if self.augment_loss > 0 else ([0], [0], 0, [0])
+        commit_losses, xs_quantised, zs, quantiser_metrics, x_in, enc_aug_signal = ins_stack
+        commit_losses += commit_losses_prev
+        x = aug_signal.to("cuda").permute(0, 2, 1)
 
         x_outs = []
         for level in range(self.levels):
             decoder = self.decoders[level]
             x_out = decoder(xs_quantised[level:level+1], all_levels=False)
-            assert_shape(x_out, x_in.shape)
+
             x_outs.append(x_out)
+            #assert_shape(x_out, x_in.shape)
+        min_len = min(v.shape[2] for v in ([x_in] + x_outs))
+        x_in = x_in[:, :, :min_len]
+        x = x[:,  :min_len, :]
+        x_outs = [o[:, :, :min_len] for o in x_outs]
+
 
         # Loss
         def _spectral_loss(x_target, x_out, hps):
