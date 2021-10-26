@@ -59,6 +59,7 @@ class VQVAE(LightningModule):
         x_shape, x_channels = input_shape[:-1], input_shape[-1]
         self.x_shape = x_shape
         self.augment_loss = augment_loss
+        self.l_bins = l_bins
 
         self.downsamples = calculate_strides(strides_t, downs_t)
         self.hop_lengths = np.cumprod(self.downsamples)
@@ -256,7 +257,9 @@ class VQVAE(LightningModule):
         aug_acc = sum(aug_acc_all) / lvls
         last_layer_acc = aug_acc_all[-1]
 
-        return aug_loss, aug_acc, aug_signal, commit_losses, mean_sig_var, aug_rss, var_loss, last_layer_acc
+        last_layer_usage = torch.unique(enc_disc_signal[-1].reshape(-1)).shape[0] / self.l_bins
+
+        return aug_loss, aug_acc, aug_signal, commit_losses, mean_sig_var, aug_rss, var_loss, last_layer_acc, last_layer_usage
         #print(torch.min(stretched_enc_aug[0]), torch.max(stretched_enc_aug[0]))
         #print("\n".join(list(map(repr, [signal, ax, stretched_enc_aug[0], encoded_signal[0]]))))
         #print("\n".join(list(map(repr, [encoded_aug_signal[0], decoded_aug_signal[0], decoded_signal[0]]))))
@@ -271,8 +274,8 @@ class VQVAE(LightningModule):
         # Encode/Decode
         commit_losses, xs_quantised, zs, quantiser_metrics, x_in, encoded_signal = self.encode_vec_with_loss(x)
 
-        aug_loss, aug_acc, _, aug_commit_losses, sig_var, aug_rss, var_loss, last_layer_acc = self.augmentation_is_close(x, zs, encoded_signal) \
-            if self.augment_loss > 0 else ([0], [0], 0, [0])
+        aug_loss, aug_acc, _, aug_commit_losses, sig_var, aug_rss, var_loss, last_layer_acc, last_layer_usage =\
+            self.augmentation_is_close(x, zs, encoded_signal) if self.augment_loss > 0 else ([0], [0], 0, [0])
 
         x_outs = []
         for level in range(self.levels):
@@ -340,6 +343,7 @@ class VQVAE(LightningModule):
             linf_loss=linf_loss,
             commit_loss=commit_loss,
             var_loss=var_loss,
+            last_layer_usage=last_layer_usage,
             last_layer_acc=last_layer_acc,
             aug_commit_losses=aug_commit_losses,
             **quantiser_metrics))

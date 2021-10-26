@@ -50,8 +50,8 @@ def check_augment(infile, outfile=None, end_on=None, level=0):
     wave = wave[:end_on] if end_on is not None else wave
     model = ready_model()
     enc_signal = model_forward(model, wave, only_encoding=True, level=level).to('cuda').reshape(1, -1)
-    aug_loss, aug_acc, out_wave, cl,  sig_var, aug_rss, var_loss, last_layer_acc = model.augmentation_is_close(wave.reshape(1, 1, -1), enc_signal, verbose=True)
-    print("Aug acc: {}, Aug loss: {}".format(aug_acc, aug_loss))
+    aug_loss, aug_acc, out_wave, cl,  sig_var, aug_rss, var_loss, last_layer_acc, last_layer_usage = model.augmentation_is_close(wave.reshape(1, 1, -1), enc_signal, verbose=True)
+    print("Aug acc: {}, Aug loss: {}, Last Layer acc: {} Last layer usage: {}".format(aug_acc, aug_loss,last_layer_acc, last_layer_usage))
     if outfile is not None:
         torchaudio.save(outfile, out_wave[0], hparams["sr"])
 
@@ -104,13 +104,13 @@ if __name__ == "__main__":
     working_chunk_05_s = 11250
     working_chunk_02_s = 5625
 
-    process_single_file("resources/cls_dataset/10.wav", "generated/output.wav")
+    #out = process_single_file("resources/full_dataset/webern_symphony/webern_symphony_ref_1.wav", "generated/output.wav", only_encoding=True)
     #coded = process_single_file("generated/input.wav", None, only_encoding=True)
     #print(coded.shape)
                                                           #chunk_size=220416//3//2, chunks_number=4, suffix_size=2)
-    #for i in range(40):
-#        print(i)
-#        check_augment("resources/cls_dataset/10.wav",  "generated/out_aug{}.wav".format(i), end_on=150500)
+    for i in range(40):
+        print(i)
+        check_augment("resources/cls_dataset/10.wav",  "generated/out_aug{}.wav".format(i), end_on=150500)
     #find_working_chunk_size("resources/cls_dataset/10.wav", start_i=working_chunk_05_s, chunks=10, suffix_size=4)
     #find_working_chunk_size("resources/cls_dataset/10.wav", start_i=working_chunk_05_s, chunks=10, suffix_size=10)
     #find_working_chunk_size("resources/cls_dataset/10.wav", start_i=working_chunk_02_s, chunks=10, suffix_size=4)
