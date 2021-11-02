@@ -31,7 +31,8 @@ class WaveDataset(Dataset):
         whole_file, file_sr = torchaudio.load(self.files[idx])
         assert file_sr == self.sr
         # reduce stereo
-        whole_file = (whole_file[0:1, :] + whole_file[1:2, :])/2 if whole_file.shape[0] >= 2 else whole_file
+        #whole_file = (whole_file[0:1, :] + whole_file[1:2, :])/2 if whole_file.shape[0] >= 2 else whole_file
+        whole_file = torch.mean(whole_file, dim=0, keepdim=True)
 
         randomize_start = self.randgen.integers(low=0, high=whole_file.shape[1] - 1, size=1)[0]
         trimmed_sound = whole_file[:, randomize_start:randomize_start + self.sample_len]
