@@ -17,7 +17,7 @@ class BottleneckBlock(nn.Module):
         self.init = False
         self.k_sum = None
         self.k_elem = None
-        self.register_buffer('k', t.zeros(self.k_bins, self.emb_width).cuda())
+        self.register_parameter('k', t.zeros(self.k_bins, self.emb_width).cuda())
 
     def _tile(self, x):
         d, ew = x.shape
@@ -37,14 +37,14 @@ class BottleneckBlock(nn.Module):
         #dist.broadcast(_k_rand, 0)
         self.k = _k_rand
         assert self.k.shape == (k_bins, emb_width)
-        self.k_sum = self.k
+        self.k_sum = self.k.detach()
         self.k_elem = t.ones(k_bins, device=self.k.device)
 
     def restore_k(self, num_tokens=None, threshold=1.0):
         mu, emb_width, k_bins = self.mu, self.emb_width, self.k_bins
         self.init = True
         assert self.k.shape == (k_bins, emb_width)
-        self.k_sum = self.k.clone()
+        self.k_sum = self.k.detach().clone()
         self.k_elem = t.ones(k_bins, device=self.k.device)
         if num_tokens is not None:
             expected_usage = num_tokens / k_bins
@@ -69,17 +69,17 @@ class BottleneckBlock(nn.Module):
             #dist.all_reduce(_k_elem)
 
             # Update centres
-            old_k = self.k
+            old_k = self.k.detach()
             self.k_sum = mu * self.k_sum + (1. - mu) * _k_sum  # w, k_bins
             self.k_elem = mu * self.k_elem + (1. - mu) * _k_elem  # k_bins
             usage = (self.k_elem.view(k_bins, 1) >= self.threshold).float()
-            self.k = usage * (self.k_sum.view(k_bins, emb_width) / self.k_elem.view(k_bins, 1)) \
-                     + (1 - usage) * _k_rand
+            self.k = (usage * (self.k_sum.view(k_bins, emb_width) / self.k_elem.view(k_bins, 1))
+                     + (1 - usage) * _k_rand).detach()
             _k_prob = _k_elem / t.sum(_k_elem)  # x_l_onehot.mean(dim=-1)  # prob of each bin
             entropy = -t.sum(_k_prob * t.log(_k_prob + 1e-8))  # entropy ie how diverse
             used_curr = (_k_elem >= self.threshold).sum()
             usage = t.sum(usage)
-            dk = t.norm(self.k - old_k) / np.sqrt(np.prod(old_k.shape))
+            dk = t.norm(self.k.detach() - old_k) / np.sqrt(np.prod(old_k.shape))
         return dict(entropy=entropy,
                     used_curr=used_curr,
                     usage=usage,
@@ -111,7 +111,7 @@ class BottleneckBlock(nn.Module):
 
     def quantise(self, x):
         # Calculate latent code x_l
-        k_w = self.k.t()
+        k_w = self.k.detach().t()
         distance = t.sum(x ** 2, dim=-1, keepdim=True) - 2 * t.matmul(x, k_w) + t.sum(k_w ** 2, dim=0,
                                                                                             keepdim=True)  # (N * L, b)
         min_distance, x_l = t.min(distance, dim=-1)
@@ -119,7 +119,7 @@ class BottleneckBlock(nn.Module):
         return x_l, fit
 
     def dequantise(self, x_l):
-        x = F.embedding(x_l, self.k)
+        x = F.embedding(x_l, self.k.detach())
         return x
 
     def encode(self, x):
