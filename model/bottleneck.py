@@ -17,7 +17,8 @@ class BottleneckBlock(nn.Module):
         self.init = False
         self.k_sum = None
         self.k_elem = None
-        self.register_parameter('k', t.zeros(self.k_bins, self.emb_width).cuda())
+        #self.register_parameter('k',.cuda())
+        self.k = t.nn.Parameter(t.zeros(self.k_bins, self.emb_width)).to('cuda')
 
     def _tile(self, x):
         d, ew = x.shape
