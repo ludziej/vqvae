@@ -1,18 +1,13 @@
 import numpy as np
-import torch
 import torch as t
 import torch.nn as nn
 from pytorch_lightning import LightningModule
-import torchaudio
-from torchaudio.sox_effects import  apply_effects_tensor
 
 from model.encdec import Encoder, Decoder, assert_shape
 from model.bottleneck import NoBottleneck, Bottleneck
 from ml_utils.logger import average_metrics
 from ml_utils.audio_utils import spectral_convergence, spectral_loss, multispectral_loss, audio_postprocess
 from optimization.opt_maker import get_optimizer
-
-repr = lambda x: "{}, {}, {}".format(x.shape, x.type(), x.device)
 
 def dont_update(params):
     for param in params:
@@ -48,22 +43,18 @@ def _loss_fn(loss_fn, x_target, x_pred, hps):
 
 
 class VQVAE(LightningModule):
-    def __init__(self, input_shape, levels, downs_t, strides_t, loss_fn, sr,
-                 emb_width, l_bins, mu, commit, spectral, multispectral, forward_params, augment_loss=1, std_limit=10,
+    def __init__(self, input_shape, levels, downs_t, strides_t, loss_fn,
+                 emb_width, l_bins, mu, commit, spectral, multispectral, forward_params,
                  multipliers=None, use_bottleneck=True, **params):
         super().__init__()
 
         self.sample_length = input_shape[0]
-        self.sr = sr
-        self.std_limit=std_limit
         x_shape, x_channels = input_shape[:-1], input_shape[-1]
         self.x_shape = x_shape
-        self.augment_loss = augment_loss
-        self.l_bins = l_bins
 
         self.downsamples = calculate_strides(strides_t, downs_t)
         self.hop_lengths = np.cumprod(self.downsamples)
-        self.z_shapes = [(x_shape[0] // self.hop_lengths[level],) for level in range(levels)]
+        self.z_shapes = z_shapes = [(x_shape[0] // self.hop_lengths[level],) for level in range(levels)]
         self.levels = levels
         self.forward_params = forward_params
         self.loss_fn = loss_fn
@@ -106,8 +97,6 @@ class VQVAE(LightningModule):
         # x: NTC [-1,1] -> NCT [-1,1]
         assert len(x.shape) == 3
         x = x.permute(0,2,1).float()
-        if not x.is_cuda:
-            x = x.to("cuda")
         return x
 
     def postprocess(self, x):
@@ -160,113 +149,9 @@ class VQVAE(LightningModule):
         zs = [t.cat(zs_level_list, dim=0) for zs_level_list in zip(*zs_list)]
         return zs
 
-    def encode_vec(self, x):
-        x_in = self.preprocess(x)
-        xs = []
-        for level in range(self.levels):
-            encoder = self.encoders[level]
-            x_out = encoder(x_in)
-            xs.append(x_out[-1])
-        return xs, x_in
-
-    def encode_vec_with_loss(self, x):
-        xs, x_in = self.encode_vec(x)
-        zs, xs_quantised, commit_losses, quantiser_metrics = self.bottleneck(xs)
-        return commit_losses, xs_quantised, zs, quantiser_metrics, x_in, xs
-
     def sample(self, n_samples):
         zs = [t.randint(0, self.l_bins, size=(n_samples, *z_shape), device='cuda') for z_shape in self.z_shapes]
         return self.decode(zs)
-
-    def get_effects(self, pace, verbose=False):
-        gain = np.random.randint(40)
-        color = np.random.randint(40)
-        with_reverb = bool(np.random.randint(2))
-        dither = bool(np.random.randint(2))
-        #flanger = bool(np.random.randint(2))
-        bass_gain = np.random.randint(20)
-        treble_gain = np.random.randint(20)
-        if verbose:
-            print("Augmented with {}".format(", ".join("{} = {}".format(k, v) for k, v in dict(
-                pace=pace, gain=gain, color=color, with_reverb=with_reverb,
-                dither=dither, bass_gain=bass_gain, treble_gain=treble_gain
-            ).items())))
-
-        # Define effects
-        return [e for e in [
-#            ["lowpass", "-1", "300"],  # apply single-pole lowpass filter
-            ["tempo", str(pace)],  # reduce the speed
-            ["bass", str(bass_gain)] if bass_gain > 0 else None,
-            ["treble", str(treble_gain)] if treble_gain > 0 else None,
-            ["overdrive", str(gain), str(color)] if gain > 0 else None,
-            #["flanger"] if flanger else None,
-            ["reverb", "-w"] if with_reverb else None,
-            ["dither"] if dither else None,
-        ] if e is not None]
-
-    def augment(self, signal, verbose=False):
-        reduce_size = lambda x: ((x[0] + x[1])/2).unsqueeze(0) if x.shape[0] > 1 else x
-        pace = np.random.uniform(0.5, 1.5)
-
-        # Apply effects
-        aug_signal, srs = zip(*[apply_effects_tensor(s, self.sr, self.get_effects(pace, verbose=verbose)) for s in signal])
-        assert all(s == self.sr for s in srs)
-        aug_signal = t.stack(list(map(reduce_size, aug_signal)))
-        return aug_signal, pace
-
-    def suit_pace(self, signal: torch.Tensor, pace: float, shape: tuple) -> torch.Tensor:
-        if pace > 1.:  # we are now upsampling (tempo was increased)
-            #print("upsampling")
-            positions = torch.round(torch.arange(shape[2]) * 1/pace).type(torch.LongTensor).to("cuda")
-            positions = torch.clamp(positions, max=signal.shape[2] - 1, min=0)
-            #positions[-1] = positions[-1] - 1 if positions[-1] >= signal.shape[1] else positions[-1
-            #positions[-1] = positions[-2] - 1 if positions[-1] >= signal.shape[1] else positions[-1]
-            out = signal[:, :, positions]
-            #print("\n".join(list(map(repr, [signal, out, positions]))))
-        else:  # we are downsampling
-            #print("downsampling")
-            out = torch.zeros(shape).type_as(signal).to("cuda")
-            positions = torch.round(torch.arange(signal.shape[2]) * pace).type(torch.LongTensor).to("cuda")
-
-            positions = torch.clamp(positions, max=out.shape[2] - 1, min=0)
-            #positions[-1] = positions[-1] - 1 if positions[-1] >= out.shape[1] else positions[-1]
-            #positions[-2] = positions[-2] - 1 if positions[-2] >= out.shape[1] else positions[-2]
-            #print("\n".join(list(map(repr, [signal, out, positions]))))
-            #print(torch.min(positions), torch.max(positions))
-            out[:, :, positions] = signal
-        return out
-
-    def augmentation_is_close(self, signal, enc_disc_signal, enc_signal, verbose=False):
-        lvls = len(enc_disc_signal)
-        aug_signal, pace = self.augment(signal.permute(0, 2, 1).to("cpu"), verbose=verbose)
-
-        commit_losses_og, xs_quantised, zs, quantiser_metrics, x_in, enc_aug_signal = self.encode_vec_with_loss(aug_signal.permute(0, 2, 1))
-        st_enc_aug_signal = [self.suit_pace(eas, pace, es.shape) for eas, es in zip(enc_aug_signal, enc_signal)]
-
-        sig_mean = [t.mean(sig, dim=2) for sig in enc_signal]
-        sig_var = [t.mean((x - mean.unsqueeze(-1)) ** 2) for x, mean in zip(enc_signal, sig_mean)]
-        el_rss = [t.mean((seas - es) ** 2, dim=2) for seas, es in zip(st_enc_aug_signal, enc_signal)]
-        aug_rss = sum(t.mean(sig) for sig in el_rss) / lvls
-        aug_loss = sum(t.mean(sig/var) for sig, var in zip(el_rss, sig_var)) / lvls
-        mean_sig_var = sum(t.mean(x) for x in sig_var)/lvls
-        mean_sig_std = torch.sqrt(mean_sig_var)
-        var_loss = mean_sig_std - mean_sig_std if mean_sig_var < self.std_limit else (mean_sig_var - self.std_limit)**2
-
-        enc_aug_disc_signal, _, commit_losses, _ = self.bottleneck(st_enc_aug_signal)
-        aug_acc_all = [t.mean((es == eas).type(torch.float)) for es, eas in zip(enc_disc_signal, enc_aug_disc_signal)]
-        aug_acc = sum(aug_acc_all) / lvls
-        last_layer_acc = aug_acc_all[-1]
-        commit_losses += commit_losses_og
-
-        last_layer_usage = torch.unique(enc_disc_signal[-1].reshape(-1)).shape[0] / self.l_bins
-
-        ins_stack = commit_losses, xs_quantised, zs, quantiser_metrics, x_in, enc_aug_signal
-
-        return aug_loss, aug_acc, aug_signal, commit_losses, mean_sig_var, aug_rss, var_loss, last_layer_acc, last_layer_usage, ins_stack
-
-        #print(torch.min(stretched_enc_aug[0]), torch.max(stretched_enc_aug[0]))
-        #print("\n".join(list(map(repr, [signal, ax, stretched_enc_aug[0], encoded_signal[0]]))))
-        #print("\n".join(list(map(repr, [encoded_aug_signal[0], decoded_aug_signal[0], decoded_signal[0]]))))
 
     def forward(self, x):
         hps = self.forward_params
@@ -276,26 +161,20 @@ class VQVAE(LightningModule):
         N = x.shape[0]
 
         # Encode/Decode
-        commit_losses_prev, xs_quantised, zs, quantiser_metrics, x_in, encoded_signal = self.encode_vec_with_loss(x)
+        x_in = self.preprocess(x)
+        xs = []
+        for level in range(self.levels):
+            encoder = self.encoders[level]
+            x_out = encoder(x_in)
+            xs.append(x_out[-1])
 
-        aug_loss, aug_acc, aug_signal, aug_commit_losses, sig_var, aug_rss, var_loss, last_layer_acc, last_layer_usage, ins_stack =\
-            self.augmentation_is_close(x, zs, encoded_signal) if self.augment_loss > 0 else ([0], [0], 0, [0])
-        commit_losses, xs_quantised, zs, quantiser_metrics, x_in, enc_aug_signal = ins_stack
-        commit_losses += commit_losses_prev
-        x = aug_signal.to("cuda").permute(0, 2, 1)
-
+        zs, xs_quantised, commit_losses, quantiser_metrics = self.bottleneck(xs)
         x_outs = []
         for level in range(self.levels):
             decoder = self.decoders[level]
             x_out = decoder(xs_quantised[level:level+1], all_levels=False)
-
+            assert_shape(x_out, x_in.shape)
             x_outs.append(x_out)
-            #assert_shape(x_out, x_in.shape)
-        min_len = min(v.shape[2] for v in ([x_in] + x_outs))
-        x_in = x_in[:, :, :min_len]
-        x = x[:,  :min_len, :]
-        x_outs = [o[:, :, :min_len] for o in x_outs]
-
 
         # Loss
         def _spectral_loss(x_target, x_out, hps):
@@ -319,7 +198,7 @@ class VQVAE(LightningModule):
         for level in reversed(range(self.levels)):
             x_out = self.postprocess(x_outs[level])
             x_out = audio_postprocess(x_out, hps)
-            this_recons_loss = _loss_fn(loss_fn, x_target, x_out, hps) if loss_fn != 0 else t.zeros(()).to(x.device)
+            this_recons_loss = _loss_fn(loss_fn, x_target, x_out, hps)
             this_spec_loss = _spectral_loss(x_target, x_out, hps)
             this_multispec_loss = _multispectral_loss(x_target, x_out, hps)
             metrics[f'recons_loss_l{level + 1}'] = this_recons_loss
@@ -329,10 +208,8 @@ class VQVAE(LightningModule):
             spec_loss += this_spec_loss
             multispec_loss += this_multispec_loss
 
-        aug_commit_losses = sum(aug_commit_losses)
-        commit_loss = sum(commit_losses) + aug_commit_losses
-        loss = recons_loss + self.spectral * spec_loss + self.multispectral * multispec_loss +\
-               self.commit * commit_loss + self.augment_loss * aug_loss + var_loss
+        commit_loss = sum(commit_losses)
+        loss = recons_loss + self.spectral * spec_loss + self.multispectral * multispec_loss + self.commit * commit_loss
 
         with t.no_grad():
             sc = t.mean(spectral_convergence(x_target, x_out, hps))
@@ -343,10 +220,6 @@ class VQVAE(LightningModule):
         quantiser_metrics = average_metrics(quantiser_metrics)
 
         metrics.update(dict(
-            aug_loss=aug_loss,
-            aug_acc=aug_acc,
-            sig_var=sig_var,
-            aug_rss=aug_rss,
             recons_loss=recons_loss,
             spectral_loss=spec_loss,
             multispectral_loss=multispec_loss,
@@ -355,14 +228,10 @@ class VQVAE(LightningModule):
             l1_loss=l1_loss,
             linf_loss=linf_loss,
             commit_loss=commit_loss,
-            var_loss=var_loss,
-            last_layer_usage=last_layer_usage,
-            last_layer_acc=last_layer_acc,
-            aug_commit_losses=aug_commit_losses,
             **quantiser_metrics))
 
         for key, val in metrics.items():
-            metrics[key] = val.detach() if isinstance(val, torch.Tensor) else val
+            metrics[key] = val.detach()
 
         return x_out, loss, metrics
 
