@@ -20,11 +20,12 @@ class STFTValues:
         self.window_size = window_size
 
 def calculate_bandwidth(dataset, hps, duration=600):
+    print("Calculating bandwidth")
     hps = DefaultSTFTValues(hps)
     n_samples = int(hps.sr * duration)
     l1, total, total_sq, n_seen, idx = 0.0, 0.0, 0.0, 0.0, 0
     spec_norm_total, spec_nelem = 0.0, 0.0
-    while n_seen < 1:
+    while n_seen < n_samples:
         x = dataset[idx]
         if isinstance(x, (tuple, list)):
             x, y = x
@@ -37,14 +38,15 @@ def calculate_bandwidth(dataset, hps, duration=600):
         l1 += np.sum(np.abs(samples))
         total += np.sum(samples)
         total_sq += np.sum(samples ** 2)
-        idx += 1
+        idx +=1
 
     mean = total / n_seen
     bandwidth = dict(l2 = total_sq / n_seen - mean ** 2,
                      l1 = l1 / n_seen,
                      spec = spec_norm_total / spec_nelem)
-    #print(bandwidth)
+    print(bandwidth)
     return bandwidth
+
 
 def audio_preprocess(x, hps):
     # Extra layer in case we want to experiment with different preprocessing
