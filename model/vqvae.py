@@ -235,23 +235,30 @@ class VQVAE(LightningModule):
 
         return x_out, loss, metrics
 
+    def log_metrics_and_samples(loss, self, metrics, batch, batch_out, batch_idx, prefix=""):
+        self.log(prefix+"loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        for name, val in metrics.items():
+            self.log(preix + name, val,  on_step=True, on_epoch=True, logger=True)
+        tlogger = self.logger.experiment
+        if batch_idx % 100 != 0:
+            return  # log samples once in a while
+        for xin, xout in zip(batch, batch_out)
+            tlogger.add_audio(preix + "sample_in", xin, global_step=batch_idx)
+            tlogger.add_audio(preix + "sample_out", xout, global_step=batch_idx)
+
     def training_step(self, batch, batch_idx):
         x_out, loss, metrics = self(batch)
-        self.log("loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
-        for name, val in metrics.items():
-            self.log(name, val,  on_step=True, on_epoch=True, logger=True)
+        self.log_metrics_and_samples(loss, metrics, batch, x_out, batch_idx)
         return loss
 
     def test_step(self, batch, batch_idx):
         x_out, loss, metrics = self(batch)
-        self.log("test_loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        self.log_metrics_and_samples(loss, metrics, batch, x_out, batch_idx, prefix="test_")
         return loss
 
     def validation_step(self, batch, batch_idx):
         x_out, loss, metrics = self(batch)
-        self.log("val_loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
-        for name, val in metrics.items():
-            self.log("val_" + name, val,  on_step=True, on_epoch=True, prog_bar=False, logger=True)
+        self.log_metrics_and_samples(loss, metrics, batch, x_out, batch_idx, prefix="val_")
         return loss
 
     def configure_optimizers(self):
