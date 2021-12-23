@@ -5,8 +5,8 @@ from pytorch_lightning import LightningModule
 
 from model.encdec import Encoder, Decoder, assert_shape
 from model.bottleneck import NoBottleneck, Bottleneck
-from ml_utils.logger import average_metrics
-from ml_utils.audio_utils import spectral_convergence, spectral_loss, multispectral_loss, audio_postprocess
+from old_ml_utils.misc import average_metrics
+from old_ml_utils.audio_utils import spectral_convergence, spectral_loss, multispectral_loss, audio_postprocess
 from optimization.opt_maker import get_optimizer
 
 def dont_update(params):
@@ -238,13 +238,13 @@ class VQVAE(LightningModule):
     def log_metrics_and_samples(loss, self, metrics, batch, batch_out, batch_idx, prefix=""):
         self.log(prefix+"loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         for name, val in metrics.items():
-            self.log(preix + name, val,  on_step=True, on_epoch=True, logger=True)
+            self.log(prefix + name, val,  on_step=True, on_epoch=True, logger=True)
         tlogger = self.logger.experiment
         if batch_idx % 100 != 0:
             return  # log samples once in a while
-        for xin, xout in zip(batch, batch_out)
-            tlogger.add_audio(preix + "sample_in", xin, global_step=batch_idx)
-            tlogger.add_audio(preix + "sample_out", xout, global_step=batch_idx)
+        for xin, xout in zip(batch, batch_out):
+            tlogger.add_audio(prefix + "sample_in", xin, global_step=batch_idx)
+            tlogger.add_audio(prefix + "sample_out", xout, global_step=batch_idx)
 
     def training_step(self, batch, batch_idx):
         x_out, loss, metrics = self(batch)

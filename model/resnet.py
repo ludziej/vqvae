@@ -1,7 +1,7 @@
 import math
 import torch.nn as nn
-import ml_utils.dist_adapter as dist
-from ml_utils.checkpoint import checkpoint
+import old_ml_utils.dist_adapter as dist
+from old_ml_utils.checkpoint import checkpoint
 
 class ResConvBlock(nn.Module):
     def __init__(self, n_in, n_state):

@@ -1,9 +1,7 @@
 import numpy as np
 import torch as t
-import ml_utils.dist_adapter as dist
 import soundfile
 import librosa
-from ml_utils.dist_utils import print_once
 
 class DefaultSTFTValues:
     def __init__(self, hps):
@@ -48,26 +46,6 @@ def calculate_bandwidth(dataset, hps, duration=600):
     return bandwidth
 
 
-def audio_preprocess(x, hps):
-    # Extra layer in case we want to experiment with different preprocessing
-    # For two channel, blend randomly into mono (standard is .5 left, .5 right)
-
-    # x: NTC
-    x = x.float()
-    if x.shape[-1]==2:
-        if hps.aug_blend:
-            mix=t.rand((x.shape[0],1), device=x.device) #np.random.rand()
-        else:
-            mix = 0.5
-        x=(mix*x[:,:,0]+(1-mix)*x[:,:,1])
-    elif x.shape[-1]==1:
-        x=x[:,:,0]
-    else:
-        assert False, f'Expected channels {hps.channels}. Got unknown {x.shape[-1]} channels'
-
-    # x: NT -> NTC
-    x = x.unsqueeze(2)
-    return x
 
 def audio_postprocess(x, hps):
     return x

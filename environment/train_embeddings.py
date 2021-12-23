@@ -4,7 +4,7 @@ from environment.dataloaders import WaveDataset
 from model.vqvae import VQVAE
 from pytorch_lightning import Trainer
 from torch.utils.data import random_split
-from ml_utils.audio_utils import calculate_bandwidth
+from old_ml_utils.audio_utils import calculate_bandwidth
 from itertools import takewhile, count
 from functools import reduce
 import torch

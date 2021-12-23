@@ -1,8 +1,8 @@
 
 import torch as t
-import ml_utils.dist_adapter as dist
+import old_ml_utils.dist_adapter as dist
 from torch.nn.parallel import DistributedDataParallel
-from ml_utils.fp16 import FusedAdam, FP16FusedAdam, LossScalar
+from old_ml_utils.fp16 import FusedAdam, FP16FusedAdam, LossScalar
 
 
 def get_lr_scheduler(opt, lr_use_linear_decay, lr_scale, lr_warmup, lr_start_linear_decay, lr_decay, lr_gamma, **params):

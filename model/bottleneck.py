@@ -2,7 +2,7 @@ import numpy as np
 import torch as t
 import torch.nn as nn
 import torch.nn.functional as F
-import ml_utils.dist_adapter as dist
+import old_ml_utils.dist_adapter as dist
 
 class BottleneckBlock(nn.Module):
     def __init__(self, k_bins, emb_width, mu):

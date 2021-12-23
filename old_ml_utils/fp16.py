@@ -3,11 +3,12 @@ import importlib
 import math
 import numpy as np
 import torch
-import ml_utils.dist_adapter as dist
+import old_ml_utils.dist_adapter as dist
 from torch.optim import Optimizer
 from torch._utils import _flatten_dense_tensors
 
-from ml_utils.dist_utils import allreduce
+from old_ml_utils.misc import allreduce
+
 
 def adam_step(p: torch.Tensor, out_p: torch.Tensor, exp_avg: torch.Tensor, exp_avg_sq: torch.Tensor, grad: torch.Tensor,
               lr: float, beta1: float, beta2: float, eps: float, scale: float, step: int, eps_mode: int, bias_correction: int, weight_decay: float):
