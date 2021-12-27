@@ -58,6 +58,7 @@ class VQVAE(LightningModule):
         self.levels = levels
         self.forward_params = forward_params
         self.loss_fn = loss_fn
+        self.sr = params["sr"]
 
         if multipliers is None:
             self.multipliers = [1] * levels
@@ -240,11 +241,11 @@ class VQVAE(LightningModule):
         for name, val in metrics.items():
             self.log(prefix + name, val,  on_step=True, on_epoch=True, logger=True)
         tlogger = self.logger.experiment
-        if batch_idx % 100 != 0:
+        if batch_idx % 50 != 0:
             return  # log samples once in a while
-        for xin, xout in zip(batch, batch_out):
-            tlogger.add_audio(prefix + "sample_in", xin, global_step=batch_idx)
-            tlogger.add_audio(prefix + "sample_out", xout, global_step=batch_idx)
+        for i, (xin, xout) in enumerate(zip(batch, batch_out)):
+            tlogger.add_audio(prefix + f"sample_in_{i}", xin, batch_idx, self.sr)
+            tlogger.add_audio(prefix + f"sample_out_{i}", xout, batch_idx, self.sr)
 
     def training_step(self, batch, batch_idx):
         x_out, loss, metrics = self(batch)
