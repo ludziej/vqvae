@@ -15,8 +15,7 @@ def run():
     train(**hparams,
           #train_path="resources/full_musicnet/musicnet/musicnet/train_data",
           #test_path="resources/full_musicnet/musicnet/musicnet/test_data")
-          train_path="resources/train", data_depth=3,
-          test_path="resources/test", 
+          train_path="resources/string_quartets/preprocessed", data_depth=1,
           )
 
 

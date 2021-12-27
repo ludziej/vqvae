@@ -235,8 +235,8 @@ class VQVAE(LightningModule):
 
         return x_out, loss, metrics
 
-    def log_metrics_and_samples(loss, self, metrics, batch, batch_out, batch_idx, prefix=""):
-        self.log(prefix+"loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+    def log_metrics_and_samples(self, loss, metrics, batch, batch_out, batch_idx, prefix=""):
+        self.log(prefix + "loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         for name, val in metrics.items():
             self.log(prefix + name, val,  on_step=True, on_epoch=True, logger=True)
         tlogger = self.logger.experiment
