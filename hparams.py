@@ -51,12 +51,12 @@ vqvaehparams = dict(
     restore_vqvae='generated/jukebox/models/5b/vqvae.pth.tar',
     batch_size=2,
     sample_len=99840,
-    num_workers=26,
+    num_workers=5,
     sr=22050,
     fp16=False,
     forward_params=forward_params,
     from_last_checkpot=True,
-    gpus=-1,
+    gpus=[0],
 )
 
 
