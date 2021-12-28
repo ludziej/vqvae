@@ -24,6 +24,7 @@ def get_last_path(dir="lightning_logs", version="version_", checkpoint_name=""):
 def create_vqvae(sample_length, l_mu, from_last_checkpot, **params):
     all_params = {"input_shape": (sample_length, 1), "mu": l_mu, **params}
     last_path = get_last_path() if from_last_checkpot else None
+    print(f"Restoring model from {last_path}" if last_path else f"Starting training from scratch")
     model = VQVAE.load_from_checkpoint(last_path, **all_params) if last_path is not None else VQVAE(**all_params)
     return model
 
