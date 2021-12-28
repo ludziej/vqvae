@@ -229,9 +229,9 @@ class VQVAE(LightningModule):
         for key, val in metrics.items():
             metrics[key] = val.detach()
 
-        return x_out, loss, metrics
+        return x_out, loss, metrics, x_outs
 
-    def log_metrics_and_samples(self, loss, metrics, batch, batch_out, batch_idx, prefix=""):
+    def log_metrics_and_samples(self, loss, metrics, batch, batch_outs, batch_idx, prefix=""):
         self.log(prefix + "loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         for name, val in metrics.items():
             self.log(prefix + name, val,  on_step=True, on_epoch=True, logger=True)
@@ -240,23 +240,24 @@ class VQVAE(LightningModule):
             return  # log samples once per epoch
         nr = self.log_nr.get(prefix, 0)
         self.log_nr[prefix] = nr + 1
-        for i, (xin, xout) in enumerate(zip(batch, batch_out)):
+        for i, (xin, xouts) in enumerate(zip(batch, batch_outs)):
             tlogger.add_audio(prefix + f"sample_in_{i}", xin, nr, self.sr)
-            tlogger.add_audio(prefix + f"sample_out_{i}", xout, nr, self.sr)
+            for level, out in enumerate(xouts):
+                tlogger.add_audio(prefix + f"sample_out_{i}_lvl_{level}", out, nr, self.sr)
 
     def training_step(self, batch, batch_idx):
-        x_out, loss, metrics = self(batch)
-        self.log_metrics_and_samples(loss, metrics, batch, x_out, batch_idx)
+        x_out, loss, metrics, x_outs = self(batch)
+        self.log_metrics_and_samples(loss, metrics, batch, x_outs, batch_idx)
         return loss
 
     def test_step(self, batch, batch_idx):
-        x_out, loss, metrics = self(batch)
-        self.log_metrics_and_samples(loss, metrics, batch, x_out, batch_idx, prefix="test_")
+        x_out, loss, metrics, x_outs = self(batch)
+        self.log_metrics_and_samples(loss, metrics, batch, x_outs, batch_idx, prefix="test_")
         return loss
 
     def validation_step(self, batch, batch_idx):
-        x_out, loss, metrics = self(batch)
-        self.log_metrics_and_samples(loss, metrics, batch, x_out, batch_idx, prefix="val_")
+        x_out, loss, metrics, x_outs = self(batch)
+        self.log_metrics_and_samples(loss, metrics, batch, x_outs, batch_idx, prefix="val_")
         return loss
 
     def configure_optimizers(self):
