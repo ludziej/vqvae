@@ -28,7 +28,7 @@ def create_vqvae(sample_length, l_mu, from_last_checkpot, **params):
     return model
 
 
-def calc_metaparams(dataset, forward_params, duration=30):
+def calc_metaparams(dataset, forward_params, duration=200):
     forward_params.bandwidth = calculate_bandwidth(dataset, duration=duration, hps=forward_params)
 
 

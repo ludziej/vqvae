@@ -25,6 +25,7 @@ def calculate_bandwidth(dataset, hps, duration=600):
     spec_norm_total, spec_nelem = 0.0, 0.0
     while n_seen < n_samples:
         x = np.squeeze(dataset[idx].numpy(), axis=1)
+        print(f"Diagnosing track {idx} with shape {x.shape}")
         samples = x.astype(np.float64)
         stft = librosa.core.stft(samples, hps.n_fft, hop_length=hps.hop_length, win_length=hps.window_size)
         spec = np.absolute(stft)
@@ -34,7 +35,7 @@ def calculate_bandwidth(dataset, hps, duration=600):
         l1 += np.sum(np.abs(samples))
         total += np.sum(samples)
         total_sq += np.sum(samples ** 2)
-        idx += 1
+        idx = (idx + 1) % len(dataset)
 
     mean = total / n_seen
     bandwidth = dict(l2 = total_sq / n_seen - mean ** 2,

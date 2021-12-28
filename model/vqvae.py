@@ -9,16 +9,10 @@ from old_ml_utils.misc import average_metrics
 from old_ml_utils.audio_utils import spectral_convergence, spectral_loss, multispectral_loss, audio_postprocess
 from optimization.opt_maker import get_optimizer
 
-def dont_update(params):
-    for param in params:
-        param.requires_grad = False
-
-def update(params):
-    for param in params:
-        param.requires_grad = True
 
 def calculate_strides(strides, downs):
     return [stride ** down for stride, down in zip(strides, downs)]
+
 
 def _loss_fn(loss_fn, x_target, x_pred, hps):
     if loss_fn == 'l1':
@@ -93,6 +87,7 @@ class VQVAE(LightningModule):
         self.spectral = spectral
         self.multispectral = multispectral
         self.opt_params = params
+        self.log_nr = {"val_": 0, "": 0, "test_": 0}
 
     def preprocess(self, x):
         # x: NTC [-1,1] -> NCT [-1,1]
@@ -241,11 +236,13 @@ class VQVAE(LightningModule):
         for name, val in metrics.items():
             self.log(prefix + name, val,  on_step=True, on_epoch=True, logger=True)
         tlogger = self.logger.experiment
-        if batch_idx % 50 != 0:
-            return  # log samples once in a while
+        if batch_idx != 0:
+            return  # log samples once per epoch
+        nr = self.log_nr.get(prefix, 0)
+        self.log_nr[prefix] = nr + 1
         for i, (xin, xout) in enumerate(zip(batch, batch_out)):
-            tlogger.add_audio(prefix + f"sample_in_{i}", xin, batch_idx, self.sr)
-            tlogger.add_audio(prefix + f"sample_out_{i}", xout, batch_idx, self.sr)
+            tlogger.add_audio(prefix + f"sample_in_{i}", xin, nr, self.sr)
+            tlogger.add_audio(prefix + f"sample_out_{i}", xout, nr, self.sr)
 
     def training_step(self, batch, batch_idx):
         x_out, loss, metrics = self(batch)
