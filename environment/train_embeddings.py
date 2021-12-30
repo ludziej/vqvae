@@ -28,12 +28,13 @@ def create_vqvae(sample_length, l_mu, from_last_checkpot, **params):
     return model
 
 
-def calc_metaparams(dataset, forward_params, duration=200):
+def calc_metaparams(dataset, forward_params, duration=1000):
     forward_params.bandwidth = calculate_bandwidth(dataset, duration=duration, hps=forward_params)
 
 
 def get_model(sample_len, data_depth, sr, train_path, forward_params, with_train_data=False, **params):
     train_data = WaveDataset(train_path, sample_len=sample_len, depth=data_depth, sr=sr)
+    print(train_data)
     calc_metaparams(train_data, forward_params)
     params["forward_params"] = forward_params
     params["sr"] = sr

@@ -24,57 +24,60 @@ def flatten_dir(dirs):
 
 class Chunk(NamedTuple):
     file: str
-    start: int
-    end: int
-    file_length: int
+    start: int  # in seconds
+    end: int  # in seconds
+    file_length: float  # in seconds
     sr: int
     sample_len: int
-    channel_level_var: float
+    channel_level_bias: float
 
     def read(self) -> np.ndarray:
         # do not quantise tracks into regular chunks, add another offset
         # but also bias towards good beginnings, so do not offset first chunk
-        start_offset = self.randgen.integers(low=0, high=self.sample_len - 5, size=1)[0] if self.start != 0 else 0
+        sample_time = self.sample_len / self.sr
+        start_offset = torch.rand(1) * sample_time
         start = self.start + start_offset
-        duration = (self.end - start_offset) * 1.1  # add a little bit of data while reading, then forget about it
-        if self.file_length - (duration + start) < 0.1 * self.sample_len:
+        end = self.end + start_offset
+        duration = (end - start) * 1.1  # add a little bit of data while reading, then forget about it
+        if self.file_length - end < 0.1 * sample_time:
             duration = None  # read whole file if end is too close
-        else:
-            duration *= self.sr
-        start *= self.sr
-        sound, file_sr = librosa.load(self.file, offset=start, duration=duration)
+        sound, file_sr = librosa.load(self.file, offset=start, duration=duration, mono=False)
         assert file_sr == self.sr  # ensure correct sampling rate
-        sound = sound[:, :self.sample_len]  # trim sample to at most expected size (can be smaller)
+        sound = torch.from_numpy(sound[:, :self.sample_len])  # trim sample to at most expected size (can be smaller)
         sound = self.reduce_stereo(sound)
         sound = self.pad_sound(sound)
-        return sound
+        return sound.unsqueeze(1)
 
     def reduce_stereo(self, sound):
-        lvl = torch.rand(1) * self.channel_level_var
-        lvl = torch.cat([0.5 + lvl, 0.5 - lvl])
-        sound = torch.dot(lvl, sound)
+        if sound.shape[0] == 1:
+            return sound[0]
+        elif sound.shape[0] != 2:
+            raise Exception(f"Loaded wave with unexpected shape {sound.shape}")
+        lvl_bias = torch.rand(1) * self.channel_level_bias
+        lvl_bias = torch.cat([0.5 + lvl_bias, 0.5 - lvl_bias])
+        sound = torch.matmul(lvl_bias, sound)
         return sound
         #whole_file = (whole_file[0:1, :] + whole_file[1:2, :])/2 if whole_file.shape[0] >= 2 else whole_file
         #sound = torch.mean(sound, dim=0, keepdim=True)
 
     def pad_sound(self, sound):
-        if sound.shape[1] < self.sample_len:
-            padding = torch.zeros((1, self.sample_len - sound.shape[1]), dtype=sound.dtype)
-            sound = torch.cat([sound, padding], axis=1)
+        if sound.shape[0] < self.sample_len:
+            padding = torch.zeros((self.sample_len - sound.shape[0],), dtype=sound.dtype)
+            sound = torch.cat([sound, padding])
         return sound
 
     def __str__(self):
-        return f"{self.file} from {self.start} to {self.end}"
+        return f"{self.file} from {self.start}s to {self.end}s"
 
     def __repr__(self):
         return str(self)
 
 
 class WaveDataset(Dataset):
-    def __init__(self,  sound_dirs, sample_len, depth=1, sr=22050, transform=None, channel_level_var=0.25):
+    def __init__(self,  sound_dirs, sample_len, depth=1, sr=22050, transform=None, channel_level_bias=0.25):
         self.sound_dirs = sound_dirs if isinstance(sound_dirs, list) else [sound_dirs]
         self.sample_len = sample_len
-        self.channel_level_var = channel_level_var
+        self.channel_level_bias = channel_level_bias
         self.sr = sr
         self.transform = transform
         self.files = reduce(lambda x, f: f(x), repeat(flatten_dir, depth), self.sound_dirs)
@@ -83,33 +86,31 @@ class WaveDataset(Dataset):
         self.dataset_size = sum(self.sizes)
         self.chunks = flatten(self.get_chunks(file, size) for file, size in zip(self.files, self.sizes))
 
-    def __len__(self):
-        return len(self.chunks)
-
-    def get_chunks(self, file: str, size: int) -> [Chunk]:
-        len = self.sample_len
-        return [Chunk(file, i * len, (i + 1) * len, size, self.sr, len, self.channel_level_var)
-                for i in range(size / len)]
+    def get_chunks(self, file: str, size: float) -> [Chunk]:
+        len = self.sample_len / self.sr
+        return [Chunk(file, i * len, (i + 1) * len, size, self.sr, self.sample_len, self.channel_level_bias)
+                for i in range(int(size / len))]
 
     def __getitem__(self, idx):
         sound = self.chunks[idx].read()
-        return (self.transform(sound) if self.transform else sound).T
+        return self.transform(sound) if self.transform else sound
 
     def find_files_for_a_split(self, test_perc):
         wanted_size = self.dataset_size * test_perc
         current_size = 0
+        order = torch.randperm(len(self.files), generator=torch.Generator().manual_seed(42))
         file_id = 0
-        while current_size + self.sizes[file_id] < wanted_size:
-            current_size += self.sizes[file_id]
-            yield self.files[file_id]
+        while current_size + self.sizes[order[file_id]] < wanted_size:
+            current_size += self.sizes[order[file_id]]
+            yield self.files[order[file_id]]
             file_id += 1
         print(f"test size = {current_size}s, train size = {self.dataset_size - current_size}s.")
 
     def split_into_two(self, test_perc=0.1) -> (Dataset, Dataset):
         test_files = set(self.find_files_for_a_split(test_perc))
-        print(f"Files used for test:\n{','.join(self.test_files)}")
+        print(f"Files used for test:\n{','.join(test_files)}")
         train_indices, test_indices = [], []
-        for i, chunk in self.enumerate(self.chunks):
+        for i, chunk in enumerate(self.chunks):
             (test_indices if chunk.file in test_files else train_indices).append(i)
         train_data = Subset(self, train_indices)
         test_data = Subset(self, test_indices)
@@ -122,3 +123,13 @@ class WaveDataset(Dataset):
                                              generator=torch.Generator().manual_seed(42))
         print(f"Chunks used for test:\n{','.join([self.chunks[i] for i in test_data.indices])}")
         return train_data, test_data
+
+    def __len__(self):
+        return len(self.chunks)
+
+    def __str__(self):
+        return f"{self.dataset_size/60/60:.2f}h wave dataset with {len(self)} " \
+               f"chunks of size {(self.sample_len / self.sr):.2f}s, located at {self.sound_dirs}"
+
+    def __repr__(self):
+        return str(self)

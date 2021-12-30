@@ -24,8 +24,8 @@ def calculate_bandwidth(dataset, hps, duration=600):
     l1, total, total_sq, n_seen, idx = 0.0, 0.0, 0.0, 0.0, 0
     spec_norm_total, spec_nelem = 0.0, 0.0
     while n_seen < n_samples:
-        x = np.squeeze(dataset[idx].numpy(), axis=1)
-        print(f"Diagnosing track {idx} with shape {x.shape}")
+        x = dataset[idx].squeeze(1).numpy()
+        #print(f"Diagnosing track {idx} with shape {x.shape}")
         samples = x.astype(np.float64)
         stft = librosa.core.stft(samples, hps.n_fft, hop_length=hps.hop_length, win_length=hps.window_size)
         spec = np.absolute(stft)
@@ -43,7 +43,6 @@ def calculate_bandwidth(dataset, hps, duration=600):
                      spec = spec_norm_total / spec_nelem)
     print(bandwidth)
     return bandwidth
-
 
 
 def audio_postprocess(x, hps):
