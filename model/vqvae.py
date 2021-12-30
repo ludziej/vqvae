@@ -240,9 +240,12 @@ class VQVAE(LightningModule):
             return  # log samples once per epoch
         nr = self.log_nr.get(prefix, 0)
         self.log_nr[prefix] = nr + 1
-        for i, (xin, xouts) in enumerate(zip(batch, batch_outs)):
+
+        for i, xin in enumerate(batch):
             tlogger.add_audio(prefix + f"sample_in_{i}", xin, nr, self.sr)
-            for level, out in enumerate(xouts):
+
+        for level, xouts in enumerate(batch_outs):
+            for i, out in enumerate(xouts):
                 tlogger.add_audio(prefix + f"sample_out_{i}_lvl_{level}", out, nr, self.sr)
 
     def training_step(self, batch, batch_idx):

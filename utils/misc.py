@@ -23,3 +23,5 @@ def lazy_compute_pickle(fun: Callable[[], object], filename: str) -> object:
 
 def flatten(t):
     return [item for sublist in t for item in sublist]
+
+

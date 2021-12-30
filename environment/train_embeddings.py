@@ -3,7 +3,6 @@ from torch.utils.data import DataLoader
 from environment.dataloaders import WaveDataset
 from model.vqvae import VQVAE
 from pytorch_lightning import Trainer
-from torch.utils.data import random_split
 from old_ml_utils.audio_utils import calculate_bandwidth
 from itertools import takewhile, count
 from functools import reduce
@@ -47,12 +46,9 @@ def train(batch_size, sample_len, num_workers,  data_depth, sr, gpus, test_path=
     if test_path is not None:
         test_data = WaveDataset(test_path, sample_len=sample_len, depth=data_depth, sr=sr)
     else:
-        train_size = int(0.9 * len(train_data))
-        d2 = train_data
-        train_data, test_data = random_split(train_data, [train_size, len(train_data) - train_size], generator=torch.Generator().manual_seed(42))
-        print([d2.files[i] for i in  test_data.indices])
-    train_dataloader = DataLoader(train_data, batch_size=batch_size, num_workers=num_workers)
-    test_dataloader = DataLoader(test_data, batch_size=batch_size, num_workers=0)
+        train_data, test_data = train_data.split_into_two(test_perc=0.1)
+    train_dataloader = DataLoader(train_data, batch_size=batch_size, num_workers=num_workers, shuffle=True)
+    test_dataloader = DataLoader(test_data, batch_size=batch_size, num_workers=num_workers//2, shuffle=True)
 
     checkpoint_callback = ModelCheckpoint(dirpath='generated/best_checkpoint/', every_n_epochs=10,
                                           filename='best_model-{epoch}-{val_multispectral_loss_epoch:.2f}-{spectral_loss_epoch:.2f}')
