@@ -30,6 +30,14 @@ forward_params = SimpleNamespace(
     bandwidth={},
 )
 
+prior_params = dict(
+    dim=512,
+    depth=4,
+    heads=5,
+    num_tokens=1024,
+    log_sample_shape=(2, 11),
+)
+
 vqvaehparams = dict(
     levels = 2,
     loss_fn = "l2",

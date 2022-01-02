@@ -1,7 +1,7 @@
 import numpy as np
 from torch.utils.data import DataLoader
 from environment.dataloaders import WaveDataset
-from model.vqvae import VQVAE
+from vqvae.model import VQVAE
 from pytorch_lightning import Trainer
 from old_ml_utils.audio_utils import calculate_bandwidth
 from itertools import takewhile, count

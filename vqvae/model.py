@@ -3,8 +3,8 @@ import torch as t
 import torch.nn as nn
 from pytorch_lightning import LightningModule
 
-from model.encdec import Encoder, Decoder, assert_shape
-from model.bottleneck import NoBottleneck, Bottleneck
+from vqvae.encdec import Encoder, Decoder, assert_shape
+from vqvae.bottleneck import NoBottleneck, Bottleneck
 from old_ml_utils.misc import average_metrics
 from old_ml_utils.audio_utils import spectral_convergence, spectral_loss, multispectral_loss, audio_postprocess
 from optimization.opt_maker import get_optimizer
@@ -88,6 +88,11 @@ class VQVAE(LightningModule):
         self.multispectral = multispectral
         self.opt_params = params
         self.log_nr = {"val_": 0, "": 0, "test_": 0}
+
+    # time to encoding tokens
+    def downsample_level(self, time: float, level: float):
+        time *= self.sr
+        raise Exception("Not implemented")
 
     def preprocess(self, x):
         # x: NTC [-1,1] -> NCT [-1,1]
@@ -235,11 +240,11 @@ class VQVAE(LightningModule):
         self.log(prefix + "loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         for name, val in metrics.items():
             self.log(prefix + name, val,  on_step=True, on_epoch=True, logger=True)
-        tlogger = self.logger.experiment
         if batch_idx != 0:
             return  # log samples once per epoch
         nr = self.log_nr.get(prefix, 0)
         self.log_nr[prefix] = nr + 1
+        tlogger = self.logger.experiment
 
         for i, xin in enumerate(batch):
             tlogger.add_audio(prefix + f"sample_in_{i}", xin, nr, self.sr)
