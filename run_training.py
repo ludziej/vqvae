@@ -1,22 +1,16 @@
-#dirty hack for tqdm/dataloaders bug
-import sys
-import tqdm
-tqdm.auto = tqdm
-sys.modules['tqdm.auto'] = tqdm
-sys.modules['tqdm'] = tqdm
-#end
+from environment.train_embeddings import train as e_train
+from environment.train_transformer import train as p_train
+from environment.hparams_parser import create_hparams
 
 
-from environment.train_embeddings import train
-from hparams import hparams
+def run_trainer(hparams):
+    train_fun = {"vqvae": e_train, "prior": p_train}
+    return train_fun[hparams.model](hparams)
 
 
 def run():
-    train(**hparams,
-          #train_path="resources/full_musicnet/musicnet/musicnet/train_data",
-          #test_path="resources/full_musicnet/musicnet/musicnet/test_data")
-          train_path="resources/string_quartets/preprocessed", data_depth=1,
-          )
+    hparams = create_hparams()
+    run_trainer(hparams)
 
 
 if __name__ == "__main__":

@@ -1,8 +1,20 @@
 from types import SimpleNamespace
 
 
+class Hparams(SimpleNamespace):
+    def iter(self, fun, modify=False):
+        def monad(value, key=None):
+            if isinstance(Hparams, value):  # parse substructure
+                for new_key, new_val in value.items():
+                    x = monad(value, f"{key}.{new_key}" if key is not None else new_key)
+                    if modify:
+                        value[new_key] = x
+                return value
+            return fun(key, value)
+        return monad(self)
 
-forward_params = SimpleNamespace(
+
+forward_params = Hparams(
     n_fft=1024,
     hop_length=256,
     window_size=1024,
@@ -28,17 +40,10 @@ forward_params = SimpleNamespace(
     lmix_linf=True,
     linf_k=2048,
     bandwidth={},
+    band_est_dur=1000
 )
 
-prior_params = dict(
-    dim=512,
-    depth=4,
-    heads=5,
-    num_tokens=1024,
-    log_sample_shape=(2, 11),
-)
-
-vqvaehparams = dict(
+smallvqvae_params = Hparams(
     levels = 2,
     loss_fn = "l2",
     downs_t = (5, 3),
@@ -63,14 +68,12 @@ vqvaehparams = dict(
     #sample_len=2*99840,
     num_workers=5,
     sr=22050,
-    fp16=False,
     forward_params=forward_params,
     from_last_checkpot=True,
-    gpus=[0],
 )
 
 
-bigvqvaehparams = dict(
+bigvqvaehparams = Hparams(
     levels=3,
     downs_t=(3, 2, 2),
     strides_t=(2, 2, 2),
@@ -93,12 +96,11 @@ bigvqvaehparams = dict(
     sample_len=100000,
     num_workers=4,
     sr=22050,
-    fp16=False,
     forward_params=forward_params,
 )
 
 
-opt_hparams = dict(
+vqvae_opt_hparams = Hparams(
     epochs=10000,
     lr=0.0003,
     clip=1.0,
@@ -119,8 +121,46 @@ opt_hparams = dict(
     fp16_loss_scale=None,
     fp16_scale_window=1000.0,
     fp16_opt=False,
-    gpus=-1
+    ckpt_dir='generated/best_checkpoint/',
+    ckpt_name='model-{epoch}-{val_multispectral_loss_epoch:.2f}-{spectral_loss_epoch:.2f}',
+    restore_ckpt="best_model.ckpt",
+    logs_dir="generated/logs/",
+    default_ckpt_root="generated/checkpoints",
+    ckpt_freq=10,
 )
 
-hparams = {**opt_hparams, **vqvaehparams}
+vqvae_params = Hparams(**vqvae_opt_hparams.__dict__, **smallvqvae_params.__dict__)
+
+
+smallprior_params = Hparams(
+    dim=512,
+    depth=4,
+    heads=5,
+    num_tokens=1024,
+    log_sample_shape=(2, 11),
+    ckpt_dir="generated/best_prior/",
+    ckpt_name="model-{epoch}-{val_loss:.2f}-{loss:.2f}",
+    restore_ckpt="best_model.ckpt",
+    logs_dir="generated/priorlogs/",
+    default_ckpt_root="generated/prior_checkpoints",
+    ckpt_freq=10,
+)
+
+default_hparams = Hparams(
+    model="vqvae",
+    prior=smallprior_params,
+    vqvae=vqvae_params,
+    gpus=[0],
+    train_path="resources/string_quartets/preprocessed",
+    test_path=None,
+    data_depth=1,
+    accelerator='dp',
+    max_epochs=50000,
+)
+
+
+
+
+
+
 

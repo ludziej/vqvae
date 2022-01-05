@@ -44,7 +44,9 @@ class Prior(LightningModule):
             beginning = self.recreate_beginning(bs) if beginning is None else beginning
             prev_tokens = self.preprocessing.encode(beginning, start_level=self.level, end_level=self.level + 1)[0]
             seq_len_tokens = self.preprocessing.downsample_level(seq_len, level=self.level)
-            return self.autoregressive.generate(prev_tokens, seq_len=seq_len_tokens, temperature=temperature)
+            out_tokens = self.autoregressive.generate(prev_tokens, seq_len=seq_len_tokens, temperature=temperature)
+            sound = self.preprocessing.decode(out_tokens, start_level=self.level, end_level=self.level + 1)
+            return sound
 
     def log_metrics_and_samples(self, loss, batch_idx, prefix=""):
         nr = self.log_nr.get(prefix, 0)
