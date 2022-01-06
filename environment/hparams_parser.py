@@ -21,6 +21,6 @@ def update_hparams_from_parser(default_param, new_hparam):
 def create_hparams():
     parser = argparse.ArgumentParser(description='Music generator configuration')
     hparams_as_parser(parser, default_hparams)
-    new_params = parser.parse_args()
+    new_params = parser.parse_args().__dict__
     hparams = update_hparams_from_parser(default_hparams, new_params)
     return hparams

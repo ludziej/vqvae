@@ -7,7 +7,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 
 def generic_train(model, hparams, train, test, model_type):
     checkpoint_callback = ModelCheckpoint(dirpath=hparams[model_type].ckpt_dir, filename=hparams[model_type].ckpt_name,
-                                          every_n_epochs=hparams[model_type].ckpt_name)
+                                          every_n_epochs=hparams[model_type].ckpt_freq)
     tb_logger = pl_loggers.TensorBoardLogger(hparams[model_type].logs_dir)
     trainer = Trainer(gpus=hparams.gpus, log_every_n_steps=1, logger=tb_logger, accelerator=hparams.accelerator,
                       max_epochs=hparams.max_epochs,

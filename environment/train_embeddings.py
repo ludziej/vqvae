@@ -34,7 +34,7 @@ def get_model_with_data(batch_size, sample_len, num_workers,  data_depth, sr, te
     else:
         train_data, test_data = train_data.split_into_two(test_perc=0.1)
     train_dataloader = DataLoader(train_data, batch_size=batch_size, num_workers=num_workers, shuffle=True)
-    test_dataloader = DataLoader(test_data, batch_size=batch_size, num_workers=num_workers//2, shuffle=True)
+    test_dataloader = DataLoader(test_data, batch_size=batch_size, num_workers=num_workers//2, shuffle=False)
     return model, train_dataloader, test_dataloader
 
 

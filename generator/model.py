@@ -2,21 +2,23 @@ import torch
 from pytorch_lightning import LightningModule
 from performer_pytorch import AutoregressiveWrapper, PerformerLM
 from vqvae.model import VQVAE
-import torch.nn as nn
-import numpy as np
 
 
 class Prior(LightningModule):
-    def __init__(self, vqvae: VQVAE, level: int, log_sample_size: int, num_tokens: int, **kwargs):
+    def __init__(self, vqvae: VQVAE, level: int, log_sample_size: int, num_tokens: int,
+                 dim: int, depth: int, heads: int, max_seq_len: int, lr: float, start_gen_sample_len: int,
+                 **kwargs):
         super().__init__()
         self.level = level
         self.num_tokens = num_tokens
         self.log_sample_bs, self.log_sample_size = log_sample_size
         self.preprocessing = vqvae
+        self.sr = vqvae.sr
         self.preprocessing.freeze()
-        self.min_beg_length = 10
-
-        self.transformer = PerformerLM(causal=True, num_tokens=num_tokens, **kwargs)
+        self.start_gen_sample_len = start_gen_sample_len
+        self.lr = lr
+        self.transformer = PerformerLM(causal=True, num_tokens=num_tokens, dim=dim, depth=depth, heads=heads,
+                                       max_seq_len=max_seq_len)
         self.autoregressive = AutoregressiveWrapper(net=self.transformer)
         self.log_nr = {"val_": 0, "": 0, "test_": 0}
 
@@ -28,24 +30,24 @@ class Prior(LightningModule):
 
     def get_input_and_context(self, sound, context=None, context_on_level=False):
         endlevel = self.level + 1 if not context_on_level else self.level + 2
-        in_tokens = self.preprocessing.encode(sound, start_level=self.level, end_level=endlevel).detach()
+        in_tokens = [x.detach() for x in self.preprocessing.encode(sound, start_level=self.level, end_level=endlevel)]
         in_tokens, context = in_tokens if context_on_level else (in_tokens[0], context)
         return in_tokens, context
 
     def recreate_beginning(self, bs=None):
         bs = 1 if bs is None else bs
-        return torch.randint((bs, self.min_beg_length))
+        return torch.randint(1, (bs, self.start_gen_sample_len, 1), device=self.device)
 
     # TODO fast wrapper
     # this probably has still quadratic complexity
     # CONTEXT SUPPORT
-    def generate(self, seq_len: float, beginning=None, temperature=1., bs=None):
+    def generate(self, seq_len: int, beginning=None, temperature=1., bs=None):
         with torch.no_grad():
             beginning = self.recreate_beginning(bs) if beginning is None else beginning
             prev_tokens = self.preprocessing.encode(beginning, start_level=self.level, end_level=self.level + 1)[0]
-            seq_len_tokens = self.preprocessing.downsample_level(seq_len, level=self.level)
-            out_tokens = self.autoregressive.generate(prev_tokens, seq_len=seq_len_tokens, temperature=temperature)
-            sound = self.preprocessing.decode(out_tokens, start_level=self.level, end_level=self.level + 1)
+            #seq_len = self.preprocessing.downsample_level(seq_len, level=self.level)  # Not implemented
+            out_tokens = self.autoregressive.generate(prev_tokens, seq_len=seq_len, temperature=temperature)
+            sound = self.preprocessing.decode([out_tokens], start_level=self.level, end_level=self.level + 1).squeeze(2)
             return sound
 
     def log_metrics_and_samples(self, loss, batch_idx, prefix=""):
@@ -56,7 +58,7 @@ class Prior(LightningModule):
             return  # log samples once per epoch
         tlogger = self.logger.experiment
         samples = self.generate(self.log_sample_size, bs=self.log_sample_bs)
-        for i, sample in samples:
+        for i, sample in enumerate(samples):
             tlogger.add_audio(prefix + f"sample_{i}", sample, nr, self.sr)
 
     def training_step(self, batch, batch_idx):
@@ -73,3 +75,9 @@ class Prior(LightningModule):
         loss = self(batch)
         self.log_metrics_and_samples(loss, batch_idx, "val_")
         return loss
+
+    def configure_optimizers(self):
+        opt = torch.optim.Adam(self.parameters(), lr=self.lr)
+        # sched = torch.optim.lr_scheduler.ReduceLROnPlateau(opt)
+        # return [opt], [sched]
+        return opt

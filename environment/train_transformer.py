@@ -1,5 +1,5 @@
 from environment.train_embeddings import get_model_with_data
-from transformers.model import Prior
+from generator.model import Prior
 from environment.train_utils import generic_train, get_last_path
 
 

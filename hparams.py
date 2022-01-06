@@ -1,17 +1,33 @@
 from types import SimpleNamespace
+from collections.abc import Mapping
 
 
-class Hparams(SimpleNamespace):
+class Hparams(SimpleNamespace, Mapping):
     def iter(self, fun, modify=False):
         def monad(value, key=None):
-            if isinstance(Hparams, value):  # parse substructure
+            if isinstance(value, Hparams):  # parse substructure
                 for new_key, new_val in value.items():
-                    x = monad(value, f"{key}.{new_key}" if key is not None else new_key)
+                    x = monad(new_val, f"{key}.{new_key}" if key is not None else new_key)
                     if modify:
                         value[new_key] = x
                 return value
             return fun(key, value)
         return monad(self)
+
+    def items(self):
+        return self.__dict__.items()
+
+    def __iter__(self):
+        return self.__dict__.__iter__()
+
+    def __len__(self):
+        return len(self.__dict__)
+
+    def __getitem__(self, item):
+        return self.__dict__[item]
+
+    def __setitem__(self, key, value):
+        return self.__dict__.__setitem__(key, value)
 
 
 forward_params = Hparams(
@@ -39,8 +55,7 @@ forward_params = Hparams(
     lmix_l2=True,
     lmix_linf=True,
     linf_k=2048,
-    bandwidth={},
-    band_est_dur=1000
+    bandwidth={}
 )
 
 smallvqvae_params = Hparams(
@@ -58,14 +73,9 @@ smallvqvae_params = Hparams(
     depth = 4,
     m_conv = 1.0,
     dilation_growth_rate = 3,
-#    hvqvae_multipliers=(2, 1, 1),
-#    lmix_l2=1.0,
-#    lmix_linf=0.02,
     restore_vqvae='generated/jukebox/models/5b/vqvae.pth.tar',
     batch_size=4,
     sample_len=262144,
-#    batch_size=1,
-    #sample_len=2*99840,
     num_workers=5,
     sr=22050,
     forward_params=forward_params,
@@ -121,12 +131,13 @@ vqvae_opt_hparams = Hparams(
     fp16_loss_scale=None,
     fp16_scale_window=1000.0,
     fp16_opt=False,
-    ckpt_dir='generated/best_checkpoint/',
+    ckpt_dir='generated/vqvae/models/',
     ckpt_name='model-{epoch}-{val_multispectral_loss_epoch:.2f}-{spectral_loss_epoch:.2f}',
     restore_ckpt="best_model.ckpt",
-    logs_dir="generated/logs/",
-    default_ckpt_root="generated/checkpoints",
+    logs_dir="generated/vqvae/logs/",
+    default_ckpt_root="generated/vqvae/checkpoints",
     ckpt_freq=10,
+    band_est_dur=1000,
 )
 
 vqvae_params = Hparams(**vqvae_opt_hparams.__dict__, **smallvqvae_params.__dict__)
@@ -135,15 +146,19 @@ vqvae_params = Hparams(**vqvae_opt_hparams.__dict__, **smallvqvae_params.__dict_
 smallprior_params = Hparams(
     dim=512,
     depth=4,
-    heads=5,
+    heads=4,
     num_tokens=1024,
-    log_sample_shape=(2, 11),
-    ckpt_dir="generated/best_prior/",
+    ckpt_dir="generated/prior/models",
     ckpt_name="model-{epoch}-{val_loss:.2f}-{loss:.2f}",
     restore_ckpt="best_model.ckpt",
-    logs_dir="generated/priorlogs/",
-    default_ckpt_root="generated/prior_checkpoints",
+    logs_dir="generated/prior/logs",
+    default_ckpt_root="generated/prior/checkpoints",
     ckpt_freq=10,
+    level=1,
+    log_sample_size=(2, 390),
+    max_seq_len=262144,
+    lr=0.0003,
+    start_gen_sample_len=1000,
 )
 
 default_hparams = Hparams(

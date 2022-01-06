@@ -48,7 +48,7 @@ class VQVAE(LightningModule):
 
         self.downsamples = calculate_strides(strides_t, downs_t)
         self.hop_lengths = np.cumprod(self.downsamples)
-        self.z_shapes = z_shapes = [(x_shape[0] // self.hop_lengths[level],) for level in range(levels)]
+        self.z_shapes = [(x_shape[0] // self.hop_lengths[level],) for level in range(levels)]
         self.levels = levels
         self.forward_params = forward_params
         self.loss_fn = loss_fn
@@ -90,7 +90,7 @@ class VQVAE(LightningModule):
         self.log_nr = {"val_": 0, "": 0, "test_": 0}
 
     # time to encoding tokens
-    def downsample_level(self, time: float, level: float):
+    def downsample_level(self, time: float, level: int):
         time *= self.sr
         raise Exception("Not implemented")
 
