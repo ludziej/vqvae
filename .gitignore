@@ -3,3 +3,5 @@ lightning_logs
 __pycache__
 resources
 generated/
+train*.sh
+local_resources
