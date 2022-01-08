@@ -4,10 +4,10 @@ from performer_pytorch import AutoregressiveWrapper, PerformerLM
 from vqvae.model import VQVAE
 
 
-class Prior(LightningModule):
+class LevelGenerator(LightningModule):
     def __init__(self, vqvae: VQVAE, level: int, log_sample_size: int, num_tokens: int, context_on_level: int,
                  dim: int, depth: int, heads: int, max_seq_len: int, lr: float, start_gen_sample_len: int,
-                 log_temperature: float, log_starting_context_len: float,
+                 log_temperature: float, log_starting_context_len: int, log_context_time: float,
                  **kwargs):
         super().__init__()
         self.level = level
@@ -25,12 +25,13 @@ class Prior(LightningModule):
         self.context_on_level = context_on_level
         self.log_temperature = log_temperature
         self.log_starting_context_len = log_starting_context_len
+        self.log_context_time = log_context_time
 
     def forward(self, sound: torch.Tensor, context=None) -> torch.Tensor:
         in_tokens, context = self.get_input_and_context(sound, context)
-        y_tokens = self.autoregressive.forward(in_tokens) if context is None else \
+        loss = self.autoregressive.forward(in_tokens) if context is None else \
             self.autoregressive.forward(in_tokens, context=context)
-        return y_tokens
+        return loss
 
     def get_input_and_context(self, sound, context=None):
         endlevel = self.level + 1 if not self.context_on_level else self.level + 2
@@ -52,11 +53,12 @@ class Prior(LightningModule):
             sound = self.preprocessing.decode([out_tokens], start_level=self.level, end_level=self.level + 1).squeeze(2)
             return sound
 
-    def generate_from_sound(self, sound: torch.Tensor, prefix_token_len: int, temperature=1., context=None):
+    def generate_from_sound(self, sound: torch.Tensor, prefix_token_perc: float, temperature=1., context=None):
         in_tokens, context = self.get_input_and_context(sound, context)
         org_len = in_tokens.shape[1]
-        in_tokens = in_tokens[:, prefix_token_len:]
-        return self.generate(org_len - prefix_token_len, beginning=in_tokens, context=context, temperature=temperature)
+        pref_len = int(org_len * prefix_token_perc)
+        in_tokens = in_tokens[:, pref_len:]
+        return self.generate(org_len - pref_len, beginning=in_tokens, context=context, temperature=temperature)
 
     def log_metrics_and_samples(self, loss, batch, batch_idx, prefix=""):
         nr = self.log_nr.get(prefix, 0)
@@ -67,7 +69,8 @@ class Prior(LightningModule):
         tlogger = self.logger.experiment
 
         # generate continuation audio
-        con_samples = self.generate_from_sound(batch, self.log_starting_context_len, temperature=self.log_temperature)
+        con_samples = self.generate_from_sound(batch[:, self.log_context_time:], self.log_starting_context_len,
+                                               temperature=self.log_temperature)
         for i, sample in enumerate(con_samples):
                 tlogger.add_audio(prefix + f"sample_con_{i}", sample, nr, self.sr)
 
@@ -92,3 +95,16 @@ class Prior(LightningModule):
         # sched = torch.optim.lr_scheduler.ReduceLROnPlateau(opt)
         # return [opt], [sched]
         return opt
+
+
+class SynchrGenerator(torch.nn.Module):
+    def __init__(self, vqvae: VQVAE, prior: LevelGenerator, upsamplers: [LevelGenerator]):
+        super().__init__()
+        self.vqvae = vqvae
+        self.prior = prior
+        self.upsamplers = torch.nn.ModuleList(upsamplers)
+
+    def generate(self, time: float) -> torch.Tensor:
+        raise Exception("Not Implemented")
+
+

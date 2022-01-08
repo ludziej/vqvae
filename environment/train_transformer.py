@@ -1,12 +1,12 @@
 from environment.train_embeddings import get_model_with_data
-from generator.model import Prior
+from generator.model import LevelGenerator
 from environment.train_utils import generic_train, get_last_path
 
 
 def get_model(ckpt_dir, restore_ckpt, **params):
     last_path = get_last_path(ckpt_dir, restore_ckpt)
     print(f"Restoring performer from {last_path}" if last_path else f"Starting training from scratch")
-    model = Prior.load_from_checkpoint(last_path, **params) if last_path is not None else Prior(**params)
+    model = LevelGenerator.load_from_checkpoint(last_path, **params) if last_path is not None else LevelGenerator(**params)
     return model
 
 

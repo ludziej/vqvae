@@ -176,13 +176,14 @@ smallupsampler_params = Hparams(
     default_ckpt_root="generated/upsampler/checkpoints",
     ckpt_freq=10,
     level=0,
-    log_sample_size=(2, 770),
+    log_sample_size=(2, 770),  # 10 s
     max_seq_len=10000,
     lr=0.0003,
     start_gen_sample_len=5,
     context_on_level=True,
     log_temperature=1.,
-    log_starting_context_len=390
+    log_starting_context_len=0.5,
+    log_context_time=49920,  # 0.5 s
 )
 
 default_hparams = Hparams(
