@@ -155,14 +155,39 @@ smallprior_params = Hparams(
     default_ckpt_root="generated/prior/checkpoints",
     ckpt_freq=10,
     level=1,
-    log_sample_size=(2, 390),
-    max_seq_len=262144,
+    log_sample_size=(2, 770),
+    max_seq_len=10000,
     lr=0.0003,
-    start_gen_sample_len=1000,
+    start_gen_sample_len=5,
+    context_on_level=False,
+    log_temperature=1.,
+    log_starting_context_len=390,
+)
+
+smallupsampler_params = Hparams(
+    dim=512,
+    depth=4,
+    heads=4,
+    num_tokens=1024,
+    ckpt_dir="generated/upsampler/models",
+    ckpt_name="model-{epoch}-{val_loss:.2f}-{loss:.2f}",
+    restore_ckpt="best_model.ckpt",
+    logs_dir="generated/upsampler/logs",
+    default_ckpt_root="generated/upsampler/checkpoints",
+    ckpt_freq=10,
+    level=0,
+    log_sample_size=(2, 770),
+    max_seq_len=10000,
+    lr=0.0003,
+    start_gen_sample_len=5,
+    context_on_level=True,
+    log_temperature=1.,
+    log_starting_context_len=390
 )
 
 default_hparams = Hparams(
     model="vqvae",
+    upsampler=[smallupsampler_params],
     prior=smallprior_params,
     vqvae=vqvae_params,
     gpus=[0],

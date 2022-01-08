@@ -3,7 +3,7 @@ from hparams import default_hparams
 
 
 help_dictionary = {
-    "model": "type of model: 'prior' or 'vqvae'"
+    "model": "type of model: 'prior' or 'vqvae' pr 'upsampler'"
 }
 
 
