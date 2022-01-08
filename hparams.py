@@ -183,7 +183,7 @@ smallupsampler_params = Hparams(
     context_on_level=True,
     log_temperature=1.,
     log_starting_context_len=0.5,
-    log_context_time=49920,  # 0.5 s
+    log_context_time=49920,  # 5 s
 )
 
 default_hparams = Hparams(

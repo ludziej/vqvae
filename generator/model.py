@@ -69,7 +69,7 @@ class LevelGenerator(LightningModule):
         tlogger = self.logger.experiment
 
         # generate continuation audio
-        con_samples = self.generate_from_sound(batch[:, self.log_context_time:], self.log_starting_context_len,
+        con_samples = self.generate_from_sound(batch[:, :self.log_context_time], self.log_starting_context_len,
                                                temperature=self.log_temperature)
         for i, sample in enumerate(con_samples):
                 tlogger.add_audio(prefix + f"sample_con_{i}", sample, nr, self.sr)
