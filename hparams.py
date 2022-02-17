@@ -34,7 +34,7 @@ forward_params = Hparams(
     n_fft=1024,
     hop_length=256,
     window_size=1024,
-    sr=44100,
+    sr=22050,
     channels=2,
     wav='',
     n_inps=1,
@@ -59,20 +59,20 @@ forward_params = Hparams(
 )
 
 smallvqvae_params = Hparams(
-    levels = 2,
-    loss_fn = "l2",
-    downs_t = (5, 3),
-    strides_t = (2, 2),
-    emb_width = 64,
-    l_bins = 1024,
-    l_mu = 0.99,
-    commit = 0.02,
-    spectral = 0.0,
-    multispectral = 1.0,
-    width = 32,
-    depth = 4,
-    m_conv = 1.0,
-    dilation_growth_rate = 3,
+    levels=2,
+    loss_fn="l2",
+    downs_t=(5, 3),
+    strides_t=(2, 2),
+    emb_width=64,
+    l_bins=1024,
+    l_mu=0.99,
+    commit=0.02,
+    spectral=0.0,
+    multispectral=1.0,
+    width=32,
+    depth=4,
+    m_conv=1.0,
+    dilation_growth_rate=3,
     restore_vqvae='generated/jukebox/models/5b/vqvae.pth.tar',
     batch_size=4,
     sample_len=262144,
@@ -80,33 +80,6 @@ smallvqvae_params = Hparams(
     sr=22050,
     forward_params=forward_params,
     from_last_checkpot=True,
-)
-
-
-bigvqvaehparams = Hparams(
-    levels=3,
-    downs_t=(3, 2, 2),
-    strides_t=(2, 2, 2),
-    emb_width=64,
-    l_bins=2048,
-    l_mu=0.99,
-    commit=0.02,
-    spectral=0.0,
-    multispectral=1.0,
-    hvqvae_multipliers=(2, 1, 1),
-    loss_fn='lmix',
-    lmix_l2=1.0,
-    lmix_linf=0.02,
-    width=32,
-    depth=4,
-    m_conv=1.0,
-    dilation_growth_rate=3,
-    restore_vqvae='generated/jukebox/models/5b/vqvae.pth.tar',
-    batch_size=10,
-    sample_len=100000,
-    num_workers=4,
-    sr=22050,
-    forward_params=forward_params,
 )
 
 
@@ -142,48 +115,56 @@ vqvae_opt_hparams = Hparams(
 
 vqvae_params = Hparams(**vqvae_opt_hparams.__dict__, **smallvqvae_params.__dict__)
 
-
-smallprior_params = Hparams(
+transformer_params = Hparams(
     dim=512,
     depth=4,
     heads=4,
-    num_tokens=1024,
-    ckpt_dir="generated/prior/models",
     ckpt_name="model-{epoch}-{val_loss:.2f}-{loss:.2f}",
     restore_ckpt="best_model.ckpt",
-    logs_dir="generated/prior/logs",
-    default_ckpt_root="generated/prior/checkpoints",
     ckpt_freq=10,
-    level=1,
-    log_sample_size=(2, 770),
-    max_seq_len=10000,
+    ckpt_dir="models",
+    logs_dir="logs",
+    default_ckpt_root="checkpoints",
     lr=0.0003,
     start_gen_sample_len=5,
+    pos_init_scale=1,
+    bins_init_scale=1,
+    log_starting_context_perc=0.1,
+    log_sample_size=(2, 770),  # 10 s, for prior only
+)
+
+
+smallprior_params = Hparams(
+    **transformer_params.__dict__,
+    n_ctx=1540,
+    sample_len=262144,
+    main_dir="generated/prior/",
+    level=1,
     context_on_level=False,
-    log_temperature=1.,
     log_starting_context_len=390,
+    res_scale=False,
+)
+
+upsampler_conditioner_params = Hparams(
+    res_scale=True,
+    depth=16,
+    width=1024,
+    init_scale=1,
+    dilation_growth_rate=3,
+    dilation_cycle=8,
+    checkpoint_res=1,
+    zero_out=False,
 )
 
 smallupsampler_params = Hparams(
-    dim=512,
-    depth=4,
-    heads=4,
-    num_tokens=1024,
-    ckpt_dir="generated/upsampler/models",
-    ckpt_name="model-{epoch}-{val_loss:.2f}-{loss:.2f}",
-    restore_ckpt="best_model.ckpt",
-    logs_dir="generated/upsampler/logs",
-    default_ckpt_root="generated/upsampler/checkpoints",
-    ckpt_freq=10,
+    **transformer_params.__dict__,
+    n_ctx=1540,
+    sample_len=262144,
+    main_dir="generated/upsampler/",
     level=0,
-    log_sample_size=(2, 770),  # 10 s
-    max_seq_len=10000,
-    lr=0.0003,
-    start_gen_sample_len=5,
     context_on_level=True,
-    log_temperature=1.,
-    log_starting_context_len=0.5,
-    log_context_time=49920,  # 5 s
+    log_context_time=49920,  # 2.5 s
+    conds_kwargs=upsampler_conditioner_params,
 )
 
 default_hparams = Hparams(
