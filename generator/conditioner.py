@@ -38,14 +38,18 @@ class LayerNorm(nn.LayerNorm):
 
 # conditions on one level above
 class Conditioner(nn.Module):
-    def __init__(self, input_shape, bins, down_t, stride_t, out_width, init_scale, zero_out, res_scale, **block_kwargs):
+    def __init__(self, input_shape, bins, down_t, stride_t, out_width, init_scale, zero_out, res_scale, bins_init=None,
+                 **block_kwargs):
         super().__init__()
         self.x_shape = input_shape
 
         # Embedding
         self.width = out_width
         self.x_emb = nn.Embedding(bins, out_width)
-        nn.init.normal_(self.x_emb.weight, std=0.02 * init_scale)
+        if bins_init is not None:
+            nn.init.normal_(self.x_emb.weight, std=0.02 * init_scale)
+        else:
+            self.x_emb.weight = bins_init
 
         # Conditioner
         self.cond = DecoderConvBock(self.width, self.width, down_t, stride_t, zero_out=zero_out, res_scale=res_scale, **block_kwargs)

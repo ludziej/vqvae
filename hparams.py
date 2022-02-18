@@ -119,6 +119,7 @@ transformer_params = Hparams(
     dim=512,
     depth=4,
     heads=4,
+    dim_head=64,
     ckpt_name="model-{epoch}-{val_loss:.2f}-{loss:.2f}",
     restore_ckpt="best_model.ckpt",
     ckpt_freq=10,
@@ -131,6 +132,8 @@ transformer_params = Hparams(
     bins_init_scale=1,
     log_starting_context_perc=0.1,
     log_sample_size=(2, 770),  # 10 s, for prior only
+    init_bins_from_vqvae=False,
+    layer_for_logits=True,
 )
 
 
