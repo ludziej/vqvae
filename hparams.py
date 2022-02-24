@@ -153,15 +153,16 @@ upsampler_conditioner_params = Hparams(
     depth=16,
     width=1024,
     init_scale=1,
+    m_conv=1.0,
     dilation_growth_rate=3,
     dilation_cycle=8,
-    checkpoint_res=1,
+    checkpoint_res=0,
     zero_out=False,
 )
 
 smallupsampler_params = Hparams(
     **transformer_params.__dict__,
-    n_ctx=1540,
+    n_ctx=1560,
     sample_len=262144,
     main_dir="generated/upsampler/",
     level=0,

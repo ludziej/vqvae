@@ -1,11 +1,11 @@
 import torch
 import torch.nn as nn
 from pytorch_lightning import LightningModule
-from performer_pytorch import PerformerLM, Performer
+from performer_pytorch import Performer
 from vqvae.model import VQVAE
 from generator.conditioner import Conditioner, PositionEmbedding
 import torch.nn.functional as F
-from performer_pytorch.autoregressive_wrapper import top_k, top_p, repetition_penalty_fn
+from performer_pytorch.autoregressive_wrapper import top_k, repetition_penalty_fn
 
 
 class LevelGenerator(LightningModule):
@@ -13,7 +13,7 @@ class LevelGenerator(LightningModule):
                  dim: int, depth: int, heads: int,  lr: float, start_gen_sample_len: int,
                  log_starting_context_perc: int, log_context_time: float, n_ctx: int,
                  pos_init_scale: int, bins_init_scale: float, dim_head: int,
-                 conds_kwargs: dict, init_bins_from_vqvae: bool, layer_for_logits: bool):
+                 conds_kwargs: dict, init_bins_from_vqvae: bool, layer_for_logits: bool, **params):
         super().__init__()
         self.n_ctx = n_ctx
         self.level = level
@@ -51,9 +51,9 @@ class LevelGenerator(LightningModule):
         if self.context_on_level:
             u_level = self.level + 1
             # TODO add bins_init parameter with weights from vqvae if self.init_bins_from_vqvae
-            self.conditioner = Conditioner(input_shape=z_shapes[u_level], bins=self.vqvae.l_bins, out_width=dim,
-                                           down_t=self.vqvae.downs_t[u_level], stride_t=self.vqvae.strides_t[u_level],
-                                           **conds_kwargs)
+            self.conditioner = Conditioner(input_shape=z_shapes[u_level], bins=self.preprocessing.l_bins,
+                                           down_t=self.preprocessing.downs_t[u_level], out_width=dim,
+                                           stride_t=self.preprocessing.strides_t[u_level], **conds_kwargs)
 
     def init_emb(self, bins: nn.Module):
         if self.init_bins_from_vqvae:
@@ -83,8 +83,8 @@ class LevelGenerator(LightningModule):
         x_tok = tokens[:, 1:]
         out = self.get_transformer_logits(x_in)
 
-        assert out.shape[:2] == x_in.shape[:2] and out.shape[3] == self.bins
-        loss = F.cross_entropy(out, x_tok)
+        assert out.shape[:2] == x_in.shape[:2] and out.shape[2] == self.bins
+        loss = F.cross_entropy(out.reshape(-1, self.bins), x_tok.reshape(-1))
         return loss
 
     def get_tokens(self, sound):
@@ -169,7 +169,7 @@ class LevelGenerator(LightningModule):
         tokens_emb = self.x_emb(start_tokens)
 
         for i in range(t, seq_len):
-            ctx_start = max(i - self.n_ctx, 0)
+            ctx_start = max(i - self.n_ctx + 1, 0)
 
             # TODO all this conditioning can be done once per element, if positional_embedding is not absolute
             x_emb_cond = self.join_conditioning(tokens_emb, token_interv=(ctx_start, i), **conditioning)
@@ -208,7 +208,7 @@ class LevelGenerator(LightningModule):
         bs, t_len = tokens.shape[:2]
         seq_len = seq_len if seq_len is not None else t_len
         beginning = tokens[:int(t_len * prefix_token_perc)]
-        conditioning = self.get_all_conditionings(bs, seq_len, context=context, up_tokens=up_tokens, time=time)
+        conditioning = self.get_all_conditioning(bs, seq_len, context=context, up_tokens=up_tokens, time=time)
 
         out_tokens = self.autoregressive_generate_prior(beginning, seq_len, conditioning, **sampling_kwargs)
         out_tokens = torch.cat([beginning, out_tokens], dim=1) if with_begin else out_tokens

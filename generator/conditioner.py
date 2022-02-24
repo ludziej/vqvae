@@ -46,7 +46,7 @@ class Conditioner(nn.Module):
         # Embedding
         self.width = out_width
         self.x_emb = nn.Embedding(bins, out_width)
-        if bins_init is not None:
+        if bins_init is None:
             nn.init.normal_(self.x_emb.weight, std=0.02 * init_scale)
         else:
             self.x_emb.weight = bins_init
