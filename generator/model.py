@@ -15,7 +15,7 @@ class LevelGenerator(LightningModule):
                  dim: int, depth: int, heads: int,  lr: float, start_gen_sample_len: int,
                  log_starting_context_perc: int, log_context_time: float, n_ctx: int,
                  pos_init_scale: int, bins_init_scale: float, dim_head: int, group_norm: bool,
-                 conds_kwargs: dict, init_bins_from_vqvae: bool, layer_for_logits: bool,
+                 conds_kwargs: dict, init_bins_from_vqvae: bool, layer_for_logits: bool, conditioning_dropout: float,
                  warmup_time: int, sch_patience: int, sch_factor: int, **params):
         super().__init__()
         self.n_ctx = n_ctx
@@ -46,6 +46,7 @@ class LevelGenerator(LightningModule):
         self.transformer = Performer(causal=True, dim=dim, depth=depth, heads=heads, dim_head=dim_head)
         self.pos_emb = PositionEmbedding(input_shape=(self.n_ctx,), width=self.dim, init_scale=self.pos_init_scale)
         self.pos_embeddings_is_absolute = True  # needs to recalculate when we move windows by 1
+        self.cond_dropout = nn.Dropout(conditioning_dropout)
         self.x_emb = nn.Embedding(self.bins, self.dim)
         self.init_emb(self.x_emb)
 
@@ -151,6 +152,7 @@ class LevelGenerator(LightningModule):
         conds = [(c, m) for c, m in zip(conds, is_const_window) if c is not None]
         conds = [c if token_interv is None else c[:size] if moving else c[token_interv[0]: token_interv[1]]
                  for c, moving in conds]
+        conds = [self.cond_dropout(c) for c in conds]
         if self.conditioning_concat:
             return self.conditioning_concat_projection(x, conds)
         else:
