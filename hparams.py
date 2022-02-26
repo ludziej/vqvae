@@ -77,6 +77,8 @@ smallvqvae_params = Hparams(
     sample_len=262144,
     num_workers=5,
     sr=22050,
+    group_norm=False,
+    norm_in_wavenet=False,
     forward_params=forward_params,
     from_last_checkpot=True,
 )
@@ -133,7 +135,10 @@ transformer_params = Hparams(
     log_sample_size=(2, 770),  # 10 s, for prior only
     init_bins_from_vqvae=False,
     layer_for_logits=True,
-    groupnorm=False,
+    group_norm=False,
+    warmup_time=1000,
+    sch_patience=1000,
+    sch_factor=0.9,
     ckpt_name="model-{epoch}-{val_loss:.2f}-{loss:.2f}",
     **dirs_config.__dict__,
 )
@@ -160,6 +165,7 @@ upsampler_conditioner_params = Hparams(
     dilation_cycle=8,
     checkpoint_res=0,
     zero_out=False,
+    group_norm=False,
 )
 
 smallupsampler_params = Hparams(

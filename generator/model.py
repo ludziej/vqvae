@@ -6,14 +6,17 @@ from vqvae.model import VQVAE
 from generator.conditioner import Conditioner, PositionEmbedding
 import torch.nn.functional as F
 from performer_pytorch.autoregressive_wrapper import top_k, repetition_penalty_fn
+from optimization.scheduler import ReduceLROnPlateauWarmup
+from optimization.normalization import CustomNormalization
 
 
 class LevelGenerator(LightningModule):
     def __init__(self, vqvae: VQVAE, level: int, log_sample_size: int, context_on_level: int,
                  dim: int, depth: int, heads: int,  lr: float, start_gen_sample_len: int,
                  log_starting_context_perc: int, log_context_time: float, n_ctx: int,
-                 pos_init_scale: int, bins_init_scale: float, dim_head: int,
-                 conds_kwargs: dict, init_bins_from_vqvae: bool, layer_for_logits: bool, **params):
+                 pos_init_scale: int, bins_init_scale: float, dim_head: int, group_norm: bool,
+                 conds_kwargs: dict, init_bins_from_vqvae: bool, layer_for_logits: bool,
+                 warmup_time: int, sch_patience: int, sch_factor: int, **params):
         super().__init__()
         self.n_ctx = n_ctx
         self.level = level
@@ -35,6 +38,9 @@ class LevelGenerator(LightningModule):
         self.conditioning_concat = False
         self.init_bins_from_vqvae = init_bins_from_vqvae
         self.layer_for_logits = layer_for_logits
+        self.warmup_time = warmup_time
+        self.sch_patience = sch_patience
+        self.sch_factor = sch_factor
         self.log_nr = {"val_": 0, "": 0, "test_": 0}
 
         self.transformer = Performer(causal=True, dim=dim, depth=depth, heads=heads, dim_head=dim_head)
@@ -44,7 +50,7 @@ class LevelGenerator(LightningModule):
         self.init_emb(self.x_emb)
 
         if self.layer_for_logits:
-            self.final_layer_norm = nn.LayerNorm(dim)
+            self.final_layer_norm = CustomNormalization(dim, use_groupnorm=group_norm)
             self.to_out = nn.Linear(dim, self.bins)
 
         z_shapes = [(z_shape[0] * self.n_ctx // vqvae.z_shapes[self.level][0],) for z_shape in vqvae.z_shapes]
@@ -55,10 +61,13 @@ class LevelGenerator(LightningModule):
                                            down_t=self.preprocessing.downs_t[u_level], out_width=dim,
                                            stride_t=self.preprocessing.strides_t[u_level], **conds_kwargs)
 
+    # TODO implement fully
+    def get_vqvae_bins(self, level):
+        raise NotImplementedError("currently no embedding initialization from vqvae")
+
     def init_emb(self, bins: nn.Module):
         if self.init_bins_from_vqvae:
-            # TODO implement fully
-            raise NotImplementedError("currently no embedding initialization from vqvae")
+            bins.weight = self.get_vqvae_bins(self.level)
         else:
             nn.init.normal_(bins.weight, std=0.02 * self.bins_init_scale)
 
@@ -248,8 +257,16 @@ class LevelGenerator(LightningModule):
 
     def configure_optimizers(self):
         opt = torch.optim.Adam(self.parameters(), lr=self.lr)
-        # TODO scheduler on val_loss_epoch
-        # sched = torch.optim.lr_scheduler.ReduceLROnPlateau(opt)
-        # return [opt], [sched]
-        return opt
-
+        scheduler = ReduceLROnPlateauWarmup(opt, starting_lr=self.lr, warmup_time=self.warmup_time,
+                                            patience=self.sch_patience, factor=self.sch_factor)
+        return (
+            [opt],
+            [
+                {
+                    'scheduler': scheduler,
+                    'interval': 'step',
+                    'frequency': 1,
+                    'monitor': 'val_loss',
+                }
+            ]
+        )
