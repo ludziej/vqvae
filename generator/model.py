@@ -56,14 +56,13 @@ class LevelGenerator(LightningModule):
         z_shapes = [(z_shape[0] * self.n_ctx // vqvae.z_shapes[self.level][0],) for z_shape in vqvae.z_shapes]
         if self.context_on_level:
             u_level = self.level + 1
-            # TODO add bins_init parameter with weights from vqvae if self.init_bins_from_vqvae
+            bins_init = None if not self.init_bins_from_vqvae else self.get_vqvae_bins(u_level)
             self.conditioner = Conditioner(input_shape=z_shapes[u_level], bins=self.preprocessing.l_bins,
-                                           down_t=self.preprocessing.downs_t[u_level], out_width=dim,
+                                           down_t=self.preprocessing.downs_t[u_level], out_width=dim, bins_init=bins_init,
                                            stride_t=self.preprocessing.strides_t[u_level], **conds_kwargs)
 
-    # TODO implement fully
     def get_vqvae_bins(self, level):
-        raise NotImplementedError("currently no embedding initialization from vqvae")
+        return self.preprocessing.bottleneck.level_blocks[level].k.detach()
 
     def init_emb(self, bins: nn.Module):
         if self.init_bins_from_vqvae:
