@@ -73,13 +73,19 @@ smallvqvae_params = Hparams(
     depth=4,
     m_conv=1.0,
     dilation_growth_rate=3,
-    restore_vqvae='generated/jukebox/models/5b/vqvae.pth.tar',
     batch_size=4,
     sample_len=262144,
     num_workers=5,
     sr=22050,
     forward_params=forward_params,
     from_last_checkpot=True,
+)
+
+dirs_config = Hparams(
+    restore_ckpt="best_model.ckpt",
+    ckpt_dir='models',
+    logs_dir="logs",
+    default_ckpt_root="checkpoints",
 )
 
 
@@ -104,13 +110,11 @@ vqvae_opt_hparams = Hparams(
     fp16_loss_scale=None,
     fp16_scale_window=1000.0,
     fp16_opt=False,
-    ckpt_dir='generated/vqvae/models/',
-    ckpt_name='model-{epoch}-{val_multispectral_loss_epoch:.2f}-{spectral_loss_epoch:.2f}',
-    restore_ckpt="best_model.ckpt",
-    logs_dir="generated/vqvae/logs/",
-    default_ckpt_root="generated/vqvae/checkpoints",
     ckpt_freq=10,
     band_est_dur=1000,
+    main_dir="generated/vqvae/",
+    ckpt_name='model-{epoch}-{val_multispectral_loss_epoch:.2f}-{spectral_loss_epoch:.2f}',
+    **dirs_config.__dict__,
 )
 
 vqvae_params = Hparams(**vqvae_opt_hparams.__dict__, **smallvqvae_params.__dict__)
@@ -120,12 +124,7 @@ transformer_params = Hparams(
     depth=4,
     heads=4,
     dim_head=64,
-    ckpt_name="model-{epoch}-{val_loss:.2f}-{loss:.2f}",
-    restore_ckpt="best_model.ckpt",
     ckpt_freq=10,
-    ckpt_dir="models",
-    logs_dir="logs",
-    default_ckpt_root="checkpoints",
     lr=0.0003,
     start_gen_sample_len=5,
     pos_init_scale=1,
@@ -134,13 +133,16 @@ transformer_params = Hparams(
     log_sample_size=(2, 770),  # 10 s, for prior only
     init_bins_from_vqvae=False,
     layer_for_logits=True,
+    groupnorm=False,
+    ckpt_name="model-{epoch}-{val_loss:.2f}-{loss:.2f}",
+    **dirs_config.__dict__,
 )
 
 
 smallprior_params = Hparams(
     **transformer_params.__dict__,
     n_ctx=1540,
-    sample_len=262144,
+    sample_len=49920,
     main_dir="generated/prior/",
     level=1,
     context_on_level=False,

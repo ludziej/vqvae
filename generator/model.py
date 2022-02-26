@@ -169,7 +169,7 @@ class LevelGenerator(LightningModule):
         tokens_emb = self.x_emb(start_tokens)
 
         for i in range(t, seq_len):
-            ctx_start = max(i - self.n_ctx + 1, 0)
+            ctx_start = max(i - self.n_ctx + 1, 0)  # +1 because we effectively train in (n_ctx - 1) size
 
             # TODO all this conditioning can be done once per element, if positional_embedding is not absolute
             x_emb_cond = self.join_conditioning(tokens_emb, token_interv=(ctx_start, i), **conditioning)

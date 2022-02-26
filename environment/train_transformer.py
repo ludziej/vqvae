@@ -3,9 +3,9 @@ from generator.model import LevelGenerator
 from environment.train_utils import generic_train, get_last_path
 
 
-def get_model(ckpt_dir, restore_ckpt, **params):
-    last_path = get_last_path(ckpt_dir, restore_ckpt)
-    print(f"Restoring performer from {last_path}" if last_path else f"Starting training from scratch")
+def get_model(main_dir, ckpt_dir, restore_ckpt, **params):
+    last_path = get_last_path(main_dir, ckpt_dir, restore_ckpt)
+    print(f"Restoring performer from {last_path}" if last_path else f"Starting performer training from scratch")
     model = LevelGenerator.load_from_checkpoint(last_path, **params) if last_path is not None else LevelGenerator(**params)
     return model
 
