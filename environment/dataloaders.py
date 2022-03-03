@@ -12,6 +12,7 @@ from utils.misc import flatten
 import librosa
 from typing import NamedTuple
 from torch.utils.data import random_split, Subset
+import warnings
 
 
 def get_duration(file):
@@ -41,12 +42,19 @@ class Chunk(NamedTuple):
         duration = (end - start) * 1.1  # add a little bit of data while reading, then forget about it
         if self.file_length - end < 0.1 * sample_time:
             duration = None  # read whole file if end is too close
-        sound, file_sr = librosa.load(self.file, offset=start, duration=duration, mono=False)
-        assert file_sr == self.sr  # ensure correct sampling rate
+
+        sound = self.load_file(start, duration)
+
         sound = torch.from_numpy(sound[:, :self.sample_len])  # trim sample to at most expected size (can be smaller)
         sound = self.reduce_stereo(sound)
         sound = self.pad_sound(sound)
         return sound.unsqueeze(1)
+
+    def load_file(self, start, duration):
+        with warnings.catch_warnings(record=True) as w:
+            sound, file_sr = librosa.load(self.file, offset=start, duration=duration, mono=False)
+        assert file_sr == self.sr  # ensure correct sampling rate
+        return sound
 
     def reduce_stereo(self, sound):
         if sound.shape[0] == 1:
@@ -80,8 +88,9 @@ class WaveDataset(Dataset):
         self.channel_level_bias = channel_level_bias
         self.sr = sr
         self.transform = transform
+        self.legal_suffix = [".wav", ".mp3"]
         self.files = reduce(lambda x, f: f(x), repeat(flatten_dir, depth), self.sound_dirs)
-        self.files = [f for f in self.files if f[-4:] == ".wav"]
+        self.files = [f for f in self.files if f[-4:] in self.legal_suffix]
         self.sizes = [get_duration(f) for f in self.files]
         self.dataset_size = sum(self.sizes)
         self.chunks = flatten(self.get_chunks(file, size) for file, size in zip(self.files, self.sizes))

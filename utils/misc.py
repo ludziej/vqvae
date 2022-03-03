@@ -1,6 +1,13 @@
 import os
 import pickle
 from typing import Callable
+from time import time
+
+
+def time_run(fun):
+    t = time()
+    val = fun()
+    return time() - t, val
 
 
 def save(obj, filename: str):

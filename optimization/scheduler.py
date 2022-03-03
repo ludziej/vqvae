@@ -2,14 +2,15 @@ import torch
 import warnings
 
 
-class ReduceLROnPlateauWarmup(object):
+class ReduceLROnPlateauWarmup(torch.optim.lr_scheduler.ReduceLROnPlateau):
     def __init__(self, optimizer,  starting_lr, factor=0.9, patience=10, warmup_time=1000,
                  threshold=1e-4, threshold_mode='rel', cooldown=0,
                  min_lr=0, eps=1e-8, verbose=False):
-
+        #super().__init__(optimizer) skip the init
         if factor >= 1.0:
             raise ValueError('Factor should be < 1.0.')
         self.factor = factor
+        self.optimizer = optimizer
 
         if isinstance(min_lr, list) or isinstance(min_lr, tuple):
             if len(min_lr) != len(optimizer.param_groups):
@@ -36,6 +37,7 @@ class ReduceLROnPlateauWarmup(object):
         self.in_warmup = self.warmup_time > 0
         self._init_is_better(threshold=threshold,
                              threshold_mode=threshold_mode, mode=self.mode)
+        self.last_epoch = 0
         self._reset()
 
     def _reset(self):
@@ -81,7 +83,7 @@ class ReduceLROnPlateauWarmup(object):
 
         self._last_lr = [group['lr'] for group in self.optimizer.param_groups]
 
-    def _set_warmup_lr(self):
+    def _set_warmup_lr(self, epoch):
         for i, param_group in enumerate(self.optimizer.param_groups):
             new_lr = (self.warmup_eteps_count / self.warmup_time) * self.starting_lr
             param_group['lr'] = new_lr

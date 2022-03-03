@@ -140,6 +140,7 @@ transformer_params = Hparams(
     sch_patience=1000,
     sch_factor=0.9,
     conditioning_dropout=0.,
+    log_interval=5000,
     ckpt_name="model-{epoch}-{val_loss:.2f}-{loss:.2f}",
     **dirs_config.__dict__,
 )
