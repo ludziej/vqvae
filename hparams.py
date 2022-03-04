@@ -1,34 +1,4 @@
-from types import SimpleNamespace
-from collections.abc import Mapping
-
-
-class Hparams(SimpleNamespace, Mapping):
-    def iter(self, fun, modify=False):
-        def monad(value, key=None):
-            if isinstance(value, Hparams):  # parse substructure
-                for new_key, new_val in value.items():
-                    x = monad(new_val, f"{key}.{new_key}" if key is not None else new_key)
-                    if modify:
-                        value[new_key] = x
-                return value
-            return fun(key, value)
-        return monad(self)
-
-    def items(self):
-        return self.__dict__.items()
-
-    def __iter__(self):
-        return self.__dict__.__iter__()
-
-    def __len__(self):
-        return len(self.__dict__)
-
-    def __getitem__(self, item):
-        return self.__dict__[item]
-
-    def __setitem__(self, key, value):
-        return self.__dict__.__setitem__(key, value)
-
+from environment.hparams_parser import Hparams
 
 forward_params = Hparams(
     n_fft=1024,
@@ -55,7 +25,7 @@ forward_params = Hparams(
     lmix_l2=True,
     lmix_linf=True,
     linf_k=2048,
-    bandwidth={}
+    bandwidth=None,
 )
 
 smallvqvae_params = Hparams(
@@ -181,7 +151,19 @@ smallupsampler_params = Hparams(
     conds_kwargs=upsampler_conditioner_params,
 )
 
-default_hparams = Hparams(
+
+altupsampler_params = Hparams(
+    **transformer_params.__dict__,
+    n_ctx=1560,
+    sample_len=262144,
+    main_dir="generated/upsampler/",
+    level=666,
+    context_on_level=True,
+    log_context_time=49920,  # 2.5 s
+    conds_kwargs=upsampler_conditioner_params,
+)
+
+top_hparams = Hparams(
     model="vqvae",
     upsampler=[smallupsampler_params],
     prior=smallprior_params,
@@ -194,9 +176,16 @@ default_hparams = Hparams(
     max_epochs=50000,
 )
 
-
-
-
-
-
-
+hparams_dict = dict(
+    top_hparams=top_hparams,
+    smallupsampler_params=smallupsampler_params,
+    altupsampler_params=altupsampler_params,
+    upsampler_conditioner_params=upsampler_conditioner_params,
+    smallprior_params=smallprior_params,
+    transformer_params=transformer_params,
+    vqvae_params=vqvae_params,
+    vqvae_opt_hparams=vqvae_opt_hparams,
+    dirs_config=dirs_config,
+    smallvqvae_params=smallvqvae_params,
+    forward_params=forward_params,
+)
