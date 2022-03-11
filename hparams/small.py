@@ -1,4 +1,4 @@
-from environment.hparams_parser import Hparams
+from hparams.parser import Hparams
 
 forward_params = Hparams(
     n_fft=1024,
@@ -28,7 +28,7 @@ forward_params = Hparams(
     bandwidth=None,
 )
 
-smallvqvae_params = Hparams(
+small_vqvae_model_params = Hparams(
     levels=2,
     loss_fn="l2",
     downs_t=(5, 3),
@@ -39,6 +39,7 @@ smallvqvae_params = Hparams(
     commit=0.02,
     spectral=0.0,
     multispectral=1.0,
+    multipliers=(1, 1, 1),
     width=32,
     depth=4,
     m_conv=1.0,
@@ -51,6 +52,7 @@ smallvqvae_params = Hparams(
     norm_in_wavenet=False,
     forward_params=forward_params,
     from_last_checkpot=True,
+    main_dir="generated/models/small_vqvae/",
 )
 
 dirs_config = Hparams(
@@ -59,7 +61,6 @@ dirs_config = Hparams(
     logs_dir="logs",
     default_ckpt_root="checkpoints",
 )
-
 
 vqvae_opt_hparams = Hparams(
     epochs=10000,
@@ -84,14 +85,13 @@ vqvae_opt_hparams = Hparams(
     fp16_opt=False,
     ckpt_freq=10,
     band_est_dur=1000,
-    main_dir="generated/vqvae/",
     ckpt_name='model-{epoch}-{val_multispectral_loss_epoch:.2f}-{spectral_loss_epoch:.2f}',
     **dirs_config.__dict__,
 )
 
-vqvae_params = Hparams(**vqvae_opt_hparams.__dict__, **smallvqvae_params.__dict__)
+small_vqvae_params = Hparams(**vqvae_opt_hparams.__dict__, **small_vqvae_model_params.__dict__)
 
-transformer_params = Hparams(
+small_transformer_params = Hparams(
     dim=512,
     depth=4,
     heads=4,
@@ -115,19 +115,17 @@ transformer_params = Hparams(
     **dirs_config.__dict__,
 )
 
-
-smallprior_params = Hparams(
-    **transformer_params.__dict__,
+small_prior_params = Hparams(
+    **small_transformer_params.__dict__,
     n_ctx=1540,
     sample_len=49920,
     main_dir="generated/prior/",
-    level=1,
     context_on_level=False,
     log_starting_context_len=390,
     res_scale=False,
 )
 
-upsampler_conditioner_params = Hparams(
+small_upsampler_conditioner_params = Hparams(
     res_scale=True,
     depth=16,
     width=1024,
@@ -140,52 +138,12 @@ upsampler_conditioner_params = Hparams(
     group_norm=False,
 )
 
-smallupsampler_params = Hparams(
-    **transformer_params.__dict__,
+small_upsampler_params = Hparams(
+    **small_transformer_params.__dict__,
     n_ctx=1560,
     sample_len=262144,
     main_dir="generated/upsampler/",
-    level=0,
     context_on_level=True,
     log_context_time=49920,  # 2.5 s
-    conds_kwargs=upsampler_conditioner_params,
-)
-
-
-altupsampler_params = Hparams(
-    **transformer_params.__dict__,
-    n_ctx=1560,
-    sample_len=262144,
-    main_dir="generated/upsampler/",
-    level=666,
-    context_on_level=True,
-    log_context_time=49920,  # 2.5 s
-    conds_kwargs=upsampler_conditioner_params,
-)
-
-top_hparams = Hparams(
-    model="vqvae",
-    upsampler=[smallupsampler_params],
-    prior=smallprior_params,
-    vqvae=vqvae_params,
-    gpus=[0],
-    train_path="resources/string_quartets/preprocessed",
-    test_path=None,
-    data_depth=1,
-    accelerator='dp',
-    max_epochs=50000,
-)
-
-hparams_dict = dict(
-    top_hparams=top_hparams,
-    smallupsampler_params=smallupsampler_params,
-    altupsampler_params=altupsampler_params,
-    upsampler_conditioner_params=upsampler_conditioner_params,
-    smallprior_params=smallprior_params,
-    transformer_params=transformer_params,
-    vqvae_params=vqvae_params,
-    vqvae_opt_hparams=vqvae_opt_hparams,
-    dirs_config=dirs_config,
-    smallvqvae_params=smallvqvae_params,
-    forward_params=forward_params,
+    conds_kwargs=small_upsampler_conditioner_params,
 )

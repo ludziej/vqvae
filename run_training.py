@@ -1,7 +1,7 @@
 from environment.train_embeddings import train as e_train
 from environment.train_transformer import train_prior as p_train, train_upsampler as u_train
-from environment.hparams_parser import HparamsParser
-from hparams import hparams_dict, top_hparams
+from hparams.parser import HparamsParser
+from hparams.config import hparams_registry
 
 
 def run_trainer(hparams):
@@ -10,7 +10,7 @@ def run_trainer(hparams):
 
 
 def run():
-    hparams = HparamsParser(hparams_dict, top_hparams).create_hparams()
+    hparams = HparamsParser(hparams_registry).create_hparams()
     run_trainer(hparams)
 
 
