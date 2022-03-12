@@ -5,6 +5,7 @@ import torch
 from torch.utils.data import Dataset
 from os import listdir
 from os.path import join
+from tqdm import tqdm
 import torchaudio
 from functools import reduce
 from itertools import repeat
@@ -89,11 +90,15 @@ class WaveDataset(Dataset):
         self.sr = sr
         self.transform = transform
         self.legal_suffix = [".wav", ".mp3"]
+        self.dataset_size = sum(self.sizes)
+
+        self.files, self.sizes, self.chunks = self.calculate_file_data()
+
         self.files = reduce(lambda x, f: f(x), repeat(flatten_dir, depth), self.sound_dirs)
         self.files = [f for f in self.files if f[-4:] in self.legal_suffix]
-        self.sizes = [get_duration(f) for f in self.files]
-        self.dataset_size = sum(self.sizes)
-        self.chunks = flatten(self.get_chunks(file, size) for file, size in zip(self.files, self.sizes))
+        self.sizes = [get_duration(f) for f in tqdm(self.files, desc="Calculating lengths for dataloaders")]
+        self.chunks = flatten(self.get_chunks(file, size) for file, size in
+                              zip(tqdm(self.files, desc="Dividing into chunks"), self.sizes))
 
     def get_chunks(self, file: str, size: float) -> [Chunk]:
         len = self.sample_len / self.sr

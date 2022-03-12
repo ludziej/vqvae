@@ -6,6 +6,7 @@ from hparams.small import small_upsampler_params, small_prior_params, small_vqva
 
 config_big_hparams = Hparams(
     model="vqvae",
+    level=0,
     upsampler=[small_upsampler_params],
     prior=big_prior_params,
     vqvae=big_vqvae_params,
@@ -19,6 +20,7 @@ config_big_hparams = Hparams(
 
 config_small_hparams = Hparams(
     model="vqvae",
+    level=0,
     upsampler=[big_upsampler_params, big_upsampler_params],
     prior=small_prior_params,
     vqvae=small_vqvae_params,

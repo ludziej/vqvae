@@ -23,7 +23,6 @@ def get_model(sample_len, data_depth, sr, train_path, forward_params, band_est_d
     calc_dataset_dependent_params(train_data, forward_params, band_est_dur)
     params["forward_params"] = forward_params
     params["sr"] = sr
-    del params["sample_length"]
     model = create_vqvae(sample_len, **params)
     return (model, train_data) if with_train_data else model
 

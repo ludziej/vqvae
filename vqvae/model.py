@@ -42,9 +42,7 @@ class VQVAE(LightningModule):
                  multipliers=None, use_bottleneck=True, **params):
         super().__init__()
 
-        self.sample_length = input_shape[0]
         x_shape, x_channels = input_shape[:-1], input_shape[-1]
-        self.x_shape = x_shape
 
         self.downsamples = calculate_strides(strides_t, downs_t)
         self.hop_lengths = np.cumprod(self.downsamples)

@@ -10,21 +10,17 @@ def get_model(main_dir, ckpt_dir, restore_ckpt, **params):
     return model
 
 
-def train_generator(hparams, model_params):
+def train_generator(hparams, model_params, level):
     vqvae, train_dataloader, test_dataloader = \
         get_model_with_data(**hparams.vqvae, train_path=hparams.train_path,
                             data_depth=hparams.data_depth, test_path=hparams.test_path)
-    prior = get_model(vqvae=vqvae, **model_params)
+    prior = get_model(vqvae=vqvae, level=level, **model_params)
     generic_train(prior, hparams, train_dataloader, test_dataloader, model_params)
 
 
 def train_prior(hparams):
-    model_params = hparams.prior
-    hparams.vqvae.sample_length = model_params.sample_len
-    train_generator(hparams, model_params)
+    train_generator(hparams, hparams.prior, hparams.vqvae.levels - 1)
 
 
-def train_upsampler(hparams, level=0):
-    model_params = hparams.upsampler[level]
-    hparams.vqvae.sample_length = model_params.sample_len
-    train_generator(hparams, model_params)
+def train_upsampler(hparams):
+    train_generator(hparams, hparams.upsampler[hparams.level], hparams.level)
