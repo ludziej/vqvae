@@ -56,7 +56,7 @@ class Chunk(NamedTuple):
 
     def load_file(self, start, duration):
         with warnings.catch_warnings(record=True) as w:
-            sound, file_sr = librosa.load(self.file, offset=start, duration=duration, mono=False)
+            sound, file_sr = librosa.load(self.file, offset=start, duration=duration, mono=False, sr=self.sr)
         assert file_sr == self.sr  # ensure correct sampling rate
         return sound
 
