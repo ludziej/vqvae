@@ -8,64 +8,33 @@ from vqvae.bottleneck import NoBottleneck, Bottleneck
 from old_ml_utils.misc import average_metrics
 from old_ml_utils.audio_utils import spectral_convergence, spectral_loss, multispectral_loss, audio_postprocess
 from optimization.opt_maker import get_optimizer
-
-
-def calculate_strides(strides, downs):
-    return [stride ** down for stride, down in zip(strides, downs)]
-
-
-def _loss_fn(loss_fn, x_target, x_pred, hps):
-    if loss_fn == 'l1':
-        return t.mean(t.abs(x_pred - x_target)) / hps.bandwidth['l1']
-    elif loss_fn == 'l2':
-        return t.mean((x_pred - x_target) ** 2) / hps.bandwidth['l2']
-    elif loss_fn == 'linf':
-        residual = ((x_pred - x_target) ** 2).reshape(x_target.shape[0], -1)
-        values, _ = t.topk(residual, hps.linf_k, dim=1)
-        return t.mean(values) / hps.bandwidth['l2']
-    elif loss_fn == 'lmix':
-        loss = 0.0
-        if hps.lmix_l1:
-            loss += hps.lmix_l1 * _loss_fn('l1', x_target, x_pred, hps)
-        if hps.lmix_l2:
-            loss += hps.lmix_l2 * _loss_fn('l2', x_target, x_pred, hps)
-        if hps.lmix_linf:
-            loss += hps.lmix_linf * _loss_fn('linf', x_target, x_pred, hps)
-        return loss
-    else:
-        assert False, f"Unknown loss_fn {loss_fn}"
+from vqvae.helpers import calculate_strides, _loss_fn
 
 
 class VQVAE(LightningModule):
-    def __init__(self, input_shape, levels, downs_t, strides_t, loss_fn,
+    def __init__(self, input_channels, levels, downs_t, strides_t, loss_fn,
                  emb_width, l_bins, mu, commit, spectral, multispectral, forward_params,
-                 multipliers=None, use_bottleneck=True, **params):
+                 multipliers, use_bottleneck=True, **params):
         super().__init__()
-
-        x_shape, x_channels = input_shape[:-1], input_shape[-1]
 
         self.downsamples = calculate_strides(strides_t, downs_t)
         self.hop_lengths = np.cumprod(self.downsamples)
-        self.z_shapes = [(x_shape[0] // self.hop_lengths[level],) for level in range(levels)]
         self.levels = levels
         self.forward_params = forward_params
         self.loss_fn = loss_fn
         self.sr = params["sr"]
 
-        if multipliers is None:
-            self.multipliers = [1] * levels
-        else:
-            assert len(multipliers) == levels, "Invalid number of multipliers"
-            self.multipliers = multipliers
+        assert len(multipliers) == levels, "Invalid number of multipliers"
+        self.multipliers = multipliers
         def _block_kwargs(level):
             this_block_kwargs = dict(params)
             this_block_kwargs["width"] *= self.multipliers[level]
             this_block_kwargs["depth"] *= self.multipliers[level]
             return this_block_kwargs
 
-        encoder = lambda level: Encoder(x_channels, emb_width, level + 1,
+        encoder = lambda level: Encoder(input_channels, emb_width, level + 1,
                                         downs_t[:level+1], strides_t[:level+1], **_block_kwargs(level))
-        decoder = lambda level: Decoder(x_channels, emb_width, level + 1,
+        decoder = lambda level: Decoder(input_channels, emb_width, level + 1,
                                         downs_t[:level+1], strides_t[:level+1], **_block_kwargs(level))
         self.encoders = nn.ModuleList()
         self.decoders = nn.ModuleList()
@@ -86,11 +55,20 @@ class VQVAE(LightningModule):
         self.multispectral = multispectral
         self.opt_params = params
         self.log_nr = {"val_": 0, "": 0, "test_": 0}
+        print(str(self))
+
+    def __str__(self):
+        return f"VQ-VAE with sr={self.sr} and tokens for one second: {self.get_z_lengths(1 * self.sr)}"
+
+    def get_z_lengths(self, sample_len):
+        return [(sample_len // self.hop_lengths[level],) for level in range(self.levels)]
+
+    def samples_from_z_length(self, z_length, level):
+        return z_length * self.hop_lengths[level]
 
     # time to encoding tokens
-    def downsample_level(self, time: float, level: int):
-        time *= self.sr
-        raise Exception("Not implemented")
+    def time_to_tokens(self, time: float, level: int):
+        return self.get_z_lengths(time * self.sr)[level]
 
     def preprocess(self, x):
         # x: NTC [-1,1] -> NCT [-1,1]
@@ -148,8 +126,9 @@ class VQVAE(LightningModule):
         zs = [t.cat(zs_level_list, dim=0) for zs_level_list in zip(*zs_list)]
         return zs
 
-    def sample(self, n_samples):
-        zs = [t.randint(0, self.l_bins, size=(n_samples, *z_shape), device='cuda') for z_shape in self.z_shapes]
+    def sample(self, n_samples, sample_len):
+        zs = [t.randint(0, self.l_bins, size=(n_samples, *z_shape), device='cuda')
+              for z_shape in self.get_z_lengths(sample_len)]
         return self.decode(zs)
 
     def forward(self, x):

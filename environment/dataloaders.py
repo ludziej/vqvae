@@ -1,11 +1,15 @@
+import pathlib
+
 import numpy as np
 import os
 
+import json
 import torch
 from torch.utils.data import Dataset
 from os import listdir
 from os.path import join
 from tqdm import tqdm
+from utils.misc import load, save
 import torchaudio
 from functools import reduce
 from itertools import repeat
@@ -45,7 +49,6 @@ class Chunk(NamedTuple):
             duration = None  # read whole file if end is too close
 
         sound = self.load_file(start, duration)
-
         sound = torch.from_numpy(sound[:, :self.sample_len])  # trim sample to at most expected size (can be smaller)
         sound = self.reduce_stereo(sound)
         sound = self.pad_sound(sound)
@@ -66,8 +69,6 @@ class Chunk(NamedTuple):
         lvl_bias = torch.cat([0.5 + lvl_bias, 0.5 - lvl_bias])
         sound = torch.matmul(lvl_bias, sound)
         return sound
-        #whole_file = (whole_file[0:1, :] + whole_file[1:2, :])/2 if whole_file.shape[0] >= 2 else whole_file
-        #sound = torch.mean(sound, dim=0, keepdim=True)
 
     def pad_sound(self, sound):
         if sound.shape[0] < self.sample_len:
@@ -83,7 +84,8 @@ class Chunk(NamedTuple):
 
 
 class WaveDataset(Dataset):
-    def __init__(self,  sound_dirs, sample_len, depth=1, sr=22050, transform=None, cache_path=None, channel_level_bias=0.25):
+    def __init__(self,  sound_dirs, sample_len, depth=1, sr=22050, transform=None,
+                 cache_name="file_lengths.pickle", channel_level_bias=0.25):
         self.sound_dirs = sound_dirs if isinstance(sound_dirs, list) else [sound_dirs]
         self.sample_len = sample_len
         self.channel_level_bias = channel_level_bias
@@ -91,18 +93,30 @@ class WaveDataset(Dataset):
         self.depth = depth
         self.transform = transform
         self.legal_suffix = [".wav", ".mp3"]
-        self.files, self.sizes, self.chunks, self.dataset_size = self.calculate_file_data(cache_path)
+        self.files = self.calculate_files()
+        self.sizes, self.dataset_size = self.calculate_lengths(cache_name)
+        self.chunks = self.calculate_chunks()
 
-    def calculate_file_data(self, cache_path):
-        if cache_path is not None:
-            raise Exception("Not Implemented")
+    def calculate_files(self):
         files = reduce(lambda x, f: f(x), repeat(flatten_dir, self.depth), self.sound_dirs)
         files = [f for f in files if f[-4:] in self.legal_suffix]
-        sizes = [get_duration(f) for f in tqdm(files, desc="Calculating lengths for dataloaders")]
+        return files
+
+    def calculate_lengths(self, cache_path):
+        path = pathlib.Path(self.sound_dirs[0]) / cache_path if cache_path is not None else None
+        if path is not None and os.path.exists(path):
+            print(f"File Lengths loaded from {path}")
+            sizes, dataset_size = load(str(path))
+            return sizes, dataset_size
+        sizes = [get_duration(f) for f in tqdm(self.files, desc="Calculating lengths for dataloaders")]
         dataset_size = sum(sizes)
-        chunks = flatten(self.get_chunks(file, size) for file, size in
-                              zip(tqdm(files, desc="Dividing dataset into chunks"), sizes))
-        return files, sizes, chunks, dataset_size
+        if cache_path is not None:
+            save((sizes, dataset_size), str(path))
+        return sizes, dataset_size
+
+    def calculate_chunks(self):
+        return flatten(self.get_chunks(file, size) for file, size in
+                       zip(tqdm(self.files, desc="Dividing dataset into chunks"), self.sizes))
 
     def get_chunks(self, file: str, size: float) -> [Chunk]:
         len = self.sample_len / self.sr

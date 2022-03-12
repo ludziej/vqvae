@@ -53,20 +53,27 @@ class LevelGenerator(LightningModule):
         self.cond_dropout = nn.Dropout(conditioning_dropout)
         self.x_emb = nn.Embedding(self.bins, self.dim)
         self.init_emb(self.x_emb)
+        self.sample_len = self.preprocessing.samples_from_z_length(self.n_ctx, self.level)
 
         if self.layer_for_logits:
             self.final_layer_norm = CustomNormalization(dim, use_groupnorm=group_norm)
             self.to_out = nn.Linear(dim, self.bins)
 
-        z_shapes = [(z_shape[0] * self.n_ctx // vqvae.z_shapes[self.level][0],) for z_shape in vqvae.z_shapes]
+        z_shapes = self.preprocessing.get_z_lengths(self.sample_len)
+        z_shapes = [(z_shape[0] * self.n_ctx // z_shapes[self.level][0],) for z_shape in z_shapes]
         if self.context_on_level:
             u_level = self.level + 1
             bins_init = None if not self.init_bins_from_vqvae else self.get_vqvae_bins(u_level)
-            self.conditioner = Conditioner(input_shape=z_shapes[u_level], bins=self.preprocessing.l_bins,
-                                           down_t=self.preprocessing.downs_t[u_level], out_width=dim, bins_init=bins_init,
+            self.conditioner = Conditioner(input_shape=z_shapes[u_level], bins=self.preprocessing.l_bins, out_width=dim,
+                                           down_t=self.preprocessing.downs_t[u_level], bins_init=bins_init,
                                            stride_t=self.preprocessing.strides_t[u_level], **conds_kwargs)
         self.token_distr = np.zeros(self.bins)
         self.token_log_quantiles = 10
+        print(str(self))
+
+    def __str__(self):
+        return f"Upsampler level {self.level} with n_ctx={self.n_ctx} and tokens={self.sample_len}"\
+               f" that last {self.sample_len/self.sr:.3} s.)"
 
     def get_vqvae_bins(self, level):
         return self.preprocessing.bottleneck.level_blocks[level].k.detach()
@@ -292,6 +299,7 @@ class LevelGenerator(LightningModule):
     # boilerplate
 
     def training_step(self, batch, batch_idx, name=""):
+        assert batch.shape[1] == self.sample_len
         loss = self(batch)
         self.log_metrics_and_samples(loss, batch, batch_idx, name)
         return loss

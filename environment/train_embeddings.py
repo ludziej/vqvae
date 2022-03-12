@@ -5,8 +5,8 @@ from old_ml_utils.audio_utils import calculate_bandwidth
 from environment.train_utils import generic_train, get_last_path
 
 
-def create_vqvae(sample_length, l_mu, from_last_checkpot, ckpt_dir, restore_ckpt, main_dir, **params):
-    all_params = {"input_shape": (sample_length, 1), "mu": l_mu, **params}
+def create_vqvae(l_mu, from_last_checkpot, ckpt_dir, restore_ckpt, main_dir, **params):
+    all_params = dict(input_channels=1, mu=l_mu, **params)
     last_path = get_last_path(main_dir, ckpt_dir, restore_ckpt) if from_last_checkpot else None
     print(f"Restoring VQVAE from {last_path}" if last_path else f"Starting VQVAE training from scratch")
     model = VQVAE.load_from_checkpoint(last_path, **all_params) if last_path is not None else VQVAE(**all_params)
@@ -23,7 +23,7 @@ def get_model(sample_len, data_depth, sr, train_path, forward_params, band_est_d
     calc_dataset_dependent_params(train_data, forward_params, band_est_dur)
     params["forward_params"] = forward_params
     params["sr"] = sr
-    model = create_vqvae(sample_len, **params)
+    model = create_vqvae(**params)
     return (model, train_data) if with_train_data else model
 
 

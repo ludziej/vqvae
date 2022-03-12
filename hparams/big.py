@@ -57,7 +57,6 @@ big_transformer_params = Hparams(
 big_prior_params = Hparams(
     **big_transformer_params.__dict__,
     n_ctx=1540,
-    sample_len=49920,
     main_dir="generated/prior/",
     context_on_level=False,
     log_starting_context_len=390,
@@ -80,7 +79,6 @@ big_upsampler_conditioner_params = Hparams(
 big_upsampler_params = Hparams(
     **small_transformer_params.__dict__,
     n_ctx=1560,
-    sample_len=262144,
     main_dir="generated/upsampler/",
     context_on_level=True,
     log_context_time=49920,  # 2.5 s
