@@ -1,4 +1,5 @@
 from torch.utils.data import DataLoader
+from pathlib import Path
 from environment.dataloaders import WaveDataset
 from vqvae.model import VQVAE
 from old_ml_utils.audio_utils import calculate_bandwidth
@@ -42,5 +43,4 @@ def train(hparams):
     model, train_dataloader, test_dataloader =\
         get_model_with_data(**hparams.vqvae, train_path=hparams.train_path,
                             data_depth=hparams.data_depth, test_path=hparams.test_path)
-
-    generic_train(model, hparams, train_dataloader, test_dataloader, hparams.vqvae)
+    generic_train(model, hparams, train_dataloader, test_dataloader, hparams.vqvae, Path(hparams.vqvae.main_dir))
