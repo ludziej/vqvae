@@ -21,6 +21,7 @@ class VQVAE(LightningModule):
         self.hop_lengths = np.cumprod(self.downsamples)
         self.levels = levels
         self.forward_params = forward_params
+        assert self.sr == self.forward_params["sr"]
         self.loss_fn = loss_fn
         self.sr = params["sr"]
 
