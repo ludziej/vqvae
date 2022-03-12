@@ -83,22 +83,26 @@ class Chunk(NamedTuple):
 
 
 class WaveDataset(Dataset):
-    def __init__(self,  sound_dirs, sample_len, depth=1, sr=22050, transform=None, channel_level_bias=0.25):
+    def __init__(self,  sound_dirs, sample_len, depth=1, sr=22050, transform=None, cache_path=None, channel_level_bias=0.25):
         self.sound_dirs = sound_dirs if isinstance(sound_dirs, list) else [sound_dirs]
         self.sample_len = sample_len
         self.channel_level_bias = channel_level_bias
         self.sr = sr
+        self.depth = depth
         self.transform = transform
         self.legal_suffix = [".wav", ".mp3"]
-        self.dataset_size = sum(self.sizes)
+        self.files, self.sizes, self.chunks, self.dataset_size = self.calculate_file_data(cache_path)
 
-        self.files, self.sizes, self.chunks = self.calculate_file_data()
-
-        self.files = reduce(lambda x, f: f(x), repeat(flatten_dir, depth), self.sound_dirs)
-        self.files = [f for f in self.files if f[-4:] in self.legal_suffix]
-        self.sizes = [get_duration(f) for f in tqdm(self.files, desc="Calculating lengths for dataloaders")]
-        self.chunks = flatten(self.get_chunks(file, size) for file, size in
-                              zip(tqdm(self.files, desc="Dividing into chunks"), self.sizes))
+    def calculate_file_data(self, cache_path):
+        if cache_path is not None:
+            raise Exception("Not Implemented")
+        files = reduce(lambda x, f: f(x), repeat(flatten_dir, self.depth), self.sound_dirs)
+        files = [f for f in files if f[-4:] in self.legal_suffix]
+        sizes = [get_duration(f) for f in tqdm(files, desc="Calculating lengths for dataloaders")]
+        dataset_size = sum(sizes)
+        chunks = flatten(self.get_chunks(file, size) for file, size in
+                              zip(tqdm(files, desc="Dividing dataset into chunks"), sizes))
+        return files, sizes, chunks, dataset_size
 
     def get_chunks(self, file: str, size: float) -> [Chunk]:
         len = self.sample_len / self.sr
