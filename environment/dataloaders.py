@@ -116,7 +116,7 @@ class MusicDataset(Dataset):
                 assignment = {file: size for file, size in zip(files, sizes)}
                 sizes = [assignment[file] for file in self.files]
             return sizes, dataset_size
-        sizes = [get_duration(f) for f in tqdm(self.files, desc="Calculating lengths for dataloaders")]
+        sizes = [get_duration(f) for f in tqdm(self.files, desc="Calculating lengths for dataloaders", smoothing=0)]
         dataset_size = sum(sizes)
         if cache_path is not None:
             save((self.files, sizes, dataset_size), str(path))
