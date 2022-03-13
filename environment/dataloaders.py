@@ -86,7 +86,7 @@ class Chunk(NamedTuple):
 
 
 class MusicDataset(Dataset):
-    def __init__(self,  sound_dirs, sample_len, depth=1, sr=22050, transform=None, min_length=44100,
+    def __init__(self,  sound_dirs, sample_len, depth=1, sr=22050, transform=None, min_length=1,
                  cache_name="file_lengths.pickle", channel_level_bias=0.25):
         self.sound_dirs = sound_dirs if isinstance(sound_dirs, list) else [sound_dirs]
         self.sample_len = sample_len
@@ -111,7 +111,8 @@ class MusicDataset(Dataset):
             print(f"File Lengths loaded from {path}")
             files, sizes, dataset_size = load(str(path))
             if self.files != files:  # maybe order is different
-                print(f"Fixing order for cached files, prev {len(files)} now {len(self.files)} files, \n{files[:10]}\n{self.files[:10]}")
+                print(f"Fixing order for cached files, prev {len(files)} now {len(self.files)} files, "
+                      f"\n then {files[:1]} now {self.files[:1]}")
                 #assert len(files) == len(self.files)
                 assignment = {os.path.basename(file): size for file, size in zip(files, sizes)}
                 sizes = [assignment.get(os.path.basename(file), 0) for file in self.files]
