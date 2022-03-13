@@ -85,7 +85,7 @@ class Chunk(NamedTuple):
         return str(self)
 
 
-class WaveDataset(Dataset):
+class MusicDataset(Dataset):
     def __init__(self,  sound_dirs, sample_len, depth=1, sr=22050, transform=None, min_length=44100,
                  cache_name="file_lengths.pickle", channel_level_bias=0.25):
         self.sound_dirs = sound_dirs if isinstance(sound_dirs, list) else [sound_dirs]
@@ -110,7 +110,11 @@ class WaveDataset(Dataset):
         if path is not None and os.path.exists(path):
             print(f"File Lengths loaded from {path}")
             files, sizes, dataset_size = load(str(path))
-            assert files == self.files
+            if self.files != files:  # maybe order is different
+                print("Fixing order for cached files")
+                assert len(files) == len(self.files)
+                assignment = {file: size for file, size in zip(files, sizes)}
+                sizes = [assignment[file] for file in self.files]
             return sizes, dataset_size
         sizes = [get_duration(f) for f in tqdm(self.files, desc="Calculating lengths for dataloaders")]
         dataset_size = sum(sizes)
@@ -167,7 +171,7 @@ class WaveDataset(Dataset):
         return len(self.chunks)
 
     def __str__(self):
-        return f"{self.dataset_size/60/60:.2f}h wave dataset with {len(self)} " \
+        return f"{self.dataset_size/60/60:.2f}h music dataset with {len(self)} " \
                f"chunks of size {(self.sample_len / self.sr):.2f}s, located at {self.sound_dirs}"
 
     def __repr__(self):

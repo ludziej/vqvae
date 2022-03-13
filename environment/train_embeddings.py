@@ -1,6 +1,6 @@
 from torch.utils.data import DataLoader
 from pathlib import Path
-from environment.dataloaders import WaveDataset
+from environment.dataloaders import MusicDataset
 from vqvae.model import VQVAE
 from old_ml_utils.audio_utils import calculate_bandwidth
 from environment.train_utils import generic_train, get_last_path
@@ -19,7 +19,7 @@ def calc_dataset_dependent_params(dataset, forward_params, duration):
 
 
 def get_model(sample_len, data_depth, sr, train_path, forward_params, band_est_dur, with_train_data=False, **params):
-    train_data = WaveDataset(train_path, sample_len=sample_len, depth=data_depth, sr=sr)
+    train_data = MusicDataset(train_path, sample_len=sample_len, depth=data_depth, sr=sr)
     print(train_data)
     calc_dataset_dependent_params(train_data, forward_params, band_est_dur)
     params["forward_params"] = forward_params
@@ -31,7 +31,7 @@ def get_model(sample_len, data_depth, sr, train_path, forward_params, band_est_d
 def get_model_with_data(batch_size, sample_len, num_workers,  data_depth, sr, test_path=None, **params):
     model, train_data = get_model(sample_len, data_depth, sr, with_train_data=True, **params)
     if test_path is not None:
-        test_data = WaveDataset(test_path, sample_len=sample_len, depth=data_depth, sr=sr)
+        test_data = MusicDataset(test_path, sample_len=sample_len, depth=data_depth, sr=sr)
     else:
         train_data, test_data = train_data.split_into_two(test_perc=0.1)
     train_dataloader = DataLoader(train_data, batch_size=batch_size, num_workers=num_workers, shuffle=True)
