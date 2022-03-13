@@ -86,11 +86,12 @@ class Chunk(NamedTuple):
 
 
 class WaveDataset(Dataset):
-    def __init__(self,  sound_dirs, sample_len, depth=1, sr=22050, transform=None,
+    def __init__(self,  sound_dirs, sample_len, depth=1, sr=22050, transform=None, min_length=44100,
                  cache_name="file_lengths.pickle", channel_level_bias=0.25):
         self.sound_dirs = sound_dirs if isinstance(sound_dirs, list) else [sound_dirs]
         self.sample_len = sample_len
         self.channel_level_bias = channel_level_bias
+        self.min_length = min_length
         self.sr = sr
         self.depth = depth
         self.transform = transform
@@ -108,12 +109,13 @@ class WaveDataset(Dataset):
         path = pathlib.Path(self.sound_dirs[0]) / cache_path if cache_path is not None else None
         if path is not None and os.path.exists(path):
             print(f"File Lengths loaded from {path}")
-            sizes, dataset_size = load(str(path))
+            files, sizes, dataset_size = load(str(path))
+            assert files == self.files
             return sizes, dataset_size
         sizes = [get_duration(f) for f in tqdm(self.files, desc="Calculating lengths for dataloaders")]
         dataset_size = sum(sizes)
         if cache_path is not None:
-            save((sizes, dataset_size), str(path))
+            save((self.files, sizes, dataset_size), str(path))
         return sizes, dataset_size
 
     def calculate_chunks(self):
@@ -121,6 +123,8 @@ class WaveDataset(Dataset):
                        zip(tqdm(self.files, desc="Dividing dataset into chunks"), self.sizes))
 
     def get_chunks(self, file: str, size: float) -> [Chunk]:
+        if size <= self.min_length:
+            return []
         len = self.sample_len / self.sr
         return [Chunk(file, i * len, (i + 1) * len, size, self.sr, self.sample_len, self.channel_level_bias)
                 for i in range(int(size / len))]
