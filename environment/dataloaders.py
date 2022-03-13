@@ -110,11 +110,11 @@ class MusicDataset(Dataset):
         if path is not None and os.path.exists(path):
             print(f"File Lengths loaded from {path}")
             files, sizes, dataset_size = load(str(path))
-            if self.files != files or True:  # maybe order is different
-                print("Fixing order for cached files")
+            if self.files != files:  # maybe order is different
+                print(f"Fixing order for cached files, prev {len(files)} now {len(self.files)} files, \n{files[:10]}\n{self.files[:10]}")
                 #assert len(files) == len(self.files)
-                assignment = {file: size for file, size in zip(files, sizes)}
-                sizes = [assignment.get(file, 0) for file in self.files]
+                assignment = {os.path.basename(file): size for file, size in zip(files, sizes)}
+                sizes = [assignment.get(os.path.basename(file), 0) for file in self.files]
                 old_size = dataset_size
                 dataset_size = sum(sizes)
                 print(f"Order fixed, {(1-dataset_size/old_size)*100:.5}% information lost")
