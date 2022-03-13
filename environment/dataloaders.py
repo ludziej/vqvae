@@ -140,9 +140,10 @@ class WaveDataset(Dataset):
             file_id += 1
         print(f"test size = {current_size}s, train size = {self.dataset_size - current_size}s.")
 
-    def split_into_two(self, test_perc=0.1) -> (Dataset, Dataset):
+    def split_into_two(self, test_perc=0.1, verbeose=False) -> (Dataset, Dataset):
         test_files = set(self.find_files_for_a_split(test_perc))
-        print(f"Files used for test:\n{','.join(test_files)}")
+        if verbeose:
+            print(f"Files used for test:\n{','.join(test_files)}")
         train_indices, test_indices = [], []
         for i, chunk in enumerate(self.chunks):
             (test_indices if chunk.file in test_files else train_indices).append(i)
