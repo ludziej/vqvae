@@ -33,7 +33,7 @@ class HparamsParser:
 
     def update_hparams_from_parser(self, new_hparam):
         return self.default_hparams.iter(lambda key, value:
-                                         self.preprocess_value(new_hparam[key or "config"], value), modify=True)
+                                         self.preprocess_value(new_hparam.get(key or "config", None), value), modify=True)
 
     def preprocess_value(self, new_val, old_val):
         """parse value given by user"""
