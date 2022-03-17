@@ -26,8 +26,9 @@ def get_last_path(main_dir, ckpt_dir, best_ckpt):
 
 
 def set_logger(root_dir, hparams):
+    root_dir.mkdir(parents=True, exist_ok=True)
     strtime = datetime.now().strftime("%d.%m.%Y, %H:%M:%S")
     logging.basicConfig(level=hparams.logging,
                         format="%(asctime)s [%(threadName)-1s] [%(levelname)-1s]  %(message)s",
                         handlers=[logging.StreamHandler(sys.stdout),
-                                  logging.FileHandler(root_dir / f"{strtime}_{hparams.log_file}")],)
+                                  logging.FileHandler(root_dir / f"{strtime} {hparams.log_file}")],)

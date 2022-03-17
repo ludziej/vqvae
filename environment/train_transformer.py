@@ -18,7 +18,6 @@ def get_model(main_dir, ckpt_dir, restore_ckpt, **params):
 def train_generator(hparams, model_params, level):
     root_dir = Path(model_params.main_dir)
     root_dir = root_dir / str(level) if hparams.model == "upsampler" else root_dir
-    root_dir.mkdir(parents=True, exist_ok=True)
     set_logger(root_dir, hparams)
 
     # calculate correct sample_len for chosen n_ctx inside tokens

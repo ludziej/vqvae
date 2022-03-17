@@ -43,7 +43,6 @@ def get_model_with_data(batch_size, sample_len, num_workers,  data_depth, sr, sh
 
 def train(hparams):
     root_dir = Path(hparams.vqvae.main_dir)
-    root_dir.mkdir(parents=True, exist_ok=True)
     set_logger(root_dir, hparams)
     model, train_dataloader, test_dataloader =\
         get_model_with_data(**hparams.vqvae, train_path=hparams.train_path,
