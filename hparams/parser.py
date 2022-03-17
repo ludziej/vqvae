@@ -1,6 +1,7 @@
 import argparse
 from types import SimpleNamespace
 from collections.abc import Mapping
+import logging
 
 from utils.misc import fst
 
@@ -45,7 +46,12 @@ class HparamsParser:
         elif (isinstance(old_val, tuple) or isinstance(old_val, list)) and isinstance(new_val, str):
             vals = new_val[1:-1].replace(" ", "")
             vals = vals.split(",") if "," in vals else [] if vals == '' else [vals]
-            vals = [self.preprocess_value(nv, ov) for ov, nv in zip(old_val, vals)]
+            if len(old_val) == 0:
+                logging.warning(f"Unknown type for list value {new_val}, because previous {old_val} is empty")
+                ov = None
+            else:
+                ov = old_val[0]
+            vals = [self.preprocess_value(nv, ov) for nv in vals]
             return vals
         else:
             return new_val
