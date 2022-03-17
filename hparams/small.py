@@ -63,6 +63,7 @@ dirs_config = Hparams(
 )
 
 vqvae_opt_hparams = Hparams(
+    shuffle_train=False,
     use_audiofile=True,
     epochs=10000,
     lr=0.0003,

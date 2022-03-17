@@ -60,7 +60,7 @@ class Chunk(NamedTuple):
 
     def _load_file(self, start, duration):
         if self.use_audiofile:
-            return audiofile.read(self.file, offset=start.item(),
+            return audiofile.read(self.file, offset=start.item(),  # TODO add resampling (form scipy?)
                                   duration=duration.item() if duration is not None else None)
         return librosa.load(self.file, offset=start, duration=duration, mono=False, sr=self.sr)
 
