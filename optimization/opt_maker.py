@@ -1,5 +1,7 @@
+import logging
 
 import torch as t
+import logging
 import old_ml_utils.dist_adapter as dist
 from torch.nn.parallel import DistributedDataParallel
 from old_ml_utils.fp16 import FusedAdam, FP16FusedAdam, LossScalar
@@ -12,7 +14,7 @@ def get_lr_scheduler(opt, lr_use_linear_decay, lr_scale, lr_warmup, lr_start_lin
             decay = max(0.0, 1.0 - max(0.0, step - lr_start_linear_decay) / lr_decay)
             if decay == 0.0:
                 if dist.get_rank() == 0:
-                    print("Reached end of training")
+                    logging.info("Reached end of training")
             return curr_lr_scale * decay
         else:
             return lr_scale * (lr_gamma ** (step // lr_decay)) * min(1.0, step / lr_warmup)
@@ -40,6 +42,6 @@ def get_optimizer(model, beta1, beta2, lr, weight_decay, eps, fp16_loss_scale, f
         local_rank = rank % 8
         scalar = LossScalar(fp16_loss_scale, scale_factor=2 ** (1./fp16_scale_window))
         if local_rank == 0:
-            print(scalar.__dict__)
+            logging.info(scalar.__dict__)
 
     return opt, shd, scalar

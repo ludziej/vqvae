@@ -11,6 +11,8 @@ from performer_pytorch.autoregressive_wrapper import top_k, repetition_penalty_f
 from optimization.scheduler import ReduceLROnPlateauWarmup
 from optimization.normalization import CustomNormalization
 from utils.misc import time_run
+import audiofile
+import logging
 
 
 class LevelGenerator(LightningModule):
@@ -69,7 +71,7 @@ class LevelGenerator(LightningModule):
                                            stride_t=self.preprocessing.strides_t[u_level], **conds_kwargs)
         self.token_distr = np.zeros(self.bins)
         self.token_log_quantiles = 10
-        print(str(self))
+        logging.info(str(self))
 
     def __str__(self):
         return f"Upsampler level {self.level} with n_ctx={self.n_ctx} and tokens={self.sample_len}"\

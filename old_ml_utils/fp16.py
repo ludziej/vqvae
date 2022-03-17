@@ -8,6 +8,7 @@ from torch.optim import Optimizer
 from torch._utils import _flatten_dense_tensors
 
 from old_ml_utils.misc import allreduce
+import logging
 
 
 def adam_step(p: torch.Tensor, out_p: torch.Tensor, exp_avg: torch.Tensor, exp_avg_sq: torch.Tensor, grad: torch.Tensor,
@@ -33,7 +34,7 @@ def adam_step(p: torch.Tensor, out_p: torch.Tensor, exp_avg: torch.Tensor, exp_a
 try:
     fused_adam_cuda = importlib.import_module("fused_adam_cuda")
     fused_adam_step = fused_adam_cuda.adam
-    print("Using apex fused_adam_cuda")
+    logging.info("Using apex fused_adam_cuda")
 except ModuleNotFoundError:
     fused_adam_step = adam_step
 
@@ -60,9 +61,9 @@ def backward(loss, params, scalar, fp16, logger):
             overflow_grad = True
         loss = (loss.detach().float()) / scale # Should delete computation graph for overflow
         if logger.rank == 0:
-            if loss > 12.: print(f"\nWarning. Loss is {loss}")
-            if overflow_loss: print(f"\nOverflow in forward. Loss {loss}, lgscale {np.log2(scale)}. Skipping batch completely (no backward, scale update)")
-            elif overflow_grad: print(f"\nOverflow in backward. Loss {loss}, grad norm {gn}, lgscale {np.log2(scale)}, new lgscale {np.log2(scalar.get_scale())}")
+            if loss > 12.: logging.info(f"\nWarning. Loss is {loss}")
+            if overflow_loss: logging.info(f"\nOverflow in forward. Loss {loss}, lgscale {np.log2(scale)}. Skipping batch completely (no backward, scale update)")
+            elif overflow_grad: logging.info(f"\nOverflow in backward. Loss {loss}, grad norm {gn}, lgscale {np.log2(scale)}, new lgscale {np.log2(scalar.get_scale())}")
         return loss, scale, gn, overflow_loss, overflow_grad
 
 # Automatic loss scaling

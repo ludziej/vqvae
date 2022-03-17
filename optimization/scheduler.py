@@ -1,5 +1,6 @@
 import torch
 import warnings
+import logging
 
 
 class ReduceLROnPlateauWarmup(torch.optim.lr_scheduler.ReduceLROnPlateau):
@@ -94,9 +95,8 @@ class ReduceLROnPlateauWarmup(torch.optim.lr_scheduler.ReduceLROnPlateau):
             new_lr = max(old_lr * self.factor, self.min_lrs[i])
             if old_lr - new_lr > self.eps:
                 param_group['lr'] = new_lr
-                if self.verbose:
-                    print('Epoch {:5d}: reducing learning rate'
-                          ' of group {} to {:.4e}.'.format(epoch, i, new_lr))
+                logging.info('Epoch {:5d}: reducing learning rate'
+                             ' of group {} to {:.4e}.'.format(epoch, i, new_lr))
 
     @property
     def in_cooldown(self):

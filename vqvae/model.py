@@ -2,6 +2,7 @@ import numpy as np
 import torch as t
 import torch.nn as nn
 from pytorch_lightning import LightningModule
+import logging
 
 from vqvae.encdec import Encoder, Decoder, assert_shape
 from vqvae.bottleneck import NoBottleneck, Bottleneck
@@ -56,7 +57,7 @@ class VQVAE(LightningModule):
         self.multispectral = multispectral
         self.opt_params = params
         self.log_nr = {"val_": 0, "": 0, "test_": 0}
-        print(str(self))
+        logging.info(str(self))
 
     def __str__(self):
         return f"VQ-VAE with sr={self.sr} and tokens for one second: {self.get_z_lengths(1 * self.sr)}"

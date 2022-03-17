@@ -3,6 +3,8 @@ import torch as t
 import soundfile
 import librosa
 from tqdm import tqdm
+import logging
+
 
 class DefaultSTFTValues:
     def __init__(self, hps):
@@ -27,7 +29,6 @@ def calculate_bandwidth(dataset, hps, duration=100):
     progress = tqdm(total=n_samples, desc="Calculating bandwidth")
     while n_seen < n_samples:
         x = dataset[idx].squeeze(1).numpy()
-        #print(f"Diagnosing track {idx} with shape {x.shape}")
         samples = x.astype(np.float64)
         stft = librosa.core.stft(samples, n_fft=hps.n_fft, hop_length=hps.hop_length, win_length=hps.window_size)
         spec = np.absolute(stft)
@@ -46,7 +47,7 @@ def calculate_bandwidth(dataset, hps, duration=100):
     bandwidth = dict(l2 = total_sq / n_seen - mean ** 2,
                      l1 = l1 / n_seen,
                      spec = spec_norm_total / spec_nelem)
-    print(bandwidth)
+    logging.info(bandwidth)
     return bandwidth
 
 

@@ -17,6 +17,8 @@ config_big_hparams = Hparams(
     accelerator='dp',
     max_epochs=50000,
     max_steps=0,
+    logging="INFO",
+    log_file="logs.txt",
 )
 
 config_small_hparams = Hparams(
@@ -32,6 +34,8 @@ config_small_hparams = Hparams(
     accelerator='dp',
     max_epochs=50000,
     max_steps=0,
+    logging="INFO",
+    log_file="logs.txt",
 )
 
 hparams_registry = dict(
