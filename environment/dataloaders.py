@@ -18,6 +18,7 @@ import librosa
 from typing import NamedTuple
 from torch.utils.data import random_split, Subset
 import warnings
+from utils.misc import time_run
 
 
 def get_duration(file):
@@ -55,8 +56,12 @@ class Chunk(NamedTuple):
         return sound.unsqueeze(1)
 
     def load_file(self, start, duration):
-        with warnings.catch_warnings(record=True) as w:
-            sound, file_sr = librosa.load(self.file, offset=start, duration=duration, mono=False, sr=self.sr)
+        #with warnings.catch_warnings(record=True) as w:
+
+        time, (sound, file_sr) = time_run(lambda: librosa.load(self.file, offset=start, duration=duration,
+                                                               mono=False, sr=self.sr))
+        print(f"Reading {self.file} {duration.item() if duration is not None else np.inf:.2f} seconds "
+              f"from {start.item():.2f}, took {time:.2f} seconds")
         assert file_sr == self.sr  # ensure correct sampling rate
         if len(sound.shape) == 1:
             sound = sound.reshape(1, -1)
