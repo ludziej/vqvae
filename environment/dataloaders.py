@@ -81,7 +81,6 @@ class Chunk(NamedTuple):
         if file_sr != self.sr:
             time, sound = time_run(lambda: self.resample(sound, file_sr))
             logging.debug(f"Resampling from '{self.file}' because of wrong sr={file_sr}, took {time:2f}s")
-        assert file_sr == self.sr  # ensure correct sampling rate
         if len(sound.shape) == 1:
             sound = sound.reshape(1, -1)
         return sound
