@@ -60,7 +60,7 @@ class Chunk(NamedTuple):
 
         time, (sound, file_sr) = time_run(lambda: librosa.load(self.file, offset=start, duration=duration,
                                                                mono=False, sr=self.sr))
-        print(f"Reading {self.file} {duration.item() if duration is not None else np.inf:.2f} seconds "
+        print(f"Reading from {self.file}[total {self.file_length:.2f}], chunk of length {duration.item() if duration is not None else np.inf:.2f} seconds "
               f"from {start.item():.2f}, took {time:.2f} seconds")
         assert file_sr == self.sr  # ensure correct sampling rate
         if len(sound.shape) == 1:

@@ -16,6 +16,7 @@ config_big_hparams = Hparams(
     data_depth=1,
     accelerator='dp',
     max_epochs=50000,
+    max_steps=0,
 )
 
 config_small_hparams = Hparams(
@@ -30,6 +31,7 @@ config_small_hparams = Hparams(
     data_depth=1,
     accelerator='dp',
     max_epochs=50000,
+    max_steps=0,
 )
 
 hparams_registry = dict(
