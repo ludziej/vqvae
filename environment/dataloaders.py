@@ -21,6 +21,7 @@ from torch.utils.data import random_split, Subset
 import warnings
 from utils.misc import time_run
 import audiofile
+from scipy import signal
 
 
 def get_duration(file, use_audiofile):
@@ -64,18 +65,22 @@ class Chunk(NamedTuple):
                                   duration=duration.item() if duration is not None else None)
         return librosa.load(self.file, offset=start, duration=duration, mono=False, sr=self.sr)
 
+    def resample(self, sound, from_sr):
+        return librosa.resample(sound, orig_sr=from_sr, target_sr=self.sr)
+
     def load_file(self, start, duration):
         run_lambda = lambda: self._load_file(start, duration)
         if logging.DEBUG >= logging.root.level:
             time, (sound, file_sr) = time_run(run_lambda)
-            logging.debug(f"Reading from {self.file}[total {self.file_length:.2f}], chunk of length "
-                          f"{duration.item() if duration is not None else np.inf:.2f} seconds "
-                          f"from {start.item():.2f}, took {time:.2f} seconds")
+            logging.debug(f"Reading from '{str(self)}' took {time:.2f} seconds")
         else:
             with warnings.catch_warnings(record=True) as w:
                 time, (sound, file_sr) = 0, run_lambda()
                 for warn in w:
                     logging.debug(f"{warn.category} : {warn.message}")
+        if file_sr != self.sr:
+            time, sound = time_run(lambda: self.resample(sound, file_sr))
+            logging.debug(f"Resampling from '{self.file}' because of wrong sr={file_sr}, took {time:2f}s")
         assert file_sr == self.sr  # ensure correct sampling rate
         if len(sound.shape) == 1:
             sound = sound.reshape(1, -1)
@@ -98,7 +103,7 @@ class Chunk(NamedTuple):
         return sound
 
     def __str__(self):
-        return f"{self.file} from {self.start}s to {self.end}s"
+        return f"{self.file}[total {self.file_length}s] from {self.start}s to {self.end}s"
 
     def __repr__(self):
         return str(self)
