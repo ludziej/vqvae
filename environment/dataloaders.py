@@ -20,10 +20,11 @@ from typing import NamedTuple
 from torch.utils.data import random_split, Subset
 import warnings
 from utils.misc import time_run
+import audiofile
 
 
-def get_duration(file):
-    return librosa.get_duration(filename=file)
+def get_duration(file, use_audiofile):
+    return audiofile.duration(file) if use_audiofile else librosa.get_duration(filename=file)
 
 
 def flatten_dir(dirs):
@@ -59,7 +60,8 @@ class Chunk(NamedTuple):
 
     def _load_file(self, start, duration):
         if self.use_audiofile:
-            pass
+            return audiofile.read(self.file, offset=start.item(),
+                                  duration=duration.item() if duration is not None else None)
         return librosa.load(self.file, offset=start, duration=duration, mono=False, sr=self.sr)
 
     def load_file(self, start, duration):
@@ -139,7 +141,8 @@ class MusicDataset(Dataset):
                 logging.info(f"Order fixed, {(1-dataset_size/old_size)*100:.5}% information lost")
 
             return sizes, dataset_size
-        sizes = [get_duration(f) for f in tqdm(self.files, desc="Calculating lengths for dataloaders", smoothing=0)]
+        sizes = [get_duration(f, self.use_audiofile) for f in
+                 tqdm(self.files, desc="Calculating lengths for dataloaders", smoothing=0)]
         dataset_size = sum(sizes)
         if cache_path is not None:
             save((self.files, sizes, dataset_size), str(path))
@@ -174,7 +177,7 @@ class MusicDataset(Dataset):
 
     def split_into_two(self, test_perc=0.1) -> (Dataset, Dataset):
         test_files = set(self.find_files_for_a_split(test_perc))
-        logging.debug(f"Files used for test:\n{','.join(test_files)}")
+        logging.log(5, f"Files used for test:\n{','.join(test_files)}")
         train_indices, test_indices = [], []
         for i, chunk in enumerate(self.chunks):
             (test_indices if chunk.file in test_files else train_indices).append(i)
@@ -187,7 +190,7 @@ class MusicDataset(Dataset):
         train_size = int((1 - test_perc) * len(self))
         train_data, test_data = random_split(self, [train_size, len(self) - train_size],
                                              generator=torch.Generator().manual_seed(42))
-        logging.debug(f"Chunks used for test:\n{','.join([self.chunks[i] for i in test_data.indices])}")
+        logging.log(5, f"Chunks used for test:\n{','.join([self.chunks[i] for i in test_data.indices])}")
         return train_data, test_data
 
     def __len__(self):
