@@ -8,17 +8,19 @@ from generator.model import LevelGenerator
 
 
 class SynchronousGenerator(nn.Module):
+    """Class for generation, when all models are properly trained"""
     def __init__(self, vqvae: VQVAE, prior: LevelGenerator, upsamplers: [LevelGenerator]):
         super().__init__()
         self.vqvae = vqvae
         self.prior = prior
         self.upsamplers = torch.nn.ModuleList(upsamplers)
 
-    def generate_prior_tokens(self):
-        raise Exception("Not Implemented")
+    def generate_prior_tokens(self, length, bs=1, with_tqdm=True, context=None):
+        return self.prior.generate_no_sound(length, context=context, with_tqdm=with_tqdm, bs=bs)
 
-    def generate_upsampler_tokens(self, prev_tokens):
-        raise Exception("Not Implemented")
+    def generate_upsampler_tokens(self, length, prev_tokens, level, with_tqdm=True, context=None):
+        upsampler = self.upsamplers[level]
+        return upsampler.generate_no_sound(length, context=context, with_tqdm=with_tqdm, bs=prev_tokens.shape[0])
 
     def get_sound_through_vqvae(self, sound: torch.Tensor):
         raise Exception("Not Implemented")
@@ -26,12 +28,12 @@ class SynchronousGenerator(nn.Module):
     def get_track_through_vavae(self, filepath: str):
         raise Exception("Not Implemented")
 
-    def generate(self, time: float, bs: int, decode_level=0) -> torch.Tensor:
+    def generate(self, time: float, bs: int, decode_level=0, use_tqdm=True) -> torch.Tensor:
         raise Exception("Not Implemented")
 
     # assumes sound with correct sr = self.vqvae.sr
-    def continue_sound(self, sound: torch.Tensor) -> torch.Tensor:
+    def continue_sound(self, sound: torch.Tensor, use_tqdm=True) -> torch.Tensor:
         raise Exception("Not Implemented")
 
-    def continue_track(self, filepath: str, sec_from: int) -> torch.Tensor:
+    def continue_track(self, filepath: str, sec_from: int, use_tqdm=True) -> torch.Tensor:
         raise Exception("Not Implemented")

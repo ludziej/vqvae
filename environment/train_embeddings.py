@@ -19,9 +19,10 @@ def calc_dataset_dependent_params(dataset, forward_params, duration):
     forward_params.bandwidth = calculate_bandwidth(dataset, duration=duration, hps=forward_params)
 
 
-def get_model(sample_len, data_depth, sr, train_path, forward_params, band_est_dur, use_audiofile,
-              with_train_data=False, **params):
-    train_data = MusicDataset(train_path, sample_len=sample_len, depth=data_depth, sr=sr, use_audiofile=use_audiofile)
+def get_model(sample_len, data_depth, sr, train_path, forward_params, band_est_dur, use_audiofile, chunk_timeout,
+              chunk_another_thread, with_train_data=False, **params):
+    train_data = MusicDataset(train_path, sample_len=sample_len, depth=data_depth, sr=sr, use_audiofile=use_audiofile,
+                              timeout=chunk_timeout, another_thread=chunk_another_thread)
     logging.info(train_data)
     calc_dataset_dependent_params(train_data, forward_params, band_est_dur)
     params["forward_params"] = forward_params

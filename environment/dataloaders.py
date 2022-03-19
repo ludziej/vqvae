@@ -1,5 +1,6 @@
 import logging
 import pathlib
+import time
 
 import numpy as np
 import os
@@ -21,7 +22,8 @@ from torch.utils.data import random_split, Subset
 import warnings
 from utils.misc import time_run
 import audiofile
-from scipy import signal
+import multiprocessing as mp
+import queue
 
 
 def get_duration(file, use_audiofile):
@@ -32,6 +34,13 @@ def flatten_dir(dirs):
     return flatten([[join(dir, f) for f in listdir(dir)] for dir in dirs if os.path.isdir(dir)])
 
 
+class ChunkConfig(NamedTuple):
+    channel_level_bias: float
+    use_audiofile: bool  # if False uses librosa
+    another_thread: bool
+    timeout: int
+
+
 class Chunk(NamedTuple):
     file: str
     start: int  # in seconds
@@ -39,8 +48,7 @@ class Chunk(NamedTuple):
     file_length: float  # in seconds
     sr: int
     sample_len: int
-    channel_level_bias: float
-    use_audiofile: bool  # if False uses librosa
+    chunk_config: ChunkConfig
 
     def read(self) -> np.ndarray:
         # do not quantise tracks into regular chunks, add another offset
@@ -59,17 +67,46 @@ class Chunk(NamedTuple):
         sound = self.pad_sound(sound)
         return sound.unsqueeze(1)
 
-    def _load_file(self, start, duration):
-        if self.use_audiofile:
-            return audiofile.read(self.file, offset=start.item(),  # TODO add resampling (form scipy?)
-                                  duration=duration.item() if duration is not None else None)
-        return librosa.load(self.file, offset=start, duration=duration, mono=False, sr=self.sr)
-
     def resample(self, sound, from_sr):
         return librosa.resample(sound, orig_sr=from_sr, target_sr=self.sr)
 
+    # multiprocessing stuff, because library is breaking sometimes
+
+    def _load_file_into_queue(self, start, duration, use_audiofile, data_queue):
+        data_queue.put(self._load_file(start, duration, use_audiofile))
+
+    def _load_file_another_thread(self, start, duration):
+        data_queue = mp.Queue()
+        task = mp.Process(target=self._load_file_into_queue,
+                          args=(start, duration, self.chunk_config.use_audiofile, data_queue))
+        task.start()
+        output = None
+        trycount = 1
+        timeout = self.chunk_config.timeout
+        while output is None:
+            try:
+                output = data_queue.get(block=True, timeout=timeout)
+            except queue.Empty:
+                task.terminate()
+                task = mp.Process(target=self._load_file_into_queue,
+                                  args=(start, duration, self.chunk_config.use_audiofile, data_queue))
+                task.start()
+                trycount += 1
+                timeout *= 2
+                logging.info(f"Reading {str(self)} hanged, running again, try nr {trycount}, timeout={timeout}")
+        data_queue.close()
+        task.join()
+        return output
+
+    def _load_file(self, start, duration, use_audiofile):
+        if use_audiofile:
+            return audiofile.read(self.file, offset=start.item(),
+                                  duration=duration.item() if duration is not None else None)
+        return librosa.load(self.file, offset=start, duration=duration, mono=False, sr=self.sr)
+
     def load_file(self, start, duration):
-        run_lambda = lambda: self._load_file(start, duration)
+        run_lambda = (lambda: self._load_file_another_thread(start, duration)) if self.chunk_config.another_thread \
+            else (lambda: self._load_file(start, duration, self.chunk_config.use_audiofile))
         if logging.DEBUG >= logging.root.level:
             time, (sound, file_sr) = time_run(run_lambda)
             logging.debug(f"Reading from '{str(self)}' took {time:.2f} seconds")
@@ -90,7 +127,7 @@ class Chunk(NamedTuple):
             return sound[0]
         elif sound.shape[0] != 2:
             raise Exception(f"Loaded wave with unexpected shape {sound.shape}")
-        lvl_bias = torch.rand(1) * self.channel_level_bias
+        lvl_bias = torch.rand(1) * self.chunk_config.channel_level_bias
         lvl_bias = torch.cat([0.5 + lvl_bias, 0.5 - lvl_bias])
         sound = torch.matmul(lvl_bias, sound)
         return sound
@@ -109,8 +146,8 @@ class Chunk(NamedTuple):
 
 
 class MusicDataset(Dataset):
-    def __init__(self,  sound_dirs, sample_len, depth=1, sr=22050, transform=None, min_length=1,
-                 cache_name="file_lengths.pickle", channel_level_bias=0.25, use_audiofile=False,):
+    def __init__(self,  sound_dirs, sample_len, depth=1, sr=22050, transform=None, min_length=1, timeout=1,
+                 cache_name="file_lengths.pickle", channel_level_bias=0.25, use_audiofile=False, another_thread=False):
         self.sound_dirs = sound_dirs if isinstance(sound_dirs, list) else [sound_dirs]
         self.sample_len = sample_len
         self.channel_level_bias = channel_level_bias
@@ -122,6 +159,7 @@ class MusicDataset(Dataset):
         self.legal_suffix = [".wav", ".mp3"]
         self.files = self.calculate_files()
         self.sizes, self.dataset_size = self.calculate_lengths(cache_name)
+        self.chunk_config = ChunkConfig(channel_level_bias, use_audiofile, another_thread, timeout)
         self.chunks = self.calculate_chunks()
 
     def calculate_files(self):
@@ -160,8 +198,7 @@ class MusicDataset(Dataset):
         if size <= self.min_length:
             return []
         len = self.sample_len / self.sr
-        return [Chunk(file, i * len, (i + 1) * len, size, self.sr, self.sample_len,
-                      self.channel_level_bias, self.use_audiofile)
+        return [Chunk(file, i * len, (i + 1) * len, size, self.sr, self.sample_len, self.chunk_config)
                 for i in range(int(size / len))]
 
     def __getitem__(self, idx):

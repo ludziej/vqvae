@@ -11,6 +11,7 @@ from performer_pytorch.autoregressive_wrapper import top_k, repetition_penalty_f
 from optimization.scheduler import ReduceLROnPlateauWarmup
 from optimization.normalization import CustomNormalization
 from utils.misc import time_run
+import tqdm
 import audiofile
 import logging
 
@@ -187,14 +188,15 @@ class LevelGenerator(LightningModule):
         return sample
 
     @torch.no_grad()
-    def autoregressive_generate_prior(self, start_tokens, seq_len, conditioning=None, **sampling_kwargs):
+    def autoregressive_generate_prior(self, start_tokens, seq_len, conditioning=None, with_tqdm=False,
+                                      **sampling_kwargs):
         was_training = self.transformer.training
         b, t = start_tokens.shape
         self.transformer.eval()
         tokens = start_tokens
         tokens_emb = self.x_emb(start_tokens)
 
-        for i in range(t, seq_len):
+        for i in tqdm.trange(t, seq_len, desc=f"Generating tokens [{self.level}]") if with_tqdm else range(t, seq_len):
             ctx_start = max(i - self.n_ctx + 1, 0)  # +1 because we effectively train in (n_ctx - 1) size
 
             # TODO all this conditioning can be done once per element, if positional_embedding is not absolute
@@ -220,16 +222,18 @@ class LevelGenerator(LightningModule):
         return torch.randint(size, (bs, self.start_gen_sample_len), device=self.device)
 
     @torch.no_grad()
-    def generate_no_sound(self, seq_len: int, start_random_size=10, bs=1, context=None, time=None, **sampling_kwargs):
+    def generate_no_sound(self, seq_len: int, start_random_size=10, bs=1, context=None, time=None, with_tqdm=False,
+                          **sampling_kwargs):
         beginning = self.recreate_beginning(start_random_size, bs)
         conditioning = self.get_all_conditionings(bs, seq_len, context=context, time=time)
-        out_tokens = self.autoregressive_generate_prior(beginning, seq_len, conditioning, sampling_kwargs)
+        out_tokens = self.autoregressive_generate_prior(beginning, seq_len, conditioning, with_tqdm=with_tqdm,
+                                                        **sampling_kwargs)
         sound = self.decode_sound(out_tokens)
         return sound
 
     @torch.no_grad()
     def generate_from_sound(self, sound: torch.Tensor, prefix_token_perc: float, seq_len=None, context=None,
-                            time=None, with_begin=True, return_speed=False, **sampling_kwargs):
+                            time=None, with_begin=True, return_speed=False, with_tqdm=False, **sampling_kwargs):
         tokens, up_tokens = self.get_tokens(sound)
         bs, t_len = tokens.shape[:2]
         seq_len = seq_len if seq_len is not None else t_len
@@ -237,7 +241,8 @@ class LevelGenerator(LightningModule):
         conditioning = self.get_all_conditioning(bs, seq_len, context=context, up_tokens=up_tokens, time=time)
 
         runtime, out_tokens = time_run(
-            lambda: self.autoregressive_generate_prior(beginning, seq_len, conditioning, **sampling_kwargs))
+            lambda: self.autoregressive_generate_prior(beginning, seq_len, conditioning,
+                                                       with_tqdm=with_tqdm, **sampling_kwargs))
         out_tokens = torch.cat([beginning, out_tokens], dim=1) if with_begin else out_tokens
         sound = self.decode_sound(out_tokens)
 
