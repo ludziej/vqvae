@@ -55,7 +55,7 @@ def audio_postprocess(x, hps):
     return x
 
 def stft(sig, hps):
-    return t.stft(sig, n_fft=hps.n_fft, hop_length=hps.hop_length, win_length=hps.window_size, window=t.hann_window(hps.window_size, device=sig.device))
+    return t.stft(sig, n_fft=hps.n_fft, hop_length=hps.hop_length, win_length=hps.window_size, window=t.hann_window(hps.window_size, device=sig.device), return_complex=False)
 
 def spec(x, hps):
     return t.norm(stft(x, hps), p=2, dim=-1)

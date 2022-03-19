@@ -93,7 +93,7 @@ class Chunk(NamedTuple):
                 task.start()
                 trycount += 1
                 timeout *= 2
-                logging.info(f"Reading {str(self)} hanged, running again, try nr {trycount}, timeout={timeout}")
+                logging.info(f"Hanged {str(self)} read, running again, try nr {trycount}, timeout={timeout}")
         data_queue.close()
         task.join()
         return output
@@ -117,7 +117,7 @@ class Chunk(NamedTuple):
                     logging.debug(f"{warn.category} : {warn.message}")
         if file_sr != self.sr:
             time, sound = time_run(lambda: self.resample(sound, file_sr))
-            logging.debug(f"Resampling from '{self.file}' because of wrong sr={file_sr}, took {time:2f}s")
+            logging.debug(f"Resampling from '{str(self)}' because of wrong sr={file_sr}, took {time:.2f}s")
         if len(sound.shape) == 1:
             sound = sound.reshape(1, -1)
         return sound
@@ -139,7 +139,7 @@ class Chunk(NamedTuple):
         return sound
 
     def __str__(self):
-        return f"{self.file}[total {self.file_length}s] from {self.start}s to {self.end}s"
+        return f"{self.file}[total {self.file_length:.1f}s] from {self.start:.1f}s to {self.end:.1f}s"
 
     def __repr__(self):
         return str(self)

@@ -14,7 +14,7 @@ def generic_train(model, hparams, train, test, model_hparams, root_dir):
                                           every_n_epochs=model_hparams.ckpt_freq)
 
     trainer = Trainer(gpus=hparams.gpus, profiler="simple", max_epochs=hparams.max_epochs,
-                      max_steps=hparams.max_steps if hparams.max_steps != 0 else None,
+                      max_steps=hparams.max_steps if hparams.max_steps != 0 else -1,
                       log_every_n_steps=1, logger=tb_logger, strategy=hparams.accelerator,
                       default_root_dir=root_dir / model_hparams.default_ckpt_root, callbacks=[checkpoint_callback])
     trainer.fit(model, train_dataloaders=train, val_dataloaders=test)
