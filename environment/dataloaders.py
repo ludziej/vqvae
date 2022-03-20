@@ -115,7 +115,7 @@ class Chunk(NamedTuple):
                 time, (sound, file_sr) = 0, run_lambda()
                 for warn in w:
                     logging.debug(f"{warn.category} : {warn.message}")
-        if file_sr != self.sr:
+        if file_sr != self.sr and len(sound.shape) >= 2 and sound.shape[1] > 50:
             time, sound = time_run(lambda: self.resample(sound, file_sr))
             logging.debug(f"Resampling from '{str(self)}' because of wrong sr={file_sr}, took {time:.2f}s")
         if len(sound.shape) == 1:
