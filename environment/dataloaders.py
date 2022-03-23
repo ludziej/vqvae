@@ -24,6 +24,7 @@ from utils.misc import time_run
 import audiofile
 import multiprocessing as mp
 import queue
+import pathlib
 
 
 def get_duration(file, use_audiofile):
@@ -156,11 +157,18 @@ class MusicDataset(Dataset):
         self.depth = depth
         self.transform = transform
         self.use_audiofile = use_audiofile
-        self.legal_suffix = [".wav", ".mp3"]
-        self.files = self.calculate_files()
+        self.legal_suffix = [".wav", ".mp3" ".ape", ".flac"]
+        self.files = flatten(self.get_music_in(pathlib.Path(x)) for x in self.sound_dirs)
         self.sizes, self.dataset_size = self.calculate_lengths(cache_name)
         self.chunk_config = ChunkConfig(channel_level_bias, use_audiofile, another_thread, timeout)
         self.chunks = self.calculate_chunks()
+
+    def get_music_in(self, file):
+        if os.path.isdir(file):
+            return flatten(self.get_music_in(file / x) for x in listdir(file))
+        elif any(str(file).endswith(suf) for suf in self.legal_suffix):
+            return [str(file)]
+        return []
 
     def calculate_files(self):
         files = reduce(lambda x, f: f(x), repeat(flatten_dir, self.depth), self.sound_dirs)
