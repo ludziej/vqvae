@@ -48,6 +48,7 @@ small_vqvae_model_params = Hparams(
     sample_len=262144,
     num_workers=5,
     sr=22050,
+    norm_before_vqvae=True,
     group_norm=False,
     norm_in_wavenet=False,
     forward_params=small_forward_params,

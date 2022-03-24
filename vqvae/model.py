@@ -13,7 +13,7 @@ from vqvae.helpers import calculate_strides, _loss_fn
 
 
 class VQVAE(LightningModule):
-    def __init__(self, input_channels, levels, downs_t, strides_t, loss_fn,
+    def __init__(self, input_channels, levels, downs_t, strides_t, loss_fn, norm_before_vqvae,
                  emb_width, l_bins, mu, commit, spectral, multispectral, forward_params,
                  multipliers, use_bottleneck=True, **params):
         super().__init__()
@@ -21,6 +21,7 @@ class VQVAE(LightningModule):
         self.downsamples = calculate_strides(strides_t, downs_t)
         self.hop_lengths = np.cumprod(self.downsamples)
         self.levels = levels
+        self.norm_before_vqvae = norm_before_vqvae
         self.forward_params = forward_params
         self.loss_fn = loss_fn
         self.sr = params["sr"]
@@ -45,7 +46,7 @@ class VQVAE(LightningModule):
             self.decoders.append(decoder(level))
 
         if use_bottleneck:
-            self.bottleneck = Bottleneck(l_bins, emb_width, mu, levels)
+            self.bottleneck = Bottleneck(l_bins, emb_width, mu, levels, norm_before_vqvae)
         else:
             self.bottleneck = NoBottleneck(levels)
 

@@ -5,19 +5,20 @@ import torch.nn.functional as F
 
 
 class BottleneckBlock(nn.Module):
-    def __init__(self, k_bins, emb_width, mu):
+    def __init__(self, k_bins, emb_width, mu, norm_before_vqvae):
         super().__init__()
         self.k_bins = k_bins
         self.emb_width = emb_width
         self.mu = mu
-        self.reset_k()
+        self.norm_before_vqvae = norm_before_vqvae
         self.threshold = 1.0
+        self.reset_k()
 
     def reset_k(self):
         self.init = False
-        self.k_sum = None
-        self.k_elem = None
         self.register_buffer('k', t.zeros(self.k_bins, self.emb_width))
+        self.register_buffer('k_sum', t.zeros(self.k_bins, self.emb_width))
+        self.register_buffer('k_elem', t.ones(self.k_bins, device=self.k.device))
 
     def _tile(self, x):
         d, ew = x.shape
@@ -34,23 +35,10 @@ class BottleneckBlock(nn.Module):
         # init k_w using random vectors from x
         y = self._tile(x)
         _k_rand = y[t.randperm(y.shape[0])][:k_bins]
-        #dist.broadcast(_k_rand, 0)
         self.k = _k_rand
         assert self.k.shape == (k_bins, emb_width)
         self.k_sum = self.k.detach()
         self.k_elem = t.ones(k_bins, device=self.k.device)
-
-    def restore_k(self, num_tokens=None, threshold=1.0):
-        emb_width, k_bins = self.emb_width, self.k_bins
-        self.init = True
-        assert self.k.shape == (k_bins, emb_width)
-        self.k_sum = self.k.detach().clone()
-        self.k_elem = t.ones(k_bins, device=self.k.device)
-        if num_tokens is not None:
-            expected_usage = num_tokens / k_bins
-            self.k_elem.data.mul_(expected_usage)
-            self.k_sum.data.mul_(expected_usage)
-        self.threshold = threshold
 
     def update_k(self, x, x_l):
         mu, emb_width, k_bins = self.mu, self.emb_width, self.k_bins
@@ -95,6 +83,8 @@ class BottleneckBlock(nn.Module):
             x = x1 + x2
         else:
             assert False, f"Expected {x.shape[-1]} to be (1 or 2) * {self.emb_width}"
+        if self.norm_before_vqvae:
+            x = t.nn.functional.normalize(x)
         return x, prenorm
 
     def postprocess(self, x_l, x_d, x_shape):
@@ -175,13 +165,11 @@ class BottleneckBlock(nn.Module):
 
 
 class Bottleneck(nn.Module):
-    def __init__(self, l_bins, emb_width, mu, levels):
+    def __init__(self, l_bins, emb_width, mu, levels, norm_before_vqvae):
         super().__init__()
         self.levels = levels
-        level_block = lambda level: BottleneckBlock(l_bins, emb_width, mu)
-        self.level_blocks = nn.ModuleList()
-        for level in range(self.levels):
-            self.level_blocks.append(level_block(level))
+        self.level_blocks = nn.ModuleList([BottleneckBlock(l_bins, emb_width, mu, norm_before_vqvae)
+                                           for level in range(self.levels)])
 
     def encode(self, xs):
         zs = [level_block.encode(x) for (level_block, x) in zip(self.level_blocks, xs)]

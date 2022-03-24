@@ -50,6 +50,7 @@ big_vqvae_model_params = Hparams(
     batch_size=4,
     sample_len=1048576,
     num_workers=5,
+    norm_before_vqvae=True,
     sr=44100,
     group_norm=False,
     norm_in_wavenet=False,
