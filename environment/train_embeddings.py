@@ -22,9 +22,9 @@ def calc_dataset_dependent_params(dataset, forward_params, duration):
         dataset.cache_dir / forward_params.bandwidth_cache)
 
 
-def get_model(sample_len, data_depth, sr, train_path, forward_params, band_est_dur, use_audiofile, chunk_timeout,
+def get_model(sample_len, sr, train_path, forward_params, band_est_dur, use_audiofile, chunk_timeout,
               chunk_another_thread, with_train_data=False, **params):
-    train_data = MusicDataset(train_path, sample_len=sample_len, depth=data_depth, sr=sr, use_audiofile=use_audiofile,
+    train_data = MusicDataset(train_path, sample_len=sample_len, sr=sr, use_audiofile=use_audiofile,
                               timeout=chunk_timeout, another_thread=chunk_another_thread)
     logging.info(train_data)
     calc_dataset_dependent_params(train_data, forward_params, band_est_dur)

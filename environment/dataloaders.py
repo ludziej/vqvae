@@ -147,14 +147,13 @@ class Chunk(NamedTuple):
 
 
 class MusicDataset(Dataset):
-    def __init__(self,  sound_dirs, sample_len, depth=1, sr=22050, transform=None, min_length=1, timeout=1,
+    def __init__(self,  sound_dirs, sample_len,  sr=22050, transform=None, min_length=1, timeout=1,
                  cache_name="file_lengths.pickle", channel_level_bias=0.25, use_audiofile=False, another_thread=False):
         self.sound_dirs = sound_dirs if isinstance(sound_dirs, list) else [sound_dirs]
         self.sample_len = sample_len
         self.channel_level_bias = channel_level_bias
         self.min_length = min_length
         self.sr = sr
-        self.depth = depth
         self.transform = transform
         self.use_audiofile = use_audiofile
         self.legal_suffix = [".wav", ".mp3" ".ape", ".flac"]
@@ -171,11 +170,6 @@ class MusicDataset(Dataset):
         elif any(str(file).endswith(suf) for suf in self.legal_suffix):
             return [str(file)]
         return []
-
-    def calculate_files(self):
-        files = reduce(lambda x, f: f(x), repeat(flatten_dir, self.depth), self.sound_dirs)
-        files = [f for f in files if f[-4:] in self.legal_suffix]
-        return files
 
     def calculate_lengths(self):
         if self.cache_path is not None and os.path.exists(self.cache_path):
