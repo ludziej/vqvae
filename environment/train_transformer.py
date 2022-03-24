@@ -24,8 +24,7 @@ def train_generator(hparams, model_params, level):
     hparams.vqvae.sample_len = get_sample_len_from_tokens(hparams.vqvae.strides_t, hparams.vqvae.downs_t,
                                                           level, model_params.n_ctx)
     vqvae, train_dataloader, test_dataloader = \
-        get_model_with_data(**hparams.vqvae, train_path=hparams.train_path,
-                            data_depth=hparams.data_depth, test_path=hparams.test_path)
+        get_model_with_data(**hparams.vqvae, train_path=hparams.train_path, test_path=hparams.test_path)
     prior = get_model(vqvae=vqvae, level=level, **model_params)
     generic_train(prior, hparams, train_dataloader, test_dataloader, model_params, root_dir)
 
