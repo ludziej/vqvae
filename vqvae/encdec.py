@@ -92,9 +92,7 @@ class Decoder(nn.Module):
         self.input_emb_width = input_emb_width
         self.output_emb_width = output_emb_width
         self.levels = levels
-
         self.downs_t = downs_t
-
         self.strides_t = strides_t
 
         level_block = lambda level, down_t, stride_t: DecoderConvBock(output_emb_width,

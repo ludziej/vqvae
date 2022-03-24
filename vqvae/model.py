@@ -38,7 +38,7 @@ class VQVAE(LightningModule):
         self.encoders = nn.ModuleList([Encoder(input_channels, emb_width, level + 1,
                                                downs_t[:level+1], strides_t[:level+1], **_block_kwargs(level))
                                        for level in range(levels)])
-        self.encoders = nn.ModuleList([Decoder(input_channels, emb_width, level + 1,
+        self.decoders = nn.ModuleList([Decoder(input_channels, emb_width, level + 1,
                                                downs_t[:level+1], strides_t[:level+1], **_block_kwargs(level))
                                        for level in range(levels)])
 
