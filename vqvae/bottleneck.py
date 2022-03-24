@@ -5,9 +5,10 @@ import torch.nn.functional as F
 
 
 class BottleneckBlock(nn.Module):
-    def __init__(self, k_bins, emb_width, mu, norm_before_vqvae, bottleneck_momentum):
+    def __init__(self, k_bins, emb_width, mu, norm_before_vqvae, bottleneck_momentum, fixed_commit):
         super().__init__()
         self.k_bins = k_bins
+        self.fixed_commit = fixed_commit
         self.momentum = bottleneck_momentum
         self.emb_width = emb_width
         self.mu = mu
@@ -162,7 +163,8 @@ class BottleneckBlock(nn.Module):
             update_metrics = {}
 
         # Loss
-        commit_loss = t.norm(x_d.detach() - x) ** 2 / np.prod(x.shape)
+        commit_loss = t.mean(t.norm(x_d.detach() - x, dim=1)) if self.fixed_commit else\
+            t.norm(x_d.detach() - x) ** 2 / np.prod(x.shape)
 
         # Passthrough
         x_d = x + (x_d - x).detach()
@@ -175,10 +177,11 @@ class BottleneckBlock(nn.Module):
 
 
 class Bottleneck(nn.Module):
-    def __init__(self, l_bins, emb_width, mu, levels, norm_before_vqvae, bottleneck_momentum):
+    def __init__(self, l_bins, emb_width, mu, levels, norm_before_vqvae, bottleneck_momentum, fixed_commit):
         super().__init__()
         self.levels = levels
-        self.level_blocks = nn.ModuleList([BottleneckBlock(l_bins, emb_width, mu, norm_before_vqvae, bottleneck_momentum)
+        self.level_blocks = nn.ModuleList([BottleneckBlock(l_bins, emb_width, mu, norm_before_vqvae,
+                                                           bottleneck_momentum, fixed_commit)
                                            for level in range(self.levels)])
 
     def encode(self, xs):

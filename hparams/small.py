@@ -51,6 +51,7 @@ small_vqvae_model_params = Hparams(
     sr=22050,
     norm_before_vqvae=True,
     bottleneck_momentum=0.99,
+    fixed_commit=True,
     group_norm=False,
     norm_in_wavenet=False,
     forward_params=small_forward_params,
