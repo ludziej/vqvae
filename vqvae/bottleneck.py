@@ -2,7 +2,7 @@ import numpy as np
 import torch as t
 import torch.nn as nn
 import torch.nn.functional as F
-import old_ml_utils.dist_adapter as dist
+
 
 class BottleneckBlock(nn.Module):
     def __init__(self, k_bins, emb_width, mu):
@@ -17,8 +17,7 @@ class BottleneckBlock(nn.Module):
         self.init = False
         self.k_sum = None
         self.k_elem = None
-        #self.register_parameter('k',.cuda())
-        self.k = t.nn.Parameter(t.zeros(self.k_bins, self.emb_width))
+        self.register_buffer('k', t.zeros(self.k_bins, self.emb_width))
 
     def _tile(self, x):
         d, ew = x.shape
@@ -30,19 +29,19 @@ class BottleneckBlock(nn.Module):
         return x
 
     def init_k(self, x):
-        mu, emb_width, k_bins = self.mu, self.emb_width, self.k_bins
+        emb_width, k_bins = self.emb_width, self.k_bins
         self.init = True
         # init k_w using random vectors from x
         y = self._tile(x)
         _k_rand = y[t.randperm(y.shape[0])][:k_bins]
         #dist.broadcast(_k_rand, 0)
-        self.k = t.nn.Parameter(_k_rand)
+        self.k = _k_rand
         assert self.k.shape == (k_bins, emb_width)
         self.k_sum = self.k.detach()
         self.k_elem = t.ones(k_bins, device=self.k.device)
 
     def restore_k(self, num_tokens=None, threshold=1.0):
-        mu, emb_width, k_bins = self.mu, self.emb_width, self.k_bins
+        emb_width, k_bins = self.emb_width, self.k_bins
         self.init = True
         assert self.k.shape == (k_bins, emb_width)
         self.k_sum = self.k.detach().clone()
@@ -65,17 +64,12 @@ class BottleneckBlock(nn.Module):
             y = self._tile(x)
             _k_rand = y[t.randperm(y.shape[0])][:k_bins]
 
-            #dist.broadcast(_k_rand, 0)
-            #dist.all_reduce(_k_sum)
-            #dist.all_reduce(_k_elem)
-
             # Update centres
             old_k = self.k.detach()
             self.k_sum = mu * self.k_sum + (1. - mu) * _k_sum  # w, k_bins
             self.k_elem = mu * self.k_elem + (1. - mu) * _k_elem  # k_bins
             usage = (self.k_elem.view(k_bins, 1) >= self.threshold).float()
-            self.k = t.nn.Parameter(usage * (self.k_sum.view(k_bins, emb_width) / self.k_elem.view(k_bins, 1))
-                     + (1 - usage) * _k_rand)
+            self.k = usage * (self.k_sum.view(k_bins, emb_width) / self.k_elem.view(k_bins, 1)) + (1 - usage) * _k_rand
             _k_prob = _k_elem / t.sum(_k_elem)  # x_l_onehot.mean(dim=-1)  # prob of each bin
             entropy = -t.sum(_k_prob * t.log(_k_prob + 1e-8))  # entropy ie how diverse
             used_curr = (_k_elem >= self.threshold).sum()

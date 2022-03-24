@@ -1,6 +1,6 @@
 from hparams.parser import Hparams
 
-forward_params = Hparams(
+small_forward_params = Hparams(
     n_fft=1024,
     hop_length=256,
     window_size=1024,
@@ -50,7 +50,7 @@ small_vqvae_model_params = Hparams(
     sr=22050,
     group_norm=False,
     norm_in_wavenet=False,
-    forward_params=forward_params,
+    forward_params=small_forward_params,
     from_last_checkpot=True,
     main_dir="generated/models/small_vqvae/",
 )
@@ -62,7 +62,7 @@ dirs_config = Hparams(
     default_ckpt_root="checkpoints",
 )
 
-vqvae_opt_hparams = Hparams(
+small_vqvae_opt_hparams = Hparams(
     chunk_timeout=2,
     chunk_another_thread=True,
     shuffle_train=True,
@@ -93,7 +93,7 @@ vqvae_opt_hparams = Hparams(
     **dirs_config.__dict__,
 )
 
-small_vqvae_params = Hparams(**vqvae_opt_hparams.__dict__, **small_vqvae_model_params.__dict__)
+small_vqvae_params = Hparams(**small_vqvae_opt_hparams.__dict__, **small_vqvae_model_params.__dict__)
 
 small_transformer_params = Hparams(
     dim=512,

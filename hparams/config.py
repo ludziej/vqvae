@@ -1,8 +1,8 @@
 from hparams.parser import Hparams
 from hparams.big import big_prior_params, big_vqvae_params, big_upsampler_params, big_transformer_params, \
     big_upsampler_conditioner_params
-from hparams.small import small_upsampler_params, small_prior_params, small_vqvae_params, dirs_config, forward_params, \
-    vqvae_opt_hparams, small_transformer_params, small_upsampler_conditioner_params
+from hparams.small import small_upsampler_params, small_prior_params, small_vqvae_params, dirs_config, small_forward_params, \
+    small_vqvae_opt_hparams, small_transformer_params, small_upsampler_conditioner_params
 
 config_big_hparams = Hparams(
     model="vqvae",
@@ -43,8 +43,8 @@ hparams_registry = dict(
     config_big=config_big_hparams,
     config_small=config_small_hparams,
     dirs_config=dirs_config,
-    forward=forward_params,
-    vqvae_opt=vqvae_opt_hparams,
+    small_forward=small_forward_params,
+    small_vqvae_opt=small_vqvae_opt_hparams,
     small_vqvae=small_vqvae_params,
     big_vqvae=big_vqvae_params,
 

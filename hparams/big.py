@@ -1,5 +1,5 @@
 from hparams.parser import Hparams
-from hparams.small import vqvae_opt_hparams, dirs_config, small_transformer_params
+from hparams.small import small_vqvae_opt_hparams, dirs_config, small_transformer_params
 
 
 forward_params = Hparams(
@@ -58,7 +58,7 @@ big_vqvae_model_params = Hparams(
     main_dir="generated/models/big_vqvae/",
 )
 
-big_vqvae_params = Hparams(**vqvae_opt_hparams.__dict__, **big_vqvae_model_params.__dict__)
+big_vqvae_params = Hparams(**small_vqvae_opt_hparams.__dict__, **big_vqvae_model_params.__dict__)
 
 big_transformer_params = Hparams(
     dim=512,
