@@ -5,9 +5,10 @@ import torch.nn.functional as F
 
 
 class BottleneckBlock(nn.Module):
-    def __init__(self, k_bins, emb_width, mu, norm_before_vqvae):
+    def __init__(self, k_bins, emb_width, mu, norm_before_vqvae, bottleneck_momentum):
         super().__init__()
         self.k_bins = k_bins
+        self.momentum = momentum
         self.emb_width = emb_width
         self.mu = mu
         self.norm_before_vqvae = norm_before_vqvae
@@ -57,7 +58,8 @@ class BottleneckBlock(nn.Module):
             self.k_sum = mu * self.k_sum + (1. - mu) * _k_sum  # w, k_bins
             self.k_elem = mu * self.k_elem + (1. - mu) * _k_elem  # k_bins
             usage = (self.k_elem.view(k_bins, 1) >= self.threshold).float()
-            self.k = usage * (self.k_sum.view(k_bins, emb_width) / self.k_elem.view(k_bins, 1)) + (1 - usage) * _k_rand
+            new_k = usage * (self.k_sum.view(k_bins, emb_width) / self.k_elem.view(k_bins, 1)) + (1 - usage) * _k_rand
+            self.k = self.momentum * self.k + (1 - self.momentum) * new_k
             _k_prob = _k_elem / t.sum(_k_elem)  # x_l_onehot.mean(dim=-1)  # prob of each bin
             entropy = -t.sum(_k_prob * t.log(_k_prob + 1e-8))  # entropy ie how diverse
             used_curr = (_k_elem >= self.threshold).sum()
@@ -165,10 +167,10 @@ class BottleneckBlock(nn.Module):
 
 
 class Bottleneck(nn.Module):
-    def __init__(self, l_bins, emb_width, mu, levels, norm_before_vqvae):
+    def __init__(self, l_bins, emb_width, mu, levels, norm_before_vqvae, bottleneck_momentum):
         super().__init__()
         self.levels = levels
-        self.level_blocks = nn.ModuleList([BottleneckBlock(l_bins, emb_width, mu, norm_before_vqvae)
+        self.level_blocks = nn.ModuleList([BottleneckBlock(l_bins, emb_width, mu, norm_before_vqvae, bottleneck_momentum)
                                            for level in range(self.levels)])
 
     def encode(self, xs):
