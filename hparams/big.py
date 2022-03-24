@@ -57,6 +57,7 @@ big_vqvae_model_params = Hparams(
     norm_in_wavenet=False,
     forward_params=forward_params,
     from_last_checkpot=True,
+    use_bottleneck=True,
     main_dir="generated/models/big_vqvae/",
 )
 

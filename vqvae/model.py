@@ -35,15 +35,12 @@ class VQVAE(LightningModule):
             this_block_kwargs["depth"] *= self.multipliers[level]
             return this_block_kwargs
 
-        encoder = lambda level: Encoder(input_channels, emb_width, level + 1,
-                                        downs_t[:level+1], strides_t[:level+1], **_block_kwargs(level))
-        decoder = lambda level: Decoder(input_channels, emb_width, level + 1,
-                                        downs_t[:level+1], strides_t[:level+1], **_block_kwargs(level))
-        self.encoders = nn.ModuleList()
-        self.decoders = nn.ModuleList()
-        for level in range(levels):
-            self.encoders.append(encoder(level))
-            self.decoders.append(decoder(level))
+        self.encoders = nn.ModuleList([Encoder(input_channels, emb_width, level + 1,
+                                               downs_t[:level+1], strides_t[:level+1], **_block_kwargs(level))
+                                       for level in range(levels)])
+        self.encoders = nn.ModuleList([Decoder(input_channels, emb_width, level + 1,
+                                               downs_t[:level+1], strides_t[:level+1], **_block_kwargs(level))
+                                       for level in range(levels)])
 
         if use_bottleneck:
             self.bottleneck = Bottleneck(l_bins, emb_width, mu, levels, norm_before_vqvae, bottleneck_momentum)
