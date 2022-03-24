@@ -8,7 +8,7 @@ class BottleneckBlock(nn.Module):
     def __init__(self, k_bins, emb_width, mu, norm_before_vqvae, bottleneck_momentum):
         super().__init__()
         self.k_bins = k_bins
-        self.momentum = momentum
+        self.momentum = bottleneck_momentum
         self.emb_width = emb_width
         self.mu = mu
         self.norm_before_vqvae = norm_before_vqvae
