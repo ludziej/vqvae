@@ -159,7 +159,9 @@ class MusicDataset(Dataset):
         self.use_audiofile = use_audiofile
         self.legal_suffix = [".wav", ".mp3" ".ape", ".flac"]
         self.files = flatten(self.get_music_in(pathlib.Path(x)) for x in self.sound_dirs)
-        self.sizes, self.dataset_size = self.calculate_lengths(cache_name)
+        self.cache_dir = pathlib.Path(self.sound_dirs[0])
+        self.cache_path = self.cache_dir / cache_name if cache_name is not None else None
+        self.sizes, self.dataset_size = self.calculate_lengths()
         self.chunk_config = ChunkConfig(channel_level_bias, use_audiofile, another_thread, timeout)
         self.chunks = self.calculate_chunks()
 
@@ -175,11 +177,10 @@ class MusicDataset(Dataset):
         files = [f for f in files if f[-4:] in self.legal_suffix]
         return files
 
-    def calculate_lengths(self, cache_path):
-        path = pathlib.Path(self.sound_dirs[0]) / cache_path if cache_path is not None else None
-        if path is not None and os.path.exists(path):
-            logging.info(f"File Lengths loaded from {path}")
-            files, sizes, dataset_size = load(str(path))
+    def calculate_lengths(self):
+        if self.cache_path is not None and os.path.exists(self.cache_path):
+            logging.info(f"File Lengths loaded from {self.cache_path}")
+            files, sizes, dataset_size = load(str(self.cache_path))
             if self.files != files:  # maybe order is different
                 logging.info(f"Fixing order for cached files, prev {len(files)} now {len(self.files)} files, "
                              f"\n then {files[:1]} now {self.files[:1]}")
@@ -194,8 +195,8 @@ class MusicDataset(Dataset):
         sizes = [get_duration(f, self.use_audiofile) for f in
                  tqdm(self.files, desc="Calculating lengths for dataloaders", smoothing=0)]
         dataset_size = sum(sizes)
-        if cache_path is not None:
-            save((self.files, sizes, dataset_size), str(path))
+        if self.cache_path is not None:
+            save((self.files, sizes, dataset_size), str(self.cache_path))
         return sizes, dataset_size
 
     def calculate_chunks(self):

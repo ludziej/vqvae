@@ -25,6 +25,7 @@ small_forward_params = Hparams(
     lmix_l2=1.0,
     lmix_linf=0.02,
     linf_k=2048,
+    bandwidth_cache="bandwidth.cache",
     bandwidth=None,
 )
 

@@ -2,6 +2,7 @@ import os
 import pickle
 from typing import Callable
 from time import time
+import logging
 
 
 def time_run(fun):
@@ -22,6 +23,7 @@ def load(filename: str):
 
 def lazy_compute_pickle(fun: Callable[[], object], filename: str) -> object:
     if os.path.exists(filename):
+        logging.info(f"Reading cached values from {filename}")
         return load(filename)
     obj = fun()
     save(obj, filename)

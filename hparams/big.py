@@ -1,8 +1,8 @@
 from hparams.parser import Hparams
-from hparams.small import small_vqvae_opt_hparams, dirs_config, small_transformer_params
+from hparams.small import dirs_config
 
 
-forward_params = Hparams(
+big_forward_params = Hparams(
     n_fft=1024,
     hop_length=256,
     window_size=1024,
@@ -27,8 +27,42 @@ forward_params = Hparams(
     lmix_l2=1.0,
     lmix_linf=0.02,
     linf_k=2048,
+    bandwidth_cache="bandwidth.cache",
     bandwidth=None,
 )
+
+
+big_vqvae_opt_hparams = Hparams(
+    chunk_timeout=2,
+    chunk_another_thread=True,
+    shuffle_train=True,
+    use_audiofile=True,
+    epochs=10000,
+    lr=0.0003,
+    clip=1.0,
+    beta1=0.9,
+    beta2=0.999,
+    ignore_grad_norm=0,
+    weight_decay=0.0,
+    eps=1e-08,
+    lr_warmup=100.0,
+    lr_decay=10000000000.0,
+    lr_gamma=1.0,
+    lr_scale=1.0,
+    lr_use_linear_decay=False,
+    lr_start_linear_decay=0,
+    lr_use_cosine_decay=False,
+    fp16=False,
+    fp16_params=False,
+    fp16_loss_scale=None,
+    fp16_scale_window=1000.0,
+    fp16_opt=False,
+    ckpt_freq=10,
+    band_est_dur=1000,
+    ckpt_name='model-{epoch}-{val_multispectral_loss_epoch:.2f}-{spectral_loss_epoch:.2f}',
+    **dirs_config.__dict__,
+)
+
 
 
 big_vqvae_model_params = Hparams(
@@ -55,13 +89,13 @@ big_vqvae_model_params = Hparams(
     sr=44100,
     group_norm=False,
     norm_in_wavenet=False,
-    forward_params=forward_params,
+    forward_params=big_forward_params,
     from_last_checkpot=True,
     use_bottleneck=True,
     main_dir="generated/models/big_vqvae/",
 )
 
-big_vqvae_params = Hparams(**small_vqvae_opt_hparams.__dict__, **big_vqvae_model_params.__dict__)
+big_vqvae_params = Hparams(**big_vqvae_opt_hparams.__dict__, **big_vqvae_model_params.__dict__)
 
 big_transformer_params = Hparams(
     dim=512,
@@ -110,7 +144,7 @@ big_upsampler_conditioner_params = Hparams(
 )
 
 big_upsampler_params = Hparams(
-    **small_transformer_params.__dict__,
+    **big_transformer_params.__dict__,
     n_ctx=1560,
     main_dir="generated/upsampler/",
     context_on_level=True,

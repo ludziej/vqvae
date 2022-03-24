@@ -3,6 +3,7 @@ from pathlib import Path
 from environment.dataloaders import MusicDataset
 from vqvae.model import VQVAE
 import logging
+from utils.misc import lazy_compute_pickle
 from old_ml_utils.audio_utils import calculate_bandwidth
 from environment.train_utils import generic_train, get_last_path, set_logger
 
@@ -16,7 +17,9 @@ def create_vqvae(l_mu, from_last_checkpot, ckpt_dir, restore_ckpt, main_dir, **p
 
 
 def calc_dataset_dependent_params(dataset, forward_params, duration):
-    forward_params.bandwidth = calculate_bandwidth(dataset, duration=duration, hps=forward_params)
+    forward_params.bandwidth = lazy_compute_pickle(
+        lambda: calculate_bandwidth(dataset, duration=duration, hps=forward_params),
+        dataset.cache_dir / forward_params.bandwidth_cache)
 
 
 def get_model(sample_len, data_depth, sr, train_path, forward_params, band_est_dur, use_audiofile, chunk_timeout,
