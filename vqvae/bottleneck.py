@@ -17,9 +17,15 @@ class BottleneckBlock(nn.Module):
 
     def reset_k(self):
         self.init = False
-        self.register_buffer('k', t.zeros(self.k_bins, self.emb_width))
+        if self.norm_before_vqvae:
+            self.register_buffer('k', t.rand(self.k_bins, self.emb_width) - 0.5)
+            self.k = t.nn.functional.normalize(self.k)
+        else:
+            self.register_buffer('k', t.zeros(self.k_bins, self.emb_width))
+
         self.register_buffer('k_sum', t.zeros(self.k_bins, self.emb_width))
         self.register_buffer('k_elem', t.ones(self.k_bins, device=self.k.device))
+
 
     def _tile(self, x):
         d, ew = x.shape
@@ -60,6 +66,8 @@ class BottleneckBlock(nn.Module):
             usage = (self.k_elem.view(k_bins, 1) >= self.threshold).float()
             new_k = usage * (self.k_sum.view(k_bins, emb_width) / self.k_elem.view(k_bins, 1)) + (1 - usage) * _k_rand
             self.k = self.momentum * self.k + (1 - self.momentum) * new_k
+            if self.norm_before_vqvae:
+                self.k = t.nn.functional.normalize(self.k)
             _k_prob = _k_elem / t.sum(_k_elem)  # x_l_onehot.mean(dim=-1)  # prob of each bin
             entropy = -t.sum(_k_prob * t.log(_k_prob + 1e-8))  # entropy ie how diverse
             used_curr = (_k_elem >= self.threshold).sum()
