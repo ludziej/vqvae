@@ -84,6 +84,7 @@ class BottleneckBlock(nn.Module):
         x = x.permute(0, 2, 1).contiguous()
         x = x.view(-1, x.shape[-1])  # x_en = (N * L, w), k_j = (w, k_bins)
 
+        prenorm_vec = t.mean(t.norm(x.detach(), dim=1))
         if x.shape[-1] == self.emb_width:
             prenorm = t.norm(x - t.mean(x)) / np.sqrt(np.prod(x.shape))
         elif x.shape[-1] == 2 * self.emb_width:
@@ -96,7 +97,6 @@ class BottleneckBlock(nn.Module):
             assert False, f"Expected {x.shape[-1]} to be (1 or 2) * {self.emb_width}"
         if self.norm_before_vqvae:
             x = t.nn.functional.normalize(x)
-        prenorm_vec = t.mean(t.norm(x.detach(), dim=1))
         return x, prenorm, prenorm_vec
 
     def postprocess(self, x_l, x_d, x_shape):
