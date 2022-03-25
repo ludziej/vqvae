@@ -96,7 +96,8 @@ class BottleneckBlock(nn.Module):
             assert False, f"Expected {x.shape[-1]} to be (1 or 2) * {self.emb_width}"
         if self.norm_before_vqvae:
             x = t.nn.functional.normalize(x)
-        return x, prenorm
+        prenorm_vec = t.mean(t.norm(x.detach(), dim=1))
+        return x, prenorm, prenorm_vec
 
     def postprocess(self, x_l, x_d, x_shape):
         # [NT, C] -> NTC -> NCT
@@ -122,7 +123,7 @@ class BottleneckBlock(nn.Module):
         N, width, T = x.shape
 
         # Preprocess.
-        x, prenorm = self.preprocess(x)
+        x, prenorm, prenorm_vec = self.preprocess(x)
 
         # Quantise
         x_l, fit = self.quantise(x)
@@ -146,7 +147,7 @@ class BottleneckBlock(nn.Module):
         N, width, T = x.shape
 
         # Preprocess
-        x, prenorm = self.preprocess(x)
+        x, prenorm, prenorm_vec = self.preprocess(x)
 
         # Init k if not inited
         if update_k and not self.init:
@@ -173,6 +174,7 @@ class BottleneckBlock(nn.Module):
         x_l, x_d = self.postprocess(x_l, x_d, (N,T))
         return x_l, x_d, commit_loss, dict(fit=fit,
                                            pn=prenorm,
+                                           pn_vec=prenorm_vec,
                                            **update_metrics)
 
 

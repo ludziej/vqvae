@@ -3,36 +3,19 @@ import torch.nn as nn
 import old_ml_utils.dist_adapter as dist
 from old_ml_utils.checkpoint import checkpoint
 import logging
+from optimization.normalization import CustomNormalization
 
-class ResConvBlock(nn.Module):
-    def __init__(self, n_in, n_state):
-        super().__init__()
-        self.model = nn.Sequential(
-            nn.ReLU(),
-            nn.Conv2d(n_in, n_state, 3, 1, 1),
-            nn.ReLU(),
-            nn.Conv2d(n_state, n_in, 1, 1, 0),
-        )
-
-    def forward(self, x):
-        return x + self.model(x)
-
-class Resnet(nn.Module):
-    def __init__(self, n_in, n_depth, m_conv=1.0):
-        super().__init__()
-        self.model = nn.Sequential(*[ResConvBlock(n_in, int(m_conv * n_in)) for _ in range(n_depth)])
-
-    def forward(self, x):
-        return self.model(x)
 
 class ResConv1DBlock(nn.Module):
-    def __init__(self, n_in, n_state, dilation=1, zero_out=False, res_scale=1.0):
+    def __init__(self, n_in, n_state, norm_type, dilation=1, zero_out=False, res_scale=1.0):
         super().__init__()
         padding = dilation
         self.model = nn.Sequential(
             nn.ReLU(),
+            CustomNormalization(n_in, norm_type),
             nn.Conv1d(n_in, n_state, 3, 1, padding, dilation),
             nn.ReLU(),
+            CustomNormalization(n_in, norm_type),
             nn.Conv1d(n_state, n_in, 1, 1, 0),
         )
         if zero_out:
@@ -44,8 +27,10 @@ class ResConv1DBlock(nn.Module):
     def forward(self, x):
         return x + self.res_scale * self.model(x)
 
+
 class Resnet1D(nn.Module):
-    def __init__(self, n_in, n_depth, m_conv=1.0, dilation_growth_rate=1, dilation_cycle=None, zero_out=False, res_scale=False, reverse_dilation=False, checkpoint_res=False):
+    def __init__(self, n_in, n_depth, m_conv=1.0, dilation_growth_rate=1, dilation_cycle=None, zero_out=False,
+                 res_scale=False, reverse_dilation=False, checkpoint_res=False, norm_type="none"):
         super().__init__()
         def _get_depth(depth):
             if dilation_cycle is None:
@@ -54,7 +39,7 @@ class Resnet1D(nn.Module):
                 return depth % dilation_cycle
         blocks = [ResConv1DBlock(n_in, int(m_conv * n_in),
                                  dilation=dilation_growth_rate ** _get_depth(depth),
-                                 zero_out=zero_out,
+                                 zero_out=zero_out, norm_type=norm_type,
                                  res_scale=1.0 if not res_scale else 1.0 / math.sqrt(n_depth))
                   for depth in range(n_depth)]
         if reverse_dilation:

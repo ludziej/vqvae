@@ -1,14 +1,20 @@
 import torch.nn as nn
-import torch
+
+
+norm_resolver = {
+    "none": lambda dim, _: (lambda x: x),
+    "layer": lambda dim, _: nn.LayerNorm(dim),
+    "batch": lambda dim, ng: nn.GroupNorm(num_groups=ng, num_channels=dim),
+    "group": lambda dim, _: nn.BatchNorm1d(dim),
+}
 
 
 class CustomNormalization(nn.Module):
-    def __init__(self, dim, use_groupnorm=False, num_groups=32):
+    def __init__(self, dim, norm_type="none", num_groups=32):
         super().__init__()
         self.dim = dim
-        self.use_groupnorm = use_groupnorm
-        self.norm = nn.LayerNorm(dim) if not self.use_groupnorm else \
-            nn.GroupNorm(num_channels=dim, num_groups=num_groups)
+        self.norm_type = norm_type
+        self.norm = norm_resolver[norm_type](dim, num_groups)
 
     def forward(self, x):
         return self.norm(x)

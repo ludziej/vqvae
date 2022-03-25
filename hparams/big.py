@@ -63,8 +63,6 @@ big_vqvae_opt_hparams = Hparams(
     **dirs_config.__dict__,
 )
 
-
-
 big_vqvae_model_params = Hparams(
     levels=3,
     downs_t=(3, 2, 2),
@@ -87,6 +85,8 @@ big_vqvae_model_params = Hparams(
     norm_before_vqvae=True,
     bottleneck_momentum=0.99,
     fixed_commit=True,
+    norm_type="none",
+    with_discriminator=False,
     sr=44100,
     group_norm=False,
     norm_in_wavenet=False,
@@ -112,7 +112,7 @@ big_transformer_params = Hparams(
     log_sample_size=(2, 770),  # 10 s, for prior only
     init_bins_from_vqvae=False,
     layer_for_logits=True,
-    group_norm=False,
+    norm_type="none",
     warmup_time=1000,
     sch_patience=1000,
     sch_factor=0.9,
@@ -141,7 +141,7 @@ big_upsampler_conditioner_params = Hparams(
     dilation_cycle=8,
     checkpoint_res=0,
     zero_out=False,
-    group_norm=False,
+    norm_type="none",
 )
 
 big_upsampler_params = Hparams(

@@ -3,7 +3,7 @@ import torch.nn as nn
 import numpy as np
 import statistics
 from pytorch_lightning import LightningModule
-from performer_pytorch import Performer
+from generator.performer import Performer
 from vqvae.model import VQVAE
 from generator.conditioner import Conditioner, PositionEmbedding
 import torch.nn.functional as F
@@ -12,7 +12,6 @@ from optimization.scheduler import ReduceLROnPlateauWarmup
 from optimization.normalization import CustomNormalization
 from utils.misc import time_run
 import tqdm
-import audiofile
 import logging
 
 
@@ -20,7 +19,7 @@ class LevelGenerator(LightningModule):
     def __init__(self, vqvae: VQVAE, level: int, log_sample_size: int, context_on_level: int,
                  dim: int, depth: int, heads: int,  lr: float, start_gen_sample_len: int,
                  log_starting_context_perc: int, log_context_time: float, n_ctx: int,
-                 pos_init_scale: int, bins_init_scale: float, dim_head: int, group_norm: bool,
+                 pos_init_scale: int, bins_init_scale: float, dim_head: int, norm_type: bool,
                  conds_kwargs: dict, init_bins_from_vqvae: bool, layer_for_logits: bool, conditioning_dropout: float,
                  warmup_time: int, sch_patience: int, sch_factor: int, log_interval, **params):
         super().__init__()
@@ -59,7 +58,7 @@ class LevelGenerator(LightningModule):
         self.sample_len = self.preprocessing.samples_from_z_length(self.n_ctx, self.level)
 
         if self.layer_for_logits:
-            self.final_layer_norm = CustomNormalization(dim, use_groupnorm=group_norm)
+            self.final_layer_norm = CustomNormalization(dim, norm_type=norm_type)
             self.to_out = nn.Linear(dim, self.bins)
 
         z_shapes = self.preprocessing.get_z_lengths(self.sample_len)

@@ -10,12 +10,13 @@ from old_ml_utils.misc import average_metrics
 from old_ml_utils.audio_utils import spectral_convergence, spectral_loss, multispectral_loss, audio_postprocess
 from optimization.opt_maker import get_optimizer
 from vqvae.helpers import calculate_strides, _loss_fn
+from vqvae.discriminator import Discriminator
 
 
 class VQVAE(LightningModule):
     def __init__(self, input_channels, levels, downs_t, strides_t, loss_fn, norm_before_vqvae, fixed_commit,
                  emb_width, l_bins, mu, commit, spectral, multispectral, forward_params, bottleneck_momentum,
-                 multipliers, use_bottleneck=True, **params):
+                 multipliers, use_bottleneck, with_discriminator, **params):
         super().__init__()
 
         self.downsamples = calculate_strides(strides_t, downs_t)
@@ -47,6 +48,9 @@ class VQVAE(LightningModule):
                                          fixed_commit)
         else:
             self.bottleneck = NoBottleneck(levels)
+
+        if with_discriminator:
+            self.discriminator = Discriminator()
 
         self.downs_t = downs_t
         self.strides_t = strides_t

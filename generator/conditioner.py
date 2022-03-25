@@ -4,6 +4,7 @@ from old_ml_utils.misc import assert_shape
 from vqvae.encdec import DecoderConvBock
 import torch.nn.functional as F
 import numpy as np
+from optimization.normalization import CustomNormalization
 
 
 def get_normal(*shape, std=0.01):
@@ -38,8 +39,8 @@ class LayerNorm(nn.LayerNorm):
 
 # conditions on one level above
 class Conditioner(nn.Module):
-    def __init__(self, input_shape, bins, down_t, stride_t, out_width, init_scale, zero_out, res_scale, bins_init=None,
-                 **block_kwargs):
+    def __init__(self, input_shape, bins, down_t, stride_t, out_width, init_scale, zero_out, res_scale, norm_type,
+                 bins_init=None, **block_kwargs):
         super().__init__()
         self.x_shape = input_shape
 
@@ -52,8 +53,9 @@ class Conditioner(nn.Module):
             self.x_emb.weight = bins_init
 
         # Conditioner
-        self.cond = DecoderConvBock(self.width, self.width, down_t, stride_t, zero_out=zero_out, res_scale=res_scale, **block_kwargs)
-        self.ln = LayerNorm(self.width)
+        self.cond = DecoderConvBock(self.width, self.width, down_t, stride_t, zero_out=zero_out, res_scale=res_scale,
+                                    norm_type=norm_type, **block_kwargs)
+        self.ln = CustomNormalization(self.width, norm_type=norm_type)
 
     def preprocess(self, x):
         x = x.permute(0,2,1) # NTC -> NCT
