@@ -5,11 +5,10 @@ import torch.nn.functional as F
 
 
 class BottleneckBlock(nn.Module):
-    def __init__(self, k_bins, emb_width, mu, norm_before_vqvae, bottleneck_momentum, fixed_commit):
+    def __init__(self, k_bins, emb_width, mu, norm_before_vqvae, fixed_commit):
         super().__init__()
         self.k_bins = k_bins
         self.fixed_commit = fixed_commit
-        self.momentum = bottleneck_momentum
         self.emb_width = emb_width
         self.mu = mu
         self.norm_before_vqvae = norm_before_vqvae
@@ -26,7 +25,6 @@ class BottleneckBlock(nn.Module):
 
         self.register_buffer('k_sum', t.zeros(self.k_bins, self.emb_width))
         self.register_buffer('k_elem', t.ones(self.k_bins, device=self.k.device))
-
 
     def _tile(self, x):
         d, ew = x.shape
@@ -65,8 +63,7 @@ class BottleneckBlock(nn.Module):
             self.k_sum = mu * self.k_sum + (1. - mu) * _k_sum  # w, k_bins
             self.k_elem = mu * self.k_elem + (1. - mu) * _k_elem  # k_bins
             usage = (self.k_elem.view(k_bins, 1) >= self.threshold).float()
-            new_k = usage * (self.k_sum.view(k_bins, emb_width) / self.k_elem.view(k_bins, 1)) + (1 - usage) * _k_rand
-            self.k = self.momentum * self.k + (1 - self.momentum) * new_k
+            self.k = usage * (self.k_sum.view(k_bins, emb_width) / self.k_elem.view(k_bins, 1)) + (1 - usage) * _k_rand
             if self.norm_before_vqvae:
                 self.k = t.nn.functional.normalize(self.k)
             _k_prob = _k_elem / t.sum(_k_elem)  # x_l_onehot.mean(dim=-1)  # prob of each bin
@@ -179,11 +176,11 @@ class BottleneckBlock(nn.Module):
 
 
 class Bottleneck(nn.Module):
-    def __init__(self, l_bins, emb_width, mu, levels, norm_before_vqvae, bottleneck_momentum, fixed_commit):
+    def __init__(self, l_bins, emb_width, mu, levels, norm_before_vqvae, fixed_commit):
         super().__init__()
         self.levels = levels
         self.level_blocks = nn.ModuleList([BottleneckBlock(l_bins, emb_width, mu, norm_before_vqvae,
-                                                           bottleneck_momentum, fixed_commit)
+                                                           fixed_commit)
                                            for level in range(self.levels)])
 
     def encode(self, xs):

@@ -88,3 +88,8 @@ class Hparams(SimpleNamespace, Mapping):
 
     def __setitem__(self, key, value):
         return self.__dict__.__setitem__(key, value)
+
+    def update(self, **args):
+        d = self.__dict__.copy()
+        d.update(args)
+        return Hparams(**d)

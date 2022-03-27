@@ -15,7 +15,7 @@ from vqvae.discriminator import Discriminator
 
 class VQVAE(LightningModule):
     def __init__(self, input_channels, levels, downs_t, strides_t, loss_fn, norm_before_vqvae, fixed_commit,
-                 emb_width, l_bins, mu, commit, spectral, multispectral, forward_params, bottleneck_momentum,
+                 emb_width, l_bins, mu, commit, spectral, multispectral, forward_params,
                  multipliers, use_bottleneck, with_discriminator, **params):
         super().__init__()
 
@@ -26,7 +26,7 @@ class VQVAE(LightningModule):
         self.forward_params = forward_params
         self.loss_fn = loss_fn
         self.sr = params["sr"]
-        assert self.sr == self.forward_params["sr"]
+        self.forward_params["sr"] = self.sr
 
         assert len(multipliers) == levels, "Invalid number of multipliers"
         self.multipliers = multipliers
@@ -44,8 +44,7 @@ class VQVAE(LightningModule):
                                        for level in range(levels)])
 
         if use_bottleneck:
-            self.bottleneck = Bottleneck(l_bins, emb_width, mu, levels, norm_before_vqvae, bottleneck_momentum,
-                                         fixed_commit)
+            self.bottleneck = Bottleneck(l_bins, emb_width, mu, levels, norm_before_vqvae, fixed_commit)
         else:
             self.bottleneck = NoBottleneck(levels)
 
