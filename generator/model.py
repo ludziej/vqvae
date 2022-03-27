@@ -245,7 +245,7 @@ class LevelGenerator(LightningModule):
         out_tokens = torch.cat([beginning, out_tokens], dim=1) if with_begin else out_tokens
         sound = self.decode_sound(out_tokens)
 
-        generated_part = 1 - beginning.shape[-1]/out_tokens.shape[-1]
+        generated_part = 1 - beginning.shape[-1] / out_tokens.shape[-1]
         generated_time = sound.shape[-1] / self.preprocessing.sr * generated_part
         speed = runtime / generated_time
         return sound, speed if return_speed else sound
@@ -304,7 +304,7 @@ class LevelGenerator(LightningModule):
 
     # boilerplate
 
-    def training_step(self, batch, batch_idx, name=""):
+    def training_step(self, batch, batch_idx, time=None, context=None, name=""):
         assert batch.shape[1] == self.sample_len
         loss = self(batch)
         self.log_metrics_and_samples(loss, batch, batch_idx, name)

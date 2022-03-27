@@ -1,6 +1,6 @@
 from torch.utils.data import DataLoader
 from pathlib import Path
-from environment.dataloaders import MusicDataset
+from environment.dataset import MusicDataset
 from vqvae.model import VQVAE
 import logging
 from utils.misc import lazy_compute_pickle

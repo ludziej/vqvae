@@ -54,6 +54,7 @@ default_vqvae_model_params = Hparams(
     fixed_commit=True,
     norm_type="none",
     with_discriminator=False,
+    discriminator_level=0,
     forward_params=default_forward_params,
     from_last_checkpot=True,
     use_bottleneck=True,

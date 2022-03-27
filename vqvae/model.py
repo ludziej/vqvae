@@ -15,7 +15,7 @@ from vqvae.discriminator import Discriminator
 
 class VQVAE(LightningModule):
     def __init__(self, input_channels, levels, downs_t, strides_t, loss_fn, norm_before_vqvae, fixed_commit,
-                 emb_width, l_bins, mu, commit, spectral, multispectral, forward_params,
+                 emb_width, l_bins, mu, commit, spectral, multispectral, forward_params, discriminator_level,
                  multipliers, use_bottleneck, with_discriminator, **params):
         super().__init__()
 
@@ -49,7 +49,9 @@ class VQVAE(LightningModule):
             self.bottleneck = NoBottleneck(levels)
 
         if with_discriminator:
-            self.discriminator = Discriminator()
+            self.discriminator = Discriminator(input_channels, emb_width, discriminator_level,
+                                               downs_t[:discriminator_level+1], strides_t[:discriminator_level+1],
+                                               **_block_kwargs(discriminator_level))
 
         self.downs_t = downs_t
         self.strides_t = strides_t
@@ -235,17 +237,17 @@ class VQVAE(LightningModule):
                 tlogger.add_audio(prefix + f"sample_out_{i}_lvl_{level}", out, nr, self.sr)
 
     def training_step(self, batch, batch_idx):
-        x_out, loss, metrics, x_outs = self(batch)
+        x_out, loss, metrics, x_outs = self(batch[0])
         self.log_metrics_and_samples(loss, metrics, batch, x_outs, batch_idx)
         return loss
 
     def test_step(self, batch, batch_idx):
-        x_out, loss, metrics, x_outs = self(batch)
+        x_out, loss, metrics, x_outs = self(batch[0])
         self.log_metrics_and_samples(loss, metrics, batch, x_outs, batch_idx, prefix="test_")
         return loss
 
     def validation_step(self, batch, batch_idx):
-        x_out, loss, metrics, x_outs = self(batch)
+        x_out, loss, metrics, x_outs = self(batch[0])
         self.log_metrics_and_samples(loss, metrics, batch, x_outs, batch_idx, prefix="val_")
         return loss
 
