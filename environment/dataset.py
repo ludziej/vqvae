@@ -26,7 +26,7 @@ class MusicDataset(Dataset):
         self.sr = sr
         self.transform = transform
         self.use_audiofile = use_audiofile
-        self.legal_suffix = [".wav", ".mp3" ".ape", ".flac"]
+        self.legal_suffix = [".wav", ".mp3", ".ape", ".flac"]
         self.context_file = "context.json"
 
         self.empty_context = dict(artist="other", genre="other")

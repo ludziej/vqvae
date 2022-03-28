@@ -28,7 +28,7 @@ def calculate_bandwidth(dataset, hps, duration=100):
     spec_norm_total, spec_nelem = 0.0, 0.0
     progress = tqdm(total=n_samples, desc="Calculating bandwidth")
     while n_seen < n_samples:
-        x = dataset[idx].squeeze(1).numpy()
+        x = dataset[idx][0].squeeze(1).numpy()
         samples = x.astype(np.float64)
         stft = librosa.core.stft(samples, n_fft=hps.n_fft, hop_length=hps.hop_length, win_length=hps.window_size)
         spec = np.absolute(stft)
