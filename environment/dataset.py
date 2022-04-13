@@ -30,8 +30,7 @@ class MusicDataset(Dataset):
         self.context_file = "context.json"
 
         self.empty_context = dict(artist="other", genre="other")
-        files, contexts = zip(*flatten(self.get_music_in(pathlib.Path(x), self.empty_context) for x in self.sound_dirs))
-        self.files, self.contexts = list(files), list(contexts)
+        self.files, self.contexts = self.get_files_and_contexts()
         self.contexts_vec, self.context_names, self.context_totals = self.vectorise_contexts()
         self.cache_dir = pathlib.Path(self.sound_dirs[0])
         self.cache_path = self.cache_dir / cache_name if cache_name is not None else None
@@ -39,6 +38,13 @@ class MusicDataset(Dataset):
         self.chunk_config = DatasetConfig(channel_level_bias, use_audiofile, another_thread, self.sample_len, timeout,
                                           self.sr, **self.context_names, **self.context_totals)
         self.chunks = self.calculate_chunks()
+
+    def get_files_and_contexts(self):
+        data = flatten(self.get_music_in(pathlib.Path(x), self.empty_context) for x in self.sound_dirs)
+        if len(data) == 0:
+            raise Exception(f"Empty dataset provided at {self.sound_dirs}")
+        files, contexts = zip(*data)
+        return list(files), list(contexts)
 
     # recursively gather information through catalog structure
     def get_music_in(self, file, context_dict):

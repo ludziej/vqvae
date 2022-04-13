@@ -305,6 +305,7 @@ class LevelGenerator(LightningModule):
     # boilerplate
 
     def training_step(self, batch, batch_idx, time=None, context=None, name=""):
+        batch, = batch
         assert batch.shape[1] == self.sample_len
         loss = self(batch)
         self.log_metrics_and_samples(loss, batch, batch_idx, name)

@@ -60,6 +60,8 @@ big_transformer_params = default_transformer_params.update(
     sch_factor=0.9,
     conditioning_dropout=0.,
     log_interval=5000,
+    conds_kwargs=None,
+    log_context_time=0,  # 2.5 s
 )
 
 big_upsampler_conditioner_params = default_upsampler_conditioner_params.update(
@@ -69,8 +71,7 @@ big_upsampler_conditioner_params = default_upsampler_conditioner_params.update(
     norm_type="none",
 )
 
-big_prior_params = Hparams(
-    **big_transformer_params.__dict__,
+big_prior_params = big_transformer_params.update(
     n_ctx=1540,
     main_dir="generated/big_prior/",
     context_on_level=False,
@@ -78,11 +79,10 @@ big_prior_params = Hparams(
     res_scale=False,
 )
 
-big_upsampler_params = Hparams(
-    **big_transformer_params.__dict__,
+big_upsampler_params = big_transformer_params.update(
     n_ctx=1560,
     main_dir="generated/big_upsampler/",
     context_on_level=True,
-    log_context_time=49920,  # 2.5 s
     conds_kwargs=big_upsampler_conditioner_params,
+    log_context_time=49920,  # 2.5 s
 )
