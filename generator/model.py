@@ -224,7 +224,7 @@ class LevelGenerator(LightningModule):
     def generate_no_sound(self, seq_len: int, start_random_size=10, bs=1, context=None, time=None, with_tqdm=False,
                           **sampling_kwargs):
         beginning = self.recreate_beginning(start_random_size, bs)
-        conditioning = self.get_all_conditionings(bs, seq_len, context=context, time=time)
+        conditioning = self.get_all_conditioning(bs, seq_len, context=context, time=time)
         out_tokens = self.autoregressive_generate_prior(beginning, seq_len, conditioning, with_tqdm=with_tqdm,
                                                         **sampling_kwargs)
         sound = self.decode_sound(out_tokens)
