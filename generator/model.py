@@ -298,7 +298,7 @@ class LevelGenerator(LightningModule):
             return
 
         # raw generation logging only for train on prior, because it does not depend on input data
-        samples = self.generate(self.log_sample_size, bs=self.log_sample_bs)
+        samples = self.generate_no_sound(self.log_sample_size, bs=self.log_sample_bs)
         for i, sample in enumerate(samples):
             tlogger.add_audio(prefix + f"sample_raw_{i}", sample, nr, self.sr)
 
