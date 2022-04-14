@@ -71,6 +71,7 @@ class LevelGenerator(LightningModule):
                                            stride_t=self.preprocessing.strides_t[u_level], **conds_kwargs)
         self.token_distr = np.zeros(self.bins)
         self.token_log_quantiles = 10
+        self.training_started = False
         logging.info(str(self))
 
     def __str__(self):
@@ -305,6 +306,9 @@ class LevelGenerator(LightningModule):
     # boilerplate
 
     def training_step(self, batch, batch_idx, time=None, context=None, name=""):
+        if not self.training_started:
+            self.training_started = True
+            logging.info("Training started - first batch arrived")
         batch, = batch
         assert batch.shape[1] == self.sample_len
         loss = self(batch)
