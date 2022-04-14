@@ -71,7 +71,7 @@ class LevelGenerator(LightningModule):
                                            stride_t=self.preprocessing.strides_t[u_level], **conds_kwargs)
         self.token_distr = np.zeros(self.bins)
         self.token_log_quantiles = 10
-        self.training_started = False
+        self.training_started = set()
         logging.info(str(self))
 
     def __str__(self):
@@ -305,21 +305,24 @@ class LevelGenerator(LightningModule):
 
     # boilerplate
 
-    def training_step(self, batch, batch_idx, time=None, context=None, name=""):
-        if not self.training_started:
-            self.training_started = True
-            logging.info("Training started - first batch arrived")
+    def step(self, batch, batch_idx, time=None, context=None, name=""):
+        if name not in self.training_started:
+            self.training_started.add(name)
+            logging.info(f"{(name or 'train')} loop started - first batch arrived")
         batch, = batch
         assert batch.shape[1] == self.sample_len
         loss = self(batch)
         self.log_metrics_and_samples(loss, batch, batch_idx, name)
         return loss
 
+    def training_step(self, batch, batch_idx, name=""):
+        return self.step(batch, batch_idx, name="")
+
     def test_step(self, batch, batch_idx):
-        return self.training_step(batch, batch_idx, "test_")
+        return self.step(batch, batch_idx, name="test_")
 
     def validation_step(self, batch, batch_idx):
-        return self.training_step(batch, batch_idx, "val_")
+        return self.step(batch, batch_idx, name="val_")
 
     def configure_optimizers(self):
         opt = torch.optim.Adam(self.parameters(), lr=self.lr / self.warmup_time)
