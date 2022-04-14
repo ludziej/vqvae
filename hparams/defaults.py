@@ -111,6 +111,7 @@ default_transformer_params = Hparams(
     start_gen_sample_len=5,
     pos_init_scale=1,
     bins_init_scale=1,
+    token_dim=64,
     log_starting_context_perc=0.1,
     log_sample_size=(2, 770),  # 10 s, for prior only
     init_bins_from_vqvae=False,

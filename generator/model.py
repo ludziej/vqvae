@@ -21,7 +21,7 @@ class LevelGenerator(LightningModule):
                  log_starting_context_perc: int, log_context_time: float, n_ctx: int,
                  pos_init_scale: int, bins_init_scale: float, dim_head: int, norm_type: bool,
                  conds_kwargs: dict, init_bins_from_vqvae: bool, layer_for_logits: bool, conditioning_dropout: float,
-                 warmup_time: int, sch_patience: int, sch_factor: int, log_interval, **params):
+                 warmup_time: int, sch_patience: int, sch_factor: int, log_interval, token_dim: int,  **params):
         super().__init__()
         self.n_ctx = n_ctx
         self.level = level
@@ -32,6 +32,7 @@ class LevelGenerator(LightningModule):
         self.start_gen_sample_len = start_gen_sample_len
         self.lr = lr
         self.dim = dim
+        self.token_dim = token_dim
         self.max_seq_len = n_ctx
         self.context_on_level = context_on_level
         self.log_starting_context_perc = log_starting_context_perc
@@ -50,12 +51,13 @@ class LevelGenerator(LightningModule):
         self.log_nr = {"val_": 0, "": 0, "test_": 0}
 
         self.transformer = Performer(causal=True, dim=dim, depth=depth, heads=heads, dim_head=dim_head)
-        self.pos_emb = PositionEmbedding(input_shape=(self.n_ctx,), width=self.dim, init_scale=self.pos_init_scale)
+        self.pos_emb = PositionEmbedding(input_shape=(self.n_ctx,), width=self.token_dim, init_scale=self.pos_init_scale)
         self.pos_embeddings_is_absolute = True  # needs to recalculate when we move windows by 1
         self.cond_dropout = nn.Dropout(conditioning_dropout)
-        self.x_emb = nn.Embedding(self.bins, self.dim)
+        self.x_emb = nn.Embedding(self.bins, self.token_dim)
         self.init_emb(self.x_emb)
         self.sample_len = self.preprocessing.samples_from_z_length(self.n_ctx, self.level)
+        self.start_layer = nn.ModuleList([nn.Linear(self.token_dim, self.dim), nn.ReLU()])
 
         if self.layer_for_logits:
             self.final_layer_norm = CustomNormalization(dim, norm_type=norm_type)
@@ -66,9 +68,10 @@ class LevelGenerator(LightningModule):
         if self.context_on_level:
             u_level = self.level + 1
             bins_init = None if not self.init_bins_from_vqvae else self.get_vqvae_bins(u_level)
-            self.conditioner = Conditioner(input_shape=z_shapes[u_level], bins=self.preprocessing.l_bins, out_width=dim,
-                                           down_t=self.preprocessing.downs_t[u_level], bins_init=bins_init,
-                                           stride_t=self.preprocessing.strides_t[u_level], **conds_kwargs)
+            self.conditioner = Conditioner(input_shape=z_shapes[u_level], bins=self.preprocessing.l_bins,
+                                           out_width=self.token_dim, down_t=self.preprocessing.downs_t[u_level],
+                                           bins_init=bins_init, stride_t=self.preprocessing.strides_t[u_level],
+                                           **conds_kwargs)
         self.token_distr = np.zeros(self.bins)
         self.token_log_quantiles = 10
         self.training_started = set()
@@ -83,12 +86,13 @@ class LevelGenerator(LightningModule):
 
     def init_emb(self, bins: nn.Module):
         if self.init_bins_from_vqvae:
-            bins.weight = self.get_vqvae_bins(self.level)
+            bins.weight = torch.nn.Parameter((self.get_vqvae_bins(self.level)))
         else:
             nn.init.normal_(bins.weight, std=0.02 * self.bins_init_scale)
 
     def get_transformer_logits(self, x_emb):
-        x = self.transformer(x_emb)
+        x = self.start_layer[1](self.start_layer[0](x_emb))
+        x = self.transformer(x)
         if self.layer_for_logits:
             x = self.final_layer_norm(x)
             x = self.to_out(x)
@@ -132,13 +136,13 @@ class LevelGenerator(LightningModule):
     # TODO implement batched version for different lengths (like jukebox)
     def get_lvl_conditioning(self, up_level, bs, length):
         from_up_lvl = self.conditioner(up_level)
-        assert from_up_lvl.shape == (bs, length, self.dim)
+        assert from_up_lvl.shape == (bs, length, self.token_dim)
         return from_up_lvl
 
     def get_pos_emb(self, bs, start_at=0, length=None):
-        pos_emb = self.pos_emb().repeat(bs, 1).reshape(bs, self.n_ctx, self.dim)
+        pos_emb = self.pos_emb().repeat(bs, 1).reshape(bs, self.n_ctx, self.token_dim)
         if start_at != 0:
-            pad = torch.zeros((bs, start_at, self.dim), dtype=pos_emb.dtype, device=pos_emb.device)
+            pad = torch.zeros((bs, start_at, self.token_dim), dtype=pos_emb.dtype, device=pos_emb.device)
             pos_emb = torch.cat([pad, pos_emb], dim=1)
         return pos_emb
 
