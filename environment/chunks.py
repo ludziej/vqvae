@@ -6,6 +6,7 @@ from typing import NamedTuple, List
 
 import audiofile
 import librosa
+import numpy
 import numpy as np
 import torch
 
@@ -108,10 +109,14 @@ class Chunk(NamedTuple):
         return output
 
     def _load_file(self, start, duration, use_audiofile):
-        if use_audiofile:
-            return audiofile.read(self.track.filename, offset=start.item(),
-                                  duration=duration.item() if duration is not None else None)
-        return librosa.load(self.track.filename, offset=start, duration=duration, mono=False, sr=self.track.config.sr)
+        try:
+            if use_audiofile:
+                return audiofile.read(self.track.filename, offset=start.item(),
+                                      duration=duration.item() if duration is not None else None)
+            return librosa.load(self.track.filename, offset=start, duration=duration, mono=False, sr=self.track.config.sr)
+        except Exception as e:
+            logging.warning(f"Exception {e} in {str(self)} config = {self.track.config}")
+            return numpy.zeros((1, 1), float)
 
     def get_time_cond(self):
         return TimeConditioning(self.start, self.end, self.track.file_length)
@@ -122,17 +127,17 @@ class Chunk(NamedTuple):
     def load_file(self, start, duration):
         run_lambda = (lambda: self._load_file_another_thread(start, duration)) if self.track.config.another_thread \
             else (lambda: self._load_file(start, duration, self.track.config.use_audiofile))
-        if logging.DEBUG >= logging.root.level:
+        if logging.INFO >= logging.root.level:
             time, (sound, file_sr) = time_run(run_lambda)
-            logging.debug(f"Reading from '{str(self)}' took {time:.2f} seconds")
+            logging.info(f"Reading from '{str(self)}' took {time:.2f} seconds")
         else:
             with warnings.catch_warnings(record=True) as w:
                 time, (sound, file_sr) = 0, run_lambda()
                 for warn in w:
-                    logging.debug(f"{warn.category} : {warn.message}")
+                    logging.info(f"{warn.category} : {warn.message}")
         if file_sr != self.track.config.sr and len(sound.shape) >= 2 and sound.shape[1] > 50:
             time, sound = time_run(lambda: self.resample(sound, file_sr))
-            logging.debug(f"Resampling from '{str(self)}' because of wrong sr={file_sr}, took {time:.2f}s")
+            logging.info(f"Resampling from '{str(self)}' because of wrong sr={file_sr}, took {time:.2f}s")
         if len(sound.shape) == 1:
             sound = sound.reshape(1, -1)
         return sound
