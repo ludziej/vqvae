@@ -48,6 +48,7 @@ class LevelGenerator(LightningModule):
         self.sch_patience = sch_patience
         self.sch_factor = sch_factor
         self.log_interval = log_interval
+        self.my_logger = self.preprocessing.my_logger
         self.log_nr = {"val_": 0, "": 0, "test_": 0}
 
         self.transformer = Performer(causal=True, dim=dim, depth=depth, heads=heads, dim_head=dim_head)
@@ -75,7 +76,7 @@ class LevelGenerator(LightningModule):
         self.token_distr = np.zeros(self.bins)
         self.token_log_quantiles = 10
         self.training_started = set()
-        logging.info(str(self))
+        self.my_logger.info(str(self))
 
     def __str__(self):
         return f"Upsampler level {self.level} with n_ctx={self.n_ctx} and tokens={self.sample_len}"\
@@ -312,7 +313,7 @@ class LevelGenerator(LightningModule):
     def step(self, batch, batch_idx, time=None, context=None, name=""):
         if name not in self.training_started:
             self.training_started.add(name)
-            logging.info(f"{(name or 'train')} loop started - first batch arrived")
+            self.my_logger.info(f"{(name or 'train')} loop started - first batch arrived")
         batch, = batch
         assert batch.shape[1] == self.sample_len
         loss = self(batch)
@@ -331,7 +332,7 @@ class LevelGenerator(LightningModule):
     def configure_optimizers(self):
         opt = torch.optim.Adam(self.parameters(), lr=self.lr / self.warmup_time)
         scheduler = ReduceLROnPlateauWarmup(opt, starting_lr=self.lr, warmup_time=self.warmup_time,
-                                            patience=self.sch_patience, factor=self.sch_factor)
+                                            logger=self.my_logger, patience=self.sch_patience, factor=self.sch_factor)
         return (
             [opt],
             [

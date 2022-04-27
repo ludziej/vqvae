@@ -53,7 +53,7 @@ def check_augment(infile, outfile=None, end_on=None, level=0):
     model = ready_model()
     enc_signal = model_forward(model, wave, only_encoding=True, level=level).to('cuda').reshape(1, -1)
     aug_loss, aug_acc, out_wave, cl,  sig_var, aug_rss, var_loss, last_layer_acc, last_layer_usage = model.augmentation_is_close(wave.reshape(1, 1, -1), enc_signal, verbose=True)
-    logging.info("Aug acc: {}, Aug loss: {}, Last Layer acc: {} Last layer usage: {}".format(aug_acc, aug_loss,last_layer_acc, last_layer_usage))
+    model.my_logger.info("Aug acc: {}, Aug loss: {}, Last Layer acc: {} Last layer usage: {}".format(aug_acc, aug_loss,last_layer_acc, last_layer_usage))
     if outfile is not None:
         torchaudio.save(outfile, out_wave[0], hparams["sr"])
 
@@ -70,7 +70,7 @@ def process_stream(input_stream, suffix_size=1/4, to_numpy=False, only_encoding=
             new_suff = data[-suff_len:]
             out = model_forward(model, data, only_encoding)
             to_remove = int(len(out)*(len(data) - in_data_len)/len(data))
-            logging.info("out = {}, to_remove = {}, returned = {}".format(out.shape, to_remove, out.shape[0] - to_remove))
+            model.my_logger.info("out = {}, to_remove = {}, returned = {}".format(out.shape, to_remove, out.shape[0] - to_remove))
             out = out[to_remove:] if prev_suffix is not None else out
             yield out.numpy() if to_numpy else out
             prev_suffix = new_suff
@@ -81,9 +81,9 @@ def check_accuracy_on_chunking(infile, chunk_size, chunks_number, suffix_size=1/
     out_code = process_wave(wave, end_on=chunk_size*chunks_number, only_encoding=True, start_from=0)
     chunked = (wave[i * chunk_size:(i + 1) * chunk_size] for i in range(chunks_number))
     out_chunk_coded = torch.cat(list(process_stream(chunked, suffix_size=suffix_size, only_encoding=True)))
-    logging.info("Chunked cat size = {}, one push size = {}".format(out_chunk_coded.shape, out_code.shape))
+    print("Chunked cat size = {}, one push size = {}".format(out_chunk_coded.shape, out_code.shape))
     acc = code_acc(out_code, out_chunk_coded)
-    logging.info("Accuracy on chunking: {} ({} chunks of size {} with sr = {} ({} sec) and suffix_size={})"
+    print("Accuracy on chunking: {} ({} chunks of size {} with sr = {} ({} sec) and suffix_size={})"
           .format(acc, chunks_number, chunk_size, hparams["sr"], chunk_size / hparams["sr"], suffix_size))
     return out_code, out_chunk_coded
 
@@ -96,9 +96,9 @@ def find_working_chunk_size(input, start_i, chunks, suffix_size):
                 check_accuracy_on_chunking(input, chunk_size=i, chunks_number=chunks, suffix_size=suffix_size)
             break
         except Exception as e:
-            logging.info("{} did not work - {}".format(i, e))
+            print("{} did not work - {}".format(i, e))
             i -= chunks
-    logging.info("Finally worked - {}".format(i))
+    print("Finally worked - {}".format(i))
     return i
 
 
@@ -111,7 +111,7 @@ if __name__ == "__main__":
     #logging.info(coded.shape)
                                                           #chunk_size=220416//3//2, chunks_number=4, suffix_size=2)
     for i in range(40):
-        logging.info(i)
+        print(i)
         check_augment("resources/cls_dataset/10.wav",  "generated/out_aug{}.wav".format(i), end_on=150500)
     #find_working_chunk_size("resources/cls_dataset/10.wav", start_i=working_chunk_05_s, chunks=10, suffix_size=4)
     #find_working_chunk_size("resources/cls_dataset/10.wav", start_i=working_chunk_05_s, chunks=10, suffix_size=10)

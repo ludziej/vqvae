@@ -1,5 +1,3 @@
-import logging
-
 import torch as t
 import logging
 import old_ml_utils.dist_adapter as dist
@@ -13,8 +11,7 @@ def get_lr_scheduler(opt, lr_use_linear_decay, lr_scale, lr_warmup, lr_start_lin
             curr_lr_scale = lr_scale * min(1.0, step / lr_warmup)
             decay = max(0.0, 1.0 - max(0.0, step - lr_start_linear_decay) / lr_decay)
             if decay == 0.0:
-                if dist.get_rank() == 0:
-                    logging.info("Reached end of training")
+                logging.info("Reached end of training")
             return curr_lr_scale * decay
         else:
             return lr_scale * (lr_gamma ** (step // lr_decay)) * min(1.0, step / lr_warmup)

@@ -16,7 +16,7 @@ from vqvae.discriminator import Discriminator
 class VQVAE(LightningModule):
     def __init__(self, input_channels, levels, downs_t, strides_t, loss_fn, norm_before_vqvae, fixed_commit,
                  emb_width, l_bins, mu, commit, spectral, multispectral, forward_params, discriminator_level,
-                 multipliers, use_bottleneck, with_discriminator, **params):
+                 multipliers, use_bottleneck, with_discriminator, logger, **params):
         super().__init__()
 
         self.downsamples = calculate_strides(strides_t, downs_t)
@@ -26,6 +26,7 @@ class VQVAE(LightningModule):
         self.forward_params = forward_params
         self.loss_fn = loss_fn
         self.sr = params["sr"]
+        self.my_logger = logger
         self.forward_params["sr"] = self.sr
 
         assert len(multipliers) == levels, "Invalid number of multipliers"
@@ -61,7 +62,7 @@ class VQVAE(LightningModule):
         self.multispectral = multispectral
         self.opt_params = params
         self.log_nr = {"val_": 0, "": 0, "test_": 0}
-        logging.info(str(self))
+        self.my_logger.info(str(self))
 
     def __str__(self):
         return f"VQ-VAE with sr={self.sr} and tokens for one second: {self.get_z_lengths(1 * self.sr)}"

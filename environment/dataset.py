@@ -14,10 +14,11 @@ import pathlib
 
 
 class MusicDataset(Dataset):
-    def __init__(self,  sound_dirs, sample_len,  sr=22050, transform=None, min_length=1, timeout=1, context_cond=False,
+    def __init__(self,  sound_dirs, sample_len, logger, sr=22050, transform=None, min_length=1, timeout=1, context_cond=False,
                  time_cond=False, cache_name="file_lengths.pickle", channel_level_bias=0.25, use_audiofile=False,
                  another_thread=False):
         self.sound_dirs = sound_dirs if isinstance(sound_dirs, list) else [sound_dirs]
+        self.logger = logger
         self.time_cond = time_cond
         self.context_cond = context_cond
         self.sample_len = sample_len
@@ -26,6 +27,7 @@ class MusicDataset(Dataset):
         self.sr = sr
         self.transform = transform
         self.use_audiofile = use_audiofile
+        self.logger = logger
         self.legal_suffix = [".wav", ".mp3", ".ape", ".flac"]
         self.context_file = "context.json"
 
@@ -36,7 +38,7 @@ class MusicDataset(Dataset):
         self.cache_path = self.cache_dir / cache_name if cache_name is not None else None
         self.sizes, self.dataset_size = self.calculate_lengths()
         self.chunk_config = DatasetConfig(channel_level_bias, use_audiofile, another_thread, self.sample_len, timeout,
-                                          self.sr, **self.context_names, **self.context_totals)
+                                          self.sr, logger, **self.context_names, **self.context_totals)
         self.chunks = self.calculate_chunks()
 
     def get_files_and_contexts(self):
@@ -74,17 +76,17 @@ class MusicDataset(Dataset):
 
     def calculate_lengths(self):
         if self.cache_path is not None and os.path.exists(self.cache_path):
-            logging.info(f"File Lengths loaded from {self.cache_path}")
+            self.logger.info(f"File Lengths loaded from {self.cache_path}")
             files, sizes, dataset_size = load(str(self.cache_path))
             if self.files != files:  # maybe order is different
-                logging.info(f"Fixing order for cached files, prev {len(files)} now {len(self.files)} files, "
+                self.logger.info(f"Fixing order for cached files, prev {len(files)} now {len(self.files)} files, "
                              f"\n then {files[:1]} now {self.files[:1]}")
                 #assert len(files) == len(self.files)
                 assignment = {os.path.basename(file): size for file, size in zip(files, sizes)}
                 sizes = [assignment.get(os.path.basename(file), 0) for file in self.files]
                 old_size = dataset_size
                 dataset_size = sum(sizes)
-                logging.info(f"Order fixed, {(1-dataset_size/old_size)*100:.5}% information lost")
+                self.logger.info(f"Order fixed, {(1-dataset_size/old_size)*100:.5}% information lost")
 
             return sizes, dataset_size
         sizes = [get_duration(f, self.use_audiofile) for f in
@@ -121,11 +123,11 @@ class MusicDataset(Dataset):
             current_size += self.sizes[order[file_id]]
             yield self.files[order[file_id]]
             file_id += 1
-        logging.info(f"test size = {current_size}s, train size = {self.dataset_size - current_size}s.")
+        self.logger.info(f"test size = {current_size}s, train size = {self.dataset_size - current_size}s.")
 
     def split_into_two(self, test_perc=0.1) -> (Dataset, Dataset):
         test_files = set(self.find_files_for_a_split(test_perc))
-        logging.log(5, f"Files used for test:\n{','.join(test_files)}")
+        self.logger.log(5, f"Files used for test:\n{','.join(test_files)}")
         train_indices, test_indices = [], []
         for i, chunk in enumerate(self.chunks):
             (test_indices if chunk.track.filename in test_files else train_indices).append(i)
@@ -138,7 +140,7 @@ class MusicDataset(Dataset):
         train_size = int((1 - test_perc) * len(self))
         train_data, test_data = random_split(self, [train_size, len(self) - train_size],
                                              generator=torch.Generator().manual_seed(42))
-        logging.log(5, f"Chunks used for test:\n{','.join([self.chunks[i] for i in test_data.indices])}")
+        self.logger.log(5, f"Chunks used for test:\n{','.join([self.chunks[i] for i in test_data.indices])}")
         return train_data, test_data
 
     def __len__(self):

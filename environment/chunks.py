@@ -2,7 +2,7 @@ import logging
 import multiprocessing as mp
 import queue
 import warnings
-from typing import NamedTuple, List
+from typing import NamedTuple, List, Any
 
 import audiofile
 import librosa
@@ -35,6 +35,7 @@ class DatasetConfig(NamedTuple):
     sample_len: int
     timeout: int
     sr: int
+    logger: Any
     artist_total: int
     genre_total: int
     artist_names: List[str]
@@ -103,7 +104,7 @@ class Chunk(NamedTuple):
                 task.start()
                 trycount += 1
                 timeout *= 2
-                logging.info(f"Hanged {str(self)} read, running again, try nr {trycount}, timeout={timeout}")
+                self.track.config.logger.info(f"Hanged {str(self)} read, running again, try nr {trycount}, timeout={timeout}")
         data_queue.close()
         task.join()
         return output
@@ -115,7 +116,7 @@ class Chunk(NamedTuple):
                                       duration=duration.item() if duration is not None else None)
             return librosa.load(self.track.filename, offset=start, duration=duration, mono=False, sr=self.track.config.sr)
         except Exception as e:
-            logging.warning(f"Exception {e} in {str(self)} config = {self.track.config}")
+            self.track.config.logger.warning(f"Exception {e} in {str(self)} config = {self.track.config}")
             return numpy.zeros((1, 1), float)
 
     def get_time_cond(self):
@@ -127,17 +128,17 @@ class Chunk(NamedTuple):
     def load_file(self, start, duration):
         run_lambda = (lambda: self._load_file_another_thread(start, duration)) if self.track.config.another_thread \
             else (lambda: self._load_file(start, duration, self.track.config.use_audiofile))
-        if logging.INFO >= logging.root.level:
+        if logging.DEBUG >= self.track.config.logger.level:
             time, (sound, file_sr) = time_run(run_lambda)
-            logging.info(f"Reading from '{str(self)}' took {time:.2f} seconds")
+            self.track.config.logger.debug(f"Reading from '{str(self)}' took {time:.2f} seconds")
         else:
             with warnings.catch_warnings(record=True) as w:
                 time, (sound, file_sr) = 0, run_lambda()
                 for warn in w:
-                    logging.info(f"{warn.category} : {warn.message}")
+                    self.track.config.logger.info(f"{warn.category} : {warn.message}")
         if file_sr != self.track.config.sr and len(sound.shape) >= 2 and sound.shape[1] > 50:
             time, sound = time_run(lambda: self.resample(sound, file_sr))
-            logging.info(f"Resampling from '{str(self)}' because of wrong sr={file_sr}, took {time:.2f}s")
+            self.track.config.logger.debug(f"Resampling from '{str(self)}' because of wrong sr={file_sr}, took {time:.2f}s")
         if len(sound.shape) == 1:
             sound = sound.reshape(1, -1)
         return sound
