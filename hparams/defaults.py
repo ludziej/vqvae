@@ -119,6 +119,7 @@ default_transformer_params = Hparams(
     layer_for_logits=True,
     norm_type="none",
     warmup_time=1000,
+    no_scheduler=False,
     sch_patience=1000,
     sch_factor=0.9,
     conditioning_dropout=0.,

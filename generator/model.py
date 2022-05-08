@@ -19,7 +19,7 @@ class LevelGenerator(LightningModule):
     def __init__(self, vqvae: VQVAE, level: int, log_sample_size: int, context_on_level: int,
                  dim: int, depth: int, heads: int,  lr: float, start_gen_sample_len: int,
                  log_starting_context_perc: int, log_context_time: float, n_ctx: int,
-                 pos_init_scale: int, bins_init_scale: float, dim_head: int, norm_type: bool,
+                 pos_init_scale: int, bins_init_scale: float, dim_head: int, norm_type: bool, no_scheduler: bool,
                  conds_kwargs: dict, init_bins_from_vqvae: bool, layer_for_logits: bool, conditioning_dropout: float,
                  warmup_time: int, sch_patience: int, sch_factor: int, log_interval, token_dim: int,  **params):
         super().__init__()
@@ -35,6 +35,7 @@ class LevelGenerator(LightningModule):
         self.log_context_time = log_context_time
         self.pos_init_scale = pos_init_scale
         self.bins_init_scale = bins_init_scale
+        self.no_scheduler = no_scheduler
         self.init_bins_from_vqvae = init_bins_from_vqvae
         self.layer_for_logits = layer_for_logits
         self.warmup_time = warmup_time
@@ -332,6 +333,8 @@ class LevelGenerator(LightningModule):
         return self.step(batch, batch_idx, name="val_")
 
     def configure_optimizers(self):
+        if self.no_scheduler:
+            return torch.optim.Adam(self.parameters(), lr=self.lr)
         opt = torch.optim.Adam(self.parameters(), lr=self.lr / self.warmup_time)
         scheduler = ReduceLROnPlateauWarmup(opt, starting_lr=self.lr, warmup_time=self.warmup_time,
                                             logger=self.my_logger, patience=self.sch_patience, factor=self.sch_factor)
