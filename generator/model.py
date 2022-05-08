@@ -25,10 +25,6 @@ class LevelGenerator(LightningModule):
         super().__init__()
         self.n_ctx = n_ctx
         self.level = level
-        self.log_sample_bs, self.log_sample_size = log_sample_size
-        self.preprocessing = vqvae
-        self.preprocessing.freeze()
-        self.sr = vqvae.sr
         self.start_gen_sample_len = start_gen_sample_len
         self.lr = lr
         self.dim = dim
@@ -39,15 +35,20 @@ class LevelGenerator(LightningModule):
         self.log_context_time = log_context_time
         self.pos_init_scale = pos_init_scale
         self.bins_init_scale = bins_init_scale
-        self.bins = self.preprocessing.l_bins
-        self.eos_token = None
-        self.conditioning_concat = False
         self.init_bins_from_vqvae = init_bins_from_vqvae
         self.layer_for_logits = layer_for_logits
         self.warmup_time = warmup_time
         self.sch_patience = sch_patience
         self.sch_factor = sch_factor
         self.log_interval = log_interval
+        self.sr = vqvae.sr
+        self.log_sample_bs, self.log_sample_size = log_sample_size
+        self.preprocessing = vqvae
+        self.preprocessing.freeze()
+        self.bins = self.preprocessing.l_bins
+        self.is_first_batch = True
+        self.eos_token = None
+        self.conditioning_concat = False
         self.my_logger = self.preprocessing.my_logger
         self.log_nr = {"val_": 0, "": 0, "test_": 0}
 
@@ -276,8 +277,8 @@ class LevelGenerator(LightningModule):
 
     def is_sampling_time(self, prefix, batch_idx):
         """ log samples once per log_interval and once per valid """
-        return batch_idx == 0 and not self.trainer.sanity_checking if prefix != "" else \
-            (self.trainer.current_epoch * self.trainer.num_training_batches + batch_idx) % self.log_interval == 0
+        return not self.is_first_batch and (batch_idx == 0 and not self.trainer.sanity_checking if prefix != "" else
+            (self.trainer.current_epoch * self.trainer.num_training_batches + batch_idx) % self.log_interval == 0)
 
     def log_metrics_and_samples(self, loss, batch, batch_idx, prefix=""):
         nr = self.log_nr.get(prefix, 0)
@@ -287,6 +288,7 @@ class LevelGenerator(LightningModule):
         self.log(prefix + "loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         if self.is_sampling_time(prefix, batch_idx):
             self.log_samples(batch, nr, prefix)
+        self.is_first_batch = False if not self.trainer.sanity_checking else self.is_first_batch
 
     def log_samples(self, batch, nr, prefix):
         # generate continuation audio

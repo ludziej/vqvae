@@ -1,8 +1,7 @@
 from torch.utils.data import DataLoader
 from pathlib import Path
-from environment.dataset import MusicDataset
+from data_processing.dataset import MusicDataset
 from vqvae.model import VQVAE
-import logging
 from utils.misc import lazy_compute_pickle
 from old_ml_utils.audio_utils import calculate_bandwidth
 from environment.train_utils import generic_train, get_last_path, create_logger
@@ -13,6 +12,7 @@ def create_vqvae(l_mu, from_last_checkpot, ckpt_dir, restore_ckpt, main_dir, log
     last_path = get_last_path(main_dir, ckpt_dir, restore_ckpt) if from_last_checkpot else None
     logger.info(f"Restoring VQVAE from {last_path}" if last_path else f"Starting VQVAE training from scratch")
     model = VQVAE.load_from_checkpoint(last_path, **all_params) if last_path is not None else VQVAE(**all_params)
+    logger.debug(f"Model loaded")
     return model
 
 
@@ -34,12 +34,12 @@ def get_model(sample_len, sr, train_path, forward_params, band_est_dur, use_audi
     return (model, train_data) if with_train_data else model
 
 
-def get_model_with_data(batch_size, sample_len, num_workers, sr, shuffle_data, logger, test_path=None, **params):
+def get_model_with_data(batch_size, sample_len, num_workers, sr, shuffle_data, logger, test_perc, test_path=None, **params):
     model, train_data = get_model(sample_len, sr, with_train_data=True, logger=logger, **params)
     if test_path is not None:
         test_data = MusicDataset(test_path, sample_len=sample_len, sr=sr, logger=logger)
     else:
-        train_data, test_data = train_data.split_into_two(test_perc=0.1)
+        train_data, test_data = train_data.split_into_two(test_perc=test_perc)
     train_dataloader = DataLoader(train_data, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle_data)
     test_dataloader = DataLoader(test_data, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle_data)
     return model, train_dataloader, test_dataloader

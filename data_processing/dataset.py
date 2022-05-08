@@ -1,5 +1,3 @@
-import logging
-
 import os
 
 import torch
@@ -7,7 +5,8 @@ from torch.utils.data import Dataset
 from os import listdir
 from tqdm import tqdm
 
-from environment.chunks import get_duration, DatasetConfig, Chunk, Track
+from data_processing.chunks import DatasetConfig, Chunk, Track
+from data_processing.tools import get_duration
 from utils.misc import load, save, flatten, load_json, reverse_mapper
 from torch.utils.data import random_split, Subset
 import pathlib

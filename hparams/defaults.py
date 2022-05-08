@@ -50,6 +50,7 @@ default_vqvae_model_params = Hparams(
     sample_len=262144,
     num_workers=5,
     sr=22050,
+    test_perc=0.1,
     norm_before_vqvae=True,
     fixed_commit=True,
     norm_type="none",

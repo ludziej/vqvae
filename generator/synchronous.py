@@ -5,6 +5,7 @@ from performer_pytorch import PerformerLM
 from vqvae.model import VQVAE
 import torch.nn.functional as F
 from generator.model import LevelGenerator
+from data_processing.tools import load_file, save_file
 
 
 class SynchronousGenerator(nn.Module):
@@ -24,10 +25,10 @@ class SynchronousGenerator(nn.Module):
         upsampler = self.upsamplers[level]
         return upsampler.generate_no_sound(length, context=context, with_tqdm=with_tqdm, bs=prev_tokens.shape[0])
 
-    def generate(self, time: float, bs: int = 1, decode_level = 0, with_tqdm=True, context=None, time_context=None)\
+    def generate(self, time: float, bs: int = 1, decode_level=0, with_tqdm=True, context=None, time_context=None)\
             -> torch.Tensor:
         params = dict(with_tqdm=with_tqdm, context=context, time=time_context)
-        tokens_length = [None, None, None]  # TODO get from "time"
+        tokens_length = self.vqvae.get_z_lengths(self.vqvae.sr * time)
         tokens = self.generate_prior_tokens(tokens_length[-1], bs=bs, **params)
         for level in reversed(range(decode_level, self.prior.level)):
             tokens = self.generate_upsampler_tokens(tokens_length[level], tokens, level, **params)
@@ -37,23 +38,39 @@ class SynchronousGenerator(nn.Module):
     # vqvae operations
 
     # assumes sound is with correct sr = self.vqvae.sr
-    def get_sound_through_vqvae(self, sound: torch.Tensor):
-        raise Exception("Not Implemented")
-
-    def get_track_through_vqvae(self, filepath: str):
-        raise Exception("Not Implemented")
+    def get_sound_through_vqvae(self, sound: torch.Tensor, level=0):
+        encoded = self.encode_sound(sound, level, level + 1)[0]
+        return self.decode_sound(encoded, level)
 
     def decode_sound(self, tokens, level):
-        raise Exception("Not Implemented")
+        return self.preprocessing.decode([tokens], start_level=level, end_level=level + 1).squeeze(2).detach()
 
-    def encode_sound(self, sound, level):
-        raise Exception("Not Implemented")
+    def encode_sound(self, sound, start_level=0, end_level=None):
+        return [x.detach() for x in self.preprocessing.encode(sound, start_level=start_level,
+                                                              end_level=end_level or self.prior.level + 1)]
 
     # continuation
 
     # assumes sound is with correct sr = self.vqvae.sr
-    def continue_sound(self, sound: torch.Tensor, use_tqdm=True) -> torch.Tensor:
-        raise Exception("Not Implemented")
+    def continue_sound(self, sound: torch.Tensor, sec_from: int, added_seconds: int, use_tqdm=True) -> torch.Tensor:
+        sound = sound[:sec_from * self.vqvae.sr]
+        tokens_length = self.vqvae.get_z_lengths(self.vqvae.sr * added_seconds)
+        prior = self.prior.generate_from_sound(sound, prefix_token_perc=1, use_tqdm=use_tqdm)
 
-    def continue_track(self, filepath: str, sec_from: int, use_tqdm=True) -> torch.Tensor:
-        raise Exception("Not Implemented")
+
+
+    # file operations
+
+    def load_file(self, filename):
+        return load_file(filename, sr=self.vqvae.sr)
+
+    def save_file(self, filename):
+        return save_file(filename, sr=self.vqvae.sr)
+
+    def continue_track(self, filepath: str, sec_from: int, added_seconds: int, use_tqdm=True) -> torch.Tensor:
+        sound = self.load_file(filepath)
+        sound = self.continue_sound(sound, sec_from, added_seconds, use_tqdm=use_tqdm)
+        return sound
+
+    def get_track_through_vqvae(self, filepath: str, level=0):
+        return self.get_sound_through_vqvae(self.load_file(filepath), level=level)

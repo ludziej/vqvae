@@ -4,17 +4,13 @@ import queue
 import warnings
 from typing import NamedTuple, List, Any
 
-import audiofile
 import librosa
 import numpy
 import numpy as np
 import torch
 
+from data_processing.tools import load_file
 from utils.misc import time_run
-
-
-def get_duration(file, use_audiofile):
-    return audiofile.duration(file) if use_audiofile else librosa.get_duration(filename=file)
 
 
 class TimeConditioning(NamedTuple):
@@ -111,10 +107,8 @@ class Chunk(NamedTuple):
 
     def _load_file(self, start, duration, use_audiofile):
         try:
-            if use_audiofile:
-                return audiofile.read(self.track.filename, offset=start.item(),
-                                      duration=duration.item() if duration is not None else None)
-            return librosa.load(self.track.filename, offset=start, duration=duration, mono=False, sr=self.track.config.sr)
+            return load_file(self.track.filename, start.item(), duration.item() if duration is not None else None,
+                      use_audiofile=use_audiofile, sr=self.track.config.sr)
         except Exception as e:
             self.track.config.logger.warning(f"Exception {e} in {str(self)} config = {self.track.config}")
             return numpy.zeros((1, 1), float)
