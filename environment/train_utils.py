@@ -5,20 +5,30 @@ from datetime import datetime
 from pytorch_lightning import Trainer
 from pytorch_lightning import loggers as pl_loggers
 from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks import TQDMProgressBar
 from pathlib import Path
 import json
 import sys
+
+
+class NoSmoothingTQDM(TQDMProgressBar):
+    def init_validation_tqdm(self):
+        bar = super().init_validation_tqdm()
+        bar.smoothing = 0
+        return bar
 
 
 def generic_train(model, hparams, train, test, model_hparams, root_dir):
     tb_logger = pl_loggers.TensorBoardLogger(root_dir / model_hparams.logs_dir)
     checkpoint_callback = ModelCheckpoint(dirpath=root_dir / model_hparams.ckpt_dir, filename=model_hparams.ckpt_name,
                                           every_n_epochs=model_hparams.ckpt_freq)
+    tqdm_pb = NoSmoothingTQDM()
 
     trainer = Trainer(gpus=hparams.gpus, profiler="simple", max_epochs=hparams.max_epochs,
                       max_steps=hparams.max_steps if hparams.max_steps != 0 else -1,
                       log_every_n_steps=1, logger=tb_logger, strategy=hparams.accelerator,
-                      default_root_dir=root_dir / model_hparams.default_ckpt_root, callbacks=[checkpoint_callback])
+                      default_root_dir=root_dir / model_hparams.default_ckpt_root,
+                      callbacks=[checkpoint_callback, tqdm_pb])
     trainer.fit(model, train_dataloaders=train, val_dataloaders=test)
 
 
