@@ -49,6 +49,7 @@ default_vqvae_model_params = Hparams(
     batch_size=4,
     sample_len=262144,
     num_workers=5,
+    prefetch_data=5,
     sr=22050,
     test_perc=0.1,
     norm_before_vqvae=True,
