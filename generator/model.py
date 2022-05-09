@@ -18,7 +18,7 @@ import logging
 class LevelGenerator(LightningModule):
     def __init__(self, vqvae: VQVAE, level: int, log_sample_size: int, context_on_level: int,
                  dim: int, depth: int, heads: int,  lr: float, start_gen_sample_len: int,
-                 log_starting_context_perc: int, log_context_time: float, n_ctx: int,
+                 log_starting_context_perc: int, log_context_time: float, n_ctx: int, feature_redraw_interval: int,
                  pos_init_scale: int, bins_init_scale: float, dim_head: int, norm_type: bool, no_scheduler: bool,
                  conds_kwargs: dict, init_bins_from_vqvae: bool, layer_for_logits: bool, conditioning_dropout: float,
                  warmup_time: int, sch_patience: int, sch_factor: int, log_interval, token_dim: int,  **params):
@@ -53,7 +53,8 @@ class LevelGenerator(LightningModule):
         self.my_logger = self.preprocessing.my_logger
         self.log_nr = {"val_": 0, "": 0, "test_": 0}
 
-        self.transformer = Performer(causal=True, dim=dim, depth=depth, heads=heads, dim_head=dim_head)
+        self.transformer = Performer(causal=True, dim=dim, depth=depth, heads=heads, dim_head=dim_head,
+                                     feature_redraw_interval=feature_redraw_interval)
         self.pos_emb = PositionEmbedding(input_shape=(self.n_ctx,), width=self.token_dim, init_scale=self.pos_init_scale)
         self.pos_embeddings_is_absolute = True  # needs to recalculate when we move windows by 1
         self.cond_dropout = nn.Dropout(conditioning_dropout)
