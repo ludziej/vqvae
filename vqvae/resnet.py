@@ -34,8 +34,7 @@ class Resnet1D(nn.Module):
             else:
                 return depth % dilation_cycle
         blocks = [ResConv1DBlock(n_in, int(m_conv * n_in),
-                                 dilation=dilation_growth_rate ** _get_depth(depth),
-                                 zero_out=zero_out, norm_type=norm_type,
+                                 dilation=dilation_growth_rate ** _get_depth(depth), norm_type=norm_type,
                                  res_scale=1.0 if not res_scale else 1.0 / math.sqrt(n_depth))
                   for depth in range(n_depth)]
         if reverse_dilation:
