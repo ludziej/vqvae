@@ -16,6 +16,7 @@ config_big_hparams = Hparams(
     accelerator='dp',
     max_epochs=50000,
     max_steps=0,
+    gradient_clip_val=10,
     logging="INFO",
     log_file="logs.txt",
 )
@@ -32,6 +33,7 @@ config_small_hparams = Hparams(
     accelerator='dp',
     max_epochs=50000,
     max_steps=0,
+    gradient_clip_val=10,
     logging="INFO",
     log_file="logs.txt",
 )

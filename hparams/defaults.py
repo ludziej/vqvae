@@ -83,6 +83,7 @@ default_vqvae_opt_hparams = Hparams(
     ignore_grad_norm=0,
     weight_decay=0.0,
     eps=1e-08,
+    rms_normalize_sound=True,
     lr_warmup=100.0,
     lr_decay=10000000000.0,
     lr_gamma=1.0,

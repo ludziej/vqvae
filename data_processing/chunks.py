@@ -11,6 +11,7 @@ import torch
 
 from data_processing.tools import load_file
 from utils.misc import time_run
+from data_processing.normalization import rms_normalize
 
 
 class TimeConditioning(NamedTuple):
@@ -32,6 +33,7 @@ class DatasetConfig(NamedTuple):
     timeout: int
     sr: int
     logger: Any
+    rms_normalize_sound: bool
     artist_total: int
     genre_total: int
     artist_names: List[str]
@@ -72,6 +74,8 @@ class Chunk(NamedTuple):
         sound = torch.from_numpy(sound[:, :self.track.config.sample_len])  # trim sample to at most expected size (can be smaller)
         sound = self.reduce_stereo(sound)
         sound = self.pad_sound(sound)
+        if self.track.config.rms_normalize_sound:
+            sound = rms_normalize(sound)
         return sound.unsqueeze(1)
 
     def resample(self, sound, from_sr):

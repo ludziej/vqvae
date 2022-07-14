@@ -15,7 +15,7 @@ import pathlib
 class MusicDataset(Dataset):
     def __init__(self,  sound_dirs, sample_len, logger, sr=22050, transform=None, min_length=1, timeout=1, context_cond=False,
                  time_cond=False, cache_name="file_lengths.pickle", channel_level_bias=0.25, use_audiofile=False,
-                 another_thread=False):
+                 another_thread=False, rms_normalize_sound=True):
         self.sound_dirs = sound_dirs if isinstance(sound_dirs, list) else [sound_dirs]
         self.logger = logger
         self.time_cond = time_cond
@@ -37,7 +37,8 @@ class MusicDataset(Dataset):
         self.cache_path = self.cache_dir / cache_name if cache_name is not None else None
         self.sizes, self.dataset_size = self.calculate_lengths()
         self.chunk_config = DatasetConfig(channel_level_bias, use_audiofile, another_thread, self.sample_len, timeout,
-                                          self.sr, logger, **self.context_names, **self.context_totals)
+                                          self.sr, logger, rms_normalize_sound,
+                                          **self.context_names, **self.context_totals)
         self.chunks = self.calculate_chunks()
 
     def get_files_and_contexts(self):
