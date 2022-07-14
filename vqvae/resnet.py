@@ -7,21 +7,17 @@ from optimization.normalization import CustomNormalization
 
 
 class ResConv1DBlock(nn.Module):
-    def __init__(self, n_in, n_state, norm_type, dilation=1, zero_out=False, res_scale=1.0):
+    def __init__(self, n_in, n_state, norm_type, dilation=1, res_scale=1.0):
         super().__init__()
         padding = dilation
         self.resconv = nn.Sequential(
             nn.Conv1d(n_in, n_state, 3, 1, padding, dilation, bias=norm_type == "none"),
             CustomNormalization(n_in, norm_type),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Conv1d(n_state, n_in, 1, 1, 0, bias=norm_type == "none"),
             CustomNormalization(n_in, norm_type),
-            nn.ReLU(),
+            nn.LeakyReLU(),
         )
-        if zero_out:
-            out = self.model[-1]
-            nn.init.zeros_(out.weight)
-            nn.init.zeros_(out.bias)
         self.res_scale = res_scale
 
     def forward(self, x):

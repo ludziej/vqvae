@@ -16,14 +16,12 @@ class EncoderConvBlock(nn.Module):
             for i in range(down_t):
                 block = nn.Sequential(
                     nn.Conv1d(input_emb_width if i == 0 else width, width, filter_t, stride_t, pad_t),
-                    nn.ReLU(),
                     Resnet1D(width, depth, m_conv, dilation_growth_rate, dilation_cycle, zero_out, res_scale,
                              norm_type=norm_type),
                 )
                 blocks.append(block)
             block = nn.Conv1d(width, output_emb_width, 3, 1, 1)
             blocks.append(block)
-            blocks.append(nn.ReLU())
         self.encode_block = nn.Sequential(*blocks)
 
     def forward(self, x):
@@ -40,14 +38,12 @@ class DecoderConvBock(nn.Module):
             filter_t, pad_t = stride_t * 2, stride_t // 2
             block = nn.Conv1d(output_emb_width, width, 3, 1, 1)
             blocks.append(block)
-            blocks.append(nn.ReLU())
             for i in range(down_t):
                 block = nn.Sequential(
                     Resnet1D(width, depth, m_conv, dilation_growth_rate, dilation_cycle, zero_out=zero_out,
                              norm_type=norm_type, res_scale=res_scale, reverse_dilation=reverse_decoder_dilation,
                              checkpoint_res=checkpoint_res),
                     nn.ConvTranspose1d(width, input_emb_width if i == (down_t - 1) else width, filter_t, stride_t, pad_t),
-                    nn.ReLU(),
                 )
                 blocks.append(block)
         self.decoder_block = nn.Sequential(*blocks)

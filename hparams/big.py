@@ -34,7 +34,7 @@ big_vqvae_model_params = default_vqvae_model_params.update(
 big_vqvae_opt_hparams = default_vqvae_opt_hparams.update(
     epochs=10000,
     lr=0.0003,
-    weight_decay=0.0,
+    weight_decay=1e-4,
     lr_warmup=100.0,
 )
 
