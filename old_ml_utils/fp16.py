@@ -135,7 +135,7 @@ class FP16FusedAdam(Optimizer):
         bias_correction=True,
         betas=(0.9, 0.999),
         eps=1e-8,
-        eps_inside_sqrt=False,
+        eps_inside_sqrt=True,
         weight_decay=0.0,
         amsgrad=False,
     ):
@@ -236,7 +236,7 @@ class FusedAdam(Optimizer):
         bias_correction=True,
         betas=(0.9, 0.999),
         eps=1e-8,
-        eps_inside_sqrt=False,
+        eps_inside_sqrt=True,
         weight_decay=0.0,
         amsgrad=False,
     ):
