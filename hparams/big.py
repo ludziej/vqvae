@@ -2,9 +2,9 @@ from hparams.defaults import *
 
 
 big_forward_params = default_forward_params.update(
-    lmix_l1=0.0,
+    lmix_l1=0.02,
     lmix_l2=1.0,
-    lmix_linf=0.02,
+    lmix_linf=0,
 )
 
 big_vqvae_model_params = default_vqvae_model_params.update(
