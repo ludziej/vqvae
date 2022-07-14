@@ -25,13 +25,10 @@ small_vqvae_model_params = default_vqvae_model_params.update(
     sample_len=262144,
     sr=22050,
     num_workers=5,
-    norm_before_vqvae=True,
-    fixed_commit=True,
     norm_type="none",
     with_discriminator=False,
     forward_params=small_forward_params,
     from_last_checkpot=True,
-    use_bottleneck=True,
     main_dir="generated/models/small_vqvae/",
 )
 

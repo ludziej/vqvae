@@ -10,13 +10,13 @@ class ResConv1DBlock(nn.Module):
     def __init__(self, n_in, n_state, norm_type, dilation=1, zero_out=False, res_scale=1.0):
         super().__init__()
         padding = dilation
-        self.model = nn.Sequential(
-            nn.ReLU(),
+        self.resconv = nn.Sequential(
+            nn.Conv1d(n_in, n_state, 3, 1, padding, dilation, bias=norm_type == "none"),
             CustomNormalization(n_in, norm_type),
-            nn.Conv1d(n_in, n_state, 3, 1, padding, dilation),
             nn.ReLU(),
+            nn.Conv1d(n_state, n_in, 1, 1, 0, bias=norm_type == "none"),
             CustomNormalization(n_in, norm_type),
-            nn.Conv1d(n_state, n_in, 1, 1, 0),
+            nn.ReLU(),
         )
         if zero_out:
             out = self.model[-1]
@@ -25,7 +25,7 @@ class ResConv1DBlock(nn.Module):
         self.res_scale = res_scale
 
     def forward(self, x):
-        return x + self.res_scale * self.model(x)
+        return x + self.res_scale * self.resconv(x)
 
 
 class Resnet1D(nn.Module):
@@ -48,7 +48,7 @@ class Resnet1D(nn.Module):
         if self.checkpoint_res == 1:
             self.blocks = nn.ModuleList(blocks)
         else:
-            self.model = nn.Sequential(*blocks)
+            self.resblocks = nn.Sequential(*blocks)
 
     def forward(self, x):
         if self.checkpoint_res == 1:
@@ -56,4 +56,4 @@ class Resnet1D(nn.Module):
                 x = checkpoint(block, (x, ), block.parameters(), True)
             return x
         else:
-            return self.model(x)
+            return self.resblocks(x)

@@ -3,9 +3,9 @@ import torch.nn as nn
 
 norm_resolver = {
     "none": lambda dim, _: (lambda x: x),
-    "layer": lambda dim, _: nn.LayerNorm(dim),
-    "batch": lambda dim, ng: nn.GroupNorm(num_groups=ng, num_channels=dim),
-    "group": lambda dim, _: nn.BatchNorm1d(dim),
+    "layer": lambda dim, _: nn.LayerNorm(dim, elementwise_affine=True),
+    "group": lambda dim, ng: nn.GroupNorm(num_groups=ng, num_channels=dim, affine=True),
+    "batch": lambda dim, _: nn.BatchNorm1d(dim, affine=True),
 }
 
 

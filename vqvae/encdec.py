@@ -22,10 +22,10 @@ class EncoderConvBlock(nn.Module):
                 blocks.append(block)
             block = nn.Conv1d(width, output_emb_width, 3, 1, 1)
             blocks.append(block)
-        self.model = nn.Sequential(*blocks)
+        self.encode_block = nn.Sequential(*blocks)
 
     def forward(self, x):
-        return self.model(x)
+        return self.encode_block(x)
 
 
 class DecoderConvBock(nn.Module):
@@ -46,10 +46,10 @@ class DecoderConvBock(nn.Module):
                     nn.ConvTranspose1d(width, input_emb_width if i == (down_t - 1) else width, filter_t, stride_t, pad_t)
                 )
                 blocks.append(block)
-        self.model = nn.Sequential(*blocks)
+        self.decoder_block = nn.Sequential(*blocks)
 
     def forward(self, x):
-        return self.model(x)
+        return self.decoder_block(x)
 
 
 class Encoder(nn.Module):
