@@ -22,7 +22,7 @@ def adam_step(p: torch.Tensor, out_p: torch.Tensor, exp_avg: torch.Tensor, exp_a
     # Decay the first and second moment running average coefficient
     exp_avg.mul_(beta1).add_(grad, alpha=1 - beta1)
     exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1 - beta2)
-    denom = exp_avg_sq.sqrt().add_(eps)
+    denom = exp_avg_sq.add_(eps).sqrt()
 
     bias_correction1 = 1 - beta1 ** step
     bias_correction2 = 1 - beta2 ** step
@@ -135,7 +135,7 @@ class FP16FusedAdam(Optimizer):
         bias_correction=True,
         betas=(0.9, 0.999),
         eps=1e-8,
-        eps_inside_sqrt=True,
+        eps_inside_sqrt=False,
         weight_decay=0.0,
         amsgrad=False,
     ):
@@ -236,7 +236,7 @@ class FusedAdam(Optimizer):
         bias_correction=True,
         betas=(0.9, 0.999),
         eps=1e-8,
-        eps_inside_sqrt=True,
+        eps_inside_sqrt=False,
         weight_decay=0.0,
         amsgrad=False,
     ):
