@@ -61,7 +61,7 @@ def spec(x, hps):
     return t.norm(stft(x, hps), p=2, dim=-1)
 
 def norm(x):
-    return (x.view(x.shape[0], -1) ** 2).sum(dim=-1).sqrt()
+    return (x.view(x.shape[0], -1) ** 2).sum(dim=-1).add(1e-8).sqrt()
 
 def squeeze(x):
     if len(x.shape) == 3:
