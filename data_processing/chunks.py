@@ -76,7 +76,7 @@ class Chunk(NamedTuple):
         sound = self.reduce_stereo(sound)
         sound = self.pad_sound(sound)
         if self.track.config.rms_normalize_sound:
-            sound = rms_normalize(sound)
+            sound = rms_normalize(sound, self.track.config.rms_normalize_level)
         return sound.unsqueeze(1)
 
     def resample(self, sound, from_sr):

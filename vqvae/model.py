@@ -181,7 +181,7 @@ class VQVAE(LightningModule):
         multispec_loss = t.zeros(()).to(x.device)
         x_target = audio_postprocess(x.float(), hps)
 
-        for i, xo in enumerate(x_out):
+        for i, xo in enumerate(x_outs):
             metrics[f"x_out_norm_l{i+2}"] = torch.mean(norm(xo))
         metrics["x_in_norm"] = torch.mean(norm(x))
 
