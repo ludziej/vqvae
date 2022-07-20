@@ -144,6 +144,8 @@ class VQVAE(LightningModule):
         loss_fn = self.loss_fn
         metrics = {}
 
+        x += torch.randn(*x.shape) / 1000
+
         N = x.shape[0]
 
         # Encode/Decode
@@ -182,7 +184,7 @@ class VQVAE(LightningModule):
         x_target = audio_postprocess(x.float(), hps)
 
         for i, xo in enumerate(x_outs):
-            metrics[f"x_out_norm_l{i+2}"] = torch.mean(norm(xo))
+            metrics[f"x_out_norm_l{i+1}"] = torch.mean(norm(xo))
         metrics["x_in_norm"] = torch.mean(norm(x))
 
         for level in reversed(range(self.levels)):
