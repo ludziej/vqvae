@@ -3,6 +3,7 @@ import logging
 import old_ml_utils.dist_adapter as dist
 from torch.nn.parallel import DistributedDataParallel
 from old_ml_utils.fp16 import FusedAdam, FP16FusedAdam, LossScalar
+from torch.optim import AdamW
 
 
 def get_lr_scheduler(opt, lr_use_linear_decay, lr_scale, lr_warmup, lr_start_linear_decay, lr_decay, lr_gamma, **params):
@@ -21,9 +22,14 @@ def get_lr_scheduler(opt, lr_use_linear_decay, lr_scale, lr_warmup, lr_start_lin
     return shd
 
 
-def get_optimizer(model, beta1, beta2, lr, weight_decay, eps, fp16_loss_scale, fp16_scale_window, fp16, fp16_opt, **params):
+def get_optimizer(model, beta1, beta2, lr, weight_decay, eps, fp16_loss_scale, fp16_scale_window, fp16, fp16_opt,
+                  generic_adam, **params):
     # Optimizer
     betas = (beta1, beta2)
+
+    if generic_adam:
+        return AdamW(model.parameters(), lr=lr, weight_decay=weight_decay, betas=betas, eps=eps), None, None
+
     if fp16_opt:
         opt = FP16FusedAdam(model.parameters(), lr=lr, weight_decay=weight_decay, betas=betas, eps=eps)
     else:
