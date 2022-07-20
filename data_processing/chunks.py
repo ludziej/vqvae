@@ -34,6 +34,7 @@ class DatasetConfig(NamedTuple):
     sr: int
     logger: Any
     rms_normalize_sound: bool
+    rms_normalize_level: float
     artist_total: int
     genre_total: int
     artist_names: List[str]

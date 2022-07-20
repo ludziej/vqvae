@@ -23,10 +23,10 @@ def calc_dataset_dependent_params(dataset, forward_params, duration):
 
 
 def get_model(sample_len, sr, train_path, forward_params, band_est_dur, use_audiofile, chunk_timeout, logger,
-              chunk_another_thread, with_train_data=False, rms_normalize_sound=True, **params):
+              chunk_another_thread, with_train_data=False, rms_normalize_sound=True, rms_normalize_level=-5, **params):
     train_data = MusicDataset(train_path, sample_len=sample_len, sr=sr, use_audiofile=use_audiofile, logger=logger,
                               timeout=chunk_timeout, another_thread=chunk_another_thread,
-                              rms_normalize_sound=rms_normalize_sound)
+                              rms_normalize_sound=rms_normalize_sound, rms_normalize_level=rms_normalize_level)
     logger.info(train_data)
     calc_dataset_dependent_params(train_data, forward_params, band_est_dur)
     params["forward_params"] = forward_params

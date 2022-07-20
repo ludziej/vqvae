@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 import torch as t
 import torch.nn as nn
 from pytorch_lightning import LightningModule
@@ -7,7 +8,7 @@ import logging
 from vqvae.encdec import Encoder, Decoder, assert_shape
 from vqvae.bottleneck import NoBottleneck, Bottleneck
 from old_ml_utils.misc import average_metrics
-from old_ml_utils.audio_utils import spectral_convergence, spectral_loss, multispectral_loss, audio_postprocess
+from old_ml_utils.audio_utils import spectral_convergence, spectral_loss, multispectral_loss, audio_postprocess, norm
 from optimization.opt_maker import get_optimizer
 from vqvae.helpers import calculate_strides, _loss_fn
 from vqvae.discriminator import Discriminator
@@ -179,6 +180,10 @@ class VQVAE(LightningModule):
         spec_loss = t.zeros(()).to(x.device)
         multispec_loss = t.zeros(()).to(x.device)
         x_target = audio_postprocess(x.float(), hps)
+
+        for i, xo in enumerate(x_out):
+            metrics[f"x_out_norm_l{i+2}"] = torch.mean(norm(xo))
+        metrics["x_in_norm"] = torch.mean(norm(x))
 
         for level in reversed(range(self.levels)):
             x_out = self.postprocess(x_outs[level])
