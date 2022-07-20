@@ -63,7 +63,6 @@ def spec(x, hps):
 def norm(x):
     x = x.view(x.shape[0], -1) ** 2
     x = x.sum(dim=-1)
-    print(x)
     x = x.add(1e-6).sqrt()
     return x
 

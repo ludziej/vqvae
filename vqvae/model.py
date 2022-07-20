@@ -17,7 +17,7 @@ from vqvae.discriminator import Discriminator
 class VQVAE(LightningModule):
     def __init__(self, input_channels, levels, downs_t, strides_t, loss_fn, norm_before_vqvae, fixed_commit,
                  emb_width, l_bins, mu, commit, spectral, multispectral, forward_params, discriminator_level,
-                 multipliers, use_bottleneck, with_discriminator, logger, **params):
+                 multipliers, use_bottleneck, with_discriminator, logger, log_interval, **params):
         super().__init__()
 
         self.downsamples = calculate_strides(strides_t, downs_t)
@@ -28,6 +28,7 @@ class VQVAE(LightningModule):
         self.loss_fn = loss_fn
         self.sr = params["sr"]
         self.my_logger = logger
+        self.log_interval = log_interval
         self.forward_params["sr"] = self.sr
 
         assert len(multipliers) == levels, "Invalid number of multipliers"
@@ -144,8 +145,6 @@ class VQVAE(LightningModule):
         loss_fn = self.loss_fn
         metrics = {}
 
-        x += torch.randn(*x.shape, device=x.device) / 100
-
         N = x.shape[0]
 
         # Encode/Decode
@@ -231,8 +230,8 @@ class VQVAE(LightningModule):
         self.log(prefix + "loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         for name, val in metrics.items():
             self.log(prefix + name, val,  on_step=True, on_epoch=True, logger=True)
-        if batch_idx != 0:
-            return  # log samples once per epoch
+        if batch_idx % self.log_interval != 0:
+            return  # log samples once per interval
         nr = self.log_nr.get(prefix, 0)
         self.log_nr[prefix] = nr + 1
         tlogger = self.logger.experiment
