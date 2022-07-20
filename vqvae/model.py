@@ -144,7 +144,7 @@ class VQVAE(LightningModule):
         loss_fn = self.loss_fn
         metrics = {}
 
-        x += torch.randn(*x.shape) / 1000
+        x += torch.randn(*x.shape, device=x.device) / 100
 
         N = x.shape[0]
 
