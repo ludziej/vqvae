@@ -1,8 +1,5 @@
 import torch as t
 import logging
-import old_ml_utils.dist_adapter as dist
-from torch.nn.parallel import DistributedDataParallel
-from old_ml_utils.fp16 import FusedAdam, FP16FusedAdam, LossScalar
 from torch.optim import AdamW
 
 
@@ -22,29 +19,11 @@ def get_lr_scheduler(opt, lr_use_linear_decay, lr_scale, lr_warmup, lr_start_lin
     return shd
 
 
-def get_optimizer(model, beta1, beta2, lr, weight_decay, eps, fp16_loss_scale, fp16_scale_window, fp16, fp16_opt,
+def get_optimizer(model, beta1, beta2, lr, weight_decay, eps,
                   generic_adam, **params):
     # Optimizer
-    betas = (beta1, beta2)
-
-    if generic_adam:
-        return AdamW(model.parameters(), lr=lr, weight_decay=weight_decay, betas=betas, eps=eps), None, None
-
-    if fp16_opt:
-        opt = FP16FusedAdam(model.parameters(), lr=lr, weight_decay=weight_decay, betas=betas, eps=eps)
-    else:
-        opt = FusedAdam(model.parameters(), lr=lr, weight_decay=weight_decay, betas=betas, eps=eps)
+    opt = AdamW(model.parameters(), lr=lr, weight_decay=weight_decay, betas= (beta1, beta2), eps=eps)
 
     # lr scheduler
     shd = get_lr_scheduler(opt, **params)
-
-    # fp16 dynamic loss scaler
-    scalar = None
-    if fp16:
-        rank = dist.get_rank()
-        local_rank = rank % 8
-        scalar = LossScalar(fp16_loss_scale, scale_factor=2 ** (1./fp16_scale_window))
-        if local_rank == 0:
-            logging.info(scalar.__dict__)
-
-    return opt, shd, scalar
+    return opt, shd

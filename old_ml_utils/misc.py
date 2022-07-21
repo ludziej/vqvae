@@ -1,6 +1,5 @@
 import torch
 
-from old_ml_utils import dist_adapter as dist
 
 
 def assert_shape(x, exp_shape):
@@ -15,9 +14,3 @@ def average_metrics(_metrics):
                 metrics[key] = []
             metrics[key].append(val)
     return {key: sum(vals)/len(vals) for key, vals in metrics.items()}
-
-
-def allreduce(x, op=dist.ReduceOp.SUM):
-    x = torch.tensor(x).float().cuda()
-    dist.all_reduce(x, op=op)
-    return x.item()

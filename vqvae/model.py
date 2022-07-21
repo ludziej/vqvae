@@ -259,8 +259,5 @@ class VQVAE(LightningModule):
         return loss
 
     def configure_optimizers(self):
-        opt, sched, scalar = get_optimizer(self, **self.opt_params)
-        if sched is None:
-            return opt
-        self.scalar = scalar
+        opt, sched = get_optimizer(self, **self.opt_params)
         return [opt], [sched]

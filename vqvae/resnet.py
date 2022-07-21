@@ -1,6 +1,5 @@
 import math
 import torch.nn as nn
-import old_ml_utils.dist_adapter as dist
 from old_ml_utils.checkpoint import checkpoint
 import logging
 from optimization.normalization import CustomNormalization
