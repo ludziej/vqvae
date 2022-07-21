@@ -1,6 +1,5 @@
 import math
 import torch.nn as nn
-from old_ml_utils.checkpoint import checkpoint
 import logging
 from optimization.normalization import CustomNormalization
 
@@ -24,30 +23,17 @@ class ResConv1DBlock(nn.Module):
 
 
 class Resnet1D(nn.Module):
-    def __init__(self, n_in, n_depth, m_conv=1.0, dilation_growth_rate=1, dilation_cycle=None, zero_out=False,
-                 res_scale=False, reverse_dilation=False, checkpoint_res=False, norm_type="none"):
+    def __init__(self, n_in, n_depth, m_conv=1.0, dilation_growth_rate=1, dilation_cycle=None, res_scale=False,
+                 reverse_dilation=False, norm_type="none"):
         super().__init__()
-        def _get_depth(depth):
-            if dilation_cycle is None:
-                return depth
-            else:
-                return depth % dilation_cycle
+        get_depth = lambda depth: depth if dilation_cycle is None else depth % dilation_cycle
         blocks = [ResConv1DBlock(n_in, int(m_conv * n_in),
-                                 dilation=dilation_growth_rate ** _get_depth(depth), norm_type=norm_type,
+                                 dilation=dilation_growth_rate ** get_depth(depth), norm_type=norm_type,
                                  res_scale=1.0 if not res_scale else 1.0 / math.sqrt(n_depth))
                   for depth in range(n_depth)]
         if reverse_dilation:
             blocks = blocks[::-1]
-        self.checkpoint_res = checkpoint_res
-        if self.checkpoint_res == 1:
-            self.blocks = nn.ModuleList(blocks)
-        else:
-            self.resblocks = nn.Sequential(*blocks)
+        self.resblocks = nn.Sequential(*blocks)
 
     def forward(self, x):
-        if self.checkpoint_res == 1:
-            for block in self.blocks:
-                x = checkpoint(block, (x, ), block.parameters(), True)
-            return x
-        else:
-            return self.resblocks(x)
+        return self.resblocks(x)
