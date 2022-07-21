@@ -36,7 +36,6 @@ small_vqvae_opt_hparams = default_vqvae_opt_hparams.update(
     epochs=10000,
     lr=0.0003,
     weight_decay=0.0,
-    lr_warmup=100.0,
 )
 
 small_vqvae_params = Hparams(**small_vqvae_opt_hparams.__dict__, **small_vqvae_model_params.__dict__)

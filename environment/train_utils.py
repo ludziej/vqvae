@@ -4,8 +4,7 @@ import sys
 from datetime import datetime
 from pytorch_lightning import Trainer
 from pytorch_lightning import loggers as pl_loggers
-from pytorch_lightning.callbacks import ModelCheckpoint
-from pytorch_lightning.callbacks import TQDMProgressBar
+from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar, LearningRateMonitor
 from pathlib import Path
 import json
 import sys
@@ -23,13 +22,14 @@ def generic_train(model, hparams, train, test, model_hparams, root_dir):
     checkpoint_callback = ModelCheckpoint(dirpath=root_dir / model_hparams.ckpt_dir, filename=model_hparams.ckpt_name,
                                           every_n_epochs=model_hparams.ckpt_freq)
     tqdm_pb = NoSmoothingTQDM()
+    lr_monitor = LearningRateMonitor(logging_interval='step')
 
     trainer = Trainer(gpus=hparams.gpus, profiler="simple", max_epochs=hparams.max_epochs,
                       max_steps=hparams.max_steps if hparams.max_steps != 0 else -1,
                       gradient_clip_val=hparams.gradient_clip_val,
                       log_every_n_steps=1, logger=tb_logger, strategy=hparams.accelerator, detect_anomaly=True,
                       default_root_dir=root_dir / model_hparams.default_ckpt_root, track_grad_norm=2,
-                      callbacks=[checkpoint_callback, tqdm_pb])
+                      callbacks=[checkpoint_callback, tqdm_pb, lr_monitor])
     trainer.fit(model, train_dataloaders=train, val_dataloaders=test)
 
 
