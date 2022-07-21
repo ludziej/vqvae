@@ -1,18 +1,20 @@
 import math
 import torch.nn as nn
-import logging
-from optimization.normalization import CustomNormalization
+from optimization.normalization import CustomNormalization, Conv1dWeightStandardized
 
 
 class ResConv1DBlock(nn.Module):
     def __init__(self, n_in, n_state, norm_type, leaky_param, dilation=1, res_scale=1.0):
         super().__init__()
         padding = dilation
+        bias = norm_type == "none"
+        use_standard = norm_type != "none"
         self.resconv = nn.Sequential(
-            nn.Conv1d(n_in, n_state, 3, 1, padding, dilation, bias=norm_type == "none"),
+            Conv1dWeightStandardized(n_in, n_state, 3, 1, padding, dilation,
+                                     bias=bias, use_standardization=use_standard),
             CustomNormalization(n_in, norm_type),
             nn.LeakyReLU(negative_slope=leaky_param),
-            nn.Conv1d(n_state, n_in, 1, 1, 0, bias=norm_type == "none"),
+            Conv1dWeightStandardized(n_state, n_in, 1, 1, 0, bias=bias, use_standardization=use_standard),
             CustomNormalization(n_in, norm_type),
             nn.LeakyReLU(negative_slope=leaky_param),
         )
