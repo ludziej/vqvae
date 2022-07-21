@@ -95,7 +95,7 @@ default_vqvae_opt_hparams = Hparams(
     lr_start_linear_decay=0,
     ckpt_freq=10,
     band_est_dur=1000,
-    ckpt_name='model-{epoch}-{val_multispectral_loss_epoch:.2f}-{spectral_loss_epoch:.2f}',
+    ckpt_name='model_ep={epoch}_ls={loss_step:.2f}',
     **dirs_config.__dict__,
 )
 

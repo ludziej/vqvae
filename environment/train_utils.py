@@ -20,7 +20,7 @@ class NoSmoothingTQDM(TQDMProgressBar):
 def generic_train(model, hparams, train, test, model_hparams, root_dir):
     tb_logger = pl_loggers.TensorBoardLogger(root_dir / model_hparams.logs_dir)
     checkpoint_callback = ModelCheckpoint(dirpath=root_dir / model_hparams.ckpt_dir, filename=model_hparams.ckpt_name,
-                                          every_n_epochs=model_hparams.ckpt_freq)
+                                          every_n_train_steps=model_hparams.ckpt_freq)
     tqdm_pb = NoSmoothingTQDM()
     lr_monitor = LearningRateMonitor(logging_interval='step')
 
