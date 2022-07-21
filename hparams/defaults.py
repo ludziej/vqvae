@@ -60,6 +60,7 @@ default_vqvae_model_params = Hparams(
     discriminator_level=0,
     forward_params=default_forward_params,
     from_last_checkpot=True,
+    leaky_param=1e-2,
     use_bottleneck=True,
     main_dir="generated/models/small_vqvae/",
 )
