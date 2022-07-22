@@ -11,7 +11,7 @@ norm_resolver = {
 
 
 class CustomNormalization(nn.Module):
-    def __init__(self, dim, norm_type="none", num_groups=8):
+    def __init__(self, dim, norm_type="none", num_groups=4):
         super().__init__()
         self.dim = dim
         self.norm_type = norm_type
