@@ -14,47 +14,30 @@ from vqvae.helpers import calculate_strides, _loss_fn
 from vqvae.discriminator import Discriminator
 
 
+class VQVAEGenerator(nn.Module):
+    def __init__(self, encoders: nn.Module, decoders: nn.Module, bottleneck: nn.Module):
+        super().__init__()
+        self.encoders = encoders
+        self.decoders = decoders
+        self.bottleneck = bottleneck
+
+
 class VQVAE(LightningModule):
     def __init__(self, input_channels, levels, downs_t, strides_t, loss_fn, norm_before_vqvae, fixed_commit,
                  emb_width, l_bins, mu, commit, spectral, multispectral, forward_params, discriminator_level,
-                 multipliers, use_bottleneck, with_discriminator, logger, log_interval, **params):
+                 multipliers, use_bottleneck, with_discriminator, logger, log_interval, gan_loss_weight,
+                 disc_reduce_type, **params):
         super().__init__()
 
-        self.downsamples = calculate_strides(strides_t, downs_t)
-        self.hop_lengths = np.cumprod(self.downsamples)
         self.levels = levels
         self.norm_before_vqvae = norm_before_vqvae
         self.forward_params = forward_params
         self.loss_fn = loss_fn
-        self.sr = params["sr"]
+        self.with_discriminator = with_discriminator
         self.my_logger = logger
         self.log_interval = log_interval
-        self.forward_params["sr"] = self.sr
-
-        assert len(multipliers) == levels, "Invalid number of multipliers"
         self.multipliers = multipliers
-        def _block_kwargs(level):
-            this_block_kwargs = dict(params)
-            this_block_kwargs["width"] *= self.multipliers[level]
-            this_block_kwargs["depth"] *= self.multipliers[level]
-            return this_block_kwargs
-
-        self.encoders = nn.ModuleList([Encoder(input_channels, emb_width, level + 1,
-                                               downs_t[:level+1], strides_t[:level+1], **_block_kwargs(level))
-                                       for level in range(levels)])
-        self.decoders = nn.ModuleList([Decoder(input_channels, emb_width, level + 1,
-                                               downs_t[:level+1], strides_t[:level+1], **_block_kwargs(level))
-                                       for level in range(levels)])
-
-        if use_bottleneck:
-            self.bottleneck = Bottleneck(l_bins, emb_width, mu, levels, norm_before_vqvae, fixed_commit)
-        else:
-            self.bottleneck = NoBottleneck(levels)
-
-        if with_discriminator:
-            self.discriminator = Discriminator(input_channels, emb_width, discriminator_level,
-                                               downs_t[:discriminator_level+1], strides_t[:discriminator_level+1],
-                                               **_block_kwargs(discriminator_level))
+        self.gan_loss_weight = gan_loss_weight
 
         self.downs_t = downs_t
         self.strides_t = strides_t
@@ -63,8 +46,36 @@ class VQVAE(LightningModule):
         self.spectral = spectral
         self.multispectral = multispectral
         self.opt_params = params
+
+        self.sr = self.forward_params["sr"] = params["sr"]
+        self.downsamples = calculate_strides(strides_t, downs_t)
+        self.hop_lengths = np.cumprod(self.downsamples)
         self.log_nr = {"val_": 0, "": 0, "test_": 0}
         self.my_logger.info(str(self))
+
+        assert len(multipliers) == levels, "Invalid number of multipliers"
+
+        def _block_kwargs(level):
+            this_block_kwargs = dict(params)
+            this_block_kwargs["width"] *= self.multipliers[level]
+            this_block_kwargs["depth"] *= self.multipliers[level]
+            return this_block_kwargs
+
+        encoders = nn.ModuleList([Encoder(input_channels, emb_width, level + 1,
+                                          downs_t[:level+1], strides_t[:level+1], **_block_kwargs(level))
+                                  for level in range(levels)])
+        decoders = nn.ModuleList([Decoder(input_channels, emb_width, level + 1,
+                                          downs_t[:level+1], strides_t[:level+1], **_block_kwargs(level))
+                                  for level in range(levels)])
+        bottleneck = Bottleneck(l_bins, emb_width, mu, levels, norm_before_vqvae, fixed_commit) \
+            if use_bottleneck else NoBottleneck(levels)
+
+        self.generator: VQVAEGenerator = VQVAEGenerator(encoders, decoders, bottleneck)
+
+        self.discriminator = Discriminator(input_channels, emb_width, discriminator_level,
+                                           downs_t[:discriminator_level+1], strides_t[:discriminator_level+1],
+                                           reduce_type=disc_reduce_type, **_block_kwargs(discriminator_level)) \
+            if with_discriminator else None
 
     def __str__(self):
         return f"VQ-VAE with sr={self.sr} and tokens for one second: {self.get_z_lengths(1 * self.sr)}"
@@ -95,11 +106,11 @@ class VQVAE(LightningModule):
         if end_level is None:
             end_level = self.levels
         assert len(zs) == end_level - start_level
-        xs_quantised = self.bottleneck.decode(zs, start_level=start_level, end_level=end_level)
+        xs_quantised = self.generator.bottleneck.decode(zs, start_level=start_level, end_level=end_level)
         assert len(xs_quantised) == end_level - start_level
 
         # Use only lowest level
-        decoder, x_quantised = self.decoders[start_level], xs_quantised[0:1]
+        decoder, x_quantised = self.generator.decoders[start_level], xs_quantised[0:1]
         x_out = decoder(x_quantised, all_levels=False)
         x_out = self.postprocess(x_out)
         return x_out
@@ -120,10 +131,10 @@ class VQVAE(LightningModule):
         x_in = self.preprocess(x)
         xs = []
         for level in range(self.levels):
-            encoder = self.encoders[level]
+            encoder = self.generator.encoders[level]
             x_out = encoder(x_in)
             xs.append(x_out[-1])
-        zs = self.bottleneck.encode(xs)
+        zs = self.generator.bottleneck.encode(xs)
         return zs[start_level:end_level]
 
     def encode(self, x, start_level=0, end_level=None, bs_chunks=1):
@@ -140,25 +151,24 @@ class VQVAE(LightningModule):
               for z_shape in self.get_z_lengths(sample_len)]
         return self.decode(zs)
 
-    def forward(self, x):
+    def forward(self, x_in):
         hps = self.forward_params
         loss_fn = self.loss_fn
         metrics = {}
 
-        N = x.shape[0]
 
         # Encode/Decode
-        x_in = self.preprocess(x)
+        x = self.postprocess(x_in)
         xs = []
         for level in range(self.levels):
-            encoder = self.encoders[level]
+            encoder = self.generator.encoders[level]
             x_out = encoder(x_in)
             xs.append(x_out[-1])
 
-        zs, xs_quantised, commit_losses, quantiser_metrics = self.bottleneck(xs)
+        zs, xs_quantised, commit_losses, quantiser_metrics = self.generator.bottleneck(xs)
         x_outs = []
         for level in range(self.levels):
-            decoder = self.decoders[level]
+            decoder = self.generator.decoders[level]
             x_out = decoder(xs_quantised[level:level+1], all_levels=False)
             assert_shape(x_out, x_in.shape)
             x_outs.append(x_out)
@@ -177,9 +187,9 @@ class VQVAE(LightningModule):
             sl = t.mean(sl)
             return sl
 
-        recons_loss = t.zeros(()).to(x.device)
-        spec_loss = t.zeros(()).to(x.device)
-        multispec_loss = t.zeros(()).to(x.device)
+        recons_loss = t.zeros(()).to(x_in.device)
+        spec_loss = t.zeros(()).to(x_in.device)
+        multispec_loss = t.zeros(()).to(x_in.device)
         x_target = audio_postprocess(x.float(), hps)
 
         for i, xo in enumerate(x_outs):
@@ -226,6 +236,16 @@ class VQVAE(LightningModule):
 
         return x_out, loss, metrics, x_outs
 
+    def forward_discriminator(self, x_in, gen_out, optimize_generator=False):
+        gen_out = torch.cat(gen_out, dim=0)
+        gen_out = gen_out if optimize_generator else gen_out.detach()
+        x_in = x_in[0:0] if optimize_generator else x_in  # no need to forward on input optimizing generator
+        in_batch = torch.cat([gen_out, x_in])
+        y_true = torch.cat([torch.zeros(len(gen_out)), torch.ones(len(x_in))]).to(x_in.device).long()
+        y_opt = 1 - y_true if optimize_generator else y_true
+        loss, probs, cls, acc = self.discriminator.calculate_loss(in_batch, y_opt, balance=not optimize_generator)
+        return loss, probs, cls, acc
+
     def log_metrics_and_samples(self, loss, metrics, batch, batch_outs, batch_idx, prefix=""):
         self.log(prefix + "loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         for name, val in metrics.items():
@@ -243,21 +263,39 @@ class VQVAE(LightningModule):
             for i, out in enumerate(xouts):
                 tlogger.add_audio(prefix + f"sample_out_{i}_lvl_{level}", out, nr, self.sr)
 
-    def training_step(self, batch, batch_idx):
-        x_out, loss, metrics, x_outs = self(batch[0])
-        self.log_metrics_and_samples(loss, metrics, batch[0], x_outs, batch_idx)
+    def training_step(self, batch, batch_idx, optimizer_idx=-1):
+        x_in = self.preprocess(batch[0])
+        x_out, recon_loss, metrics, x_outs = self(x_in)
+        loss = recon_loss
+        if optimizer_idx == 0 and self.with_discriminator:  # optimize generator
+            gan_loss, _, _, disc_acc = self.forward_discriminator(x_in, x_outs, optimize_generator=True)
+            metrics["generator_loss"] = gan_loss
+            loss += gan_loss * self.gan_loss_weight
+        elif optimizer_idx == 1 and self.with_discriminator:  # optimize discriminator
+            gan_loss, _, _, disc_acc = self.forward_discriminator(x_in, x_outs)
+            metrics["discriminator_loss"] = gan_loss
+            metrics["discriminator_b_acc"] = disc_acc
+            loss += gan_loss * self.gan_loss_weight
+        self.log_metrics_and_samples(recon_loss, metrics, x_in, x_outs, batch_idx)
         return loss
 
     def test_step(self, batch, batch_idx):
-        x_out, loss, metrics, x_outs = self(batch[0])
-        self.log_metrics_and_samples(loss, metrics, batch[0], x_outs, batch_idx, prefix="test_")
+        x_in = self.preprocess(batch[0])
+        x_out, loss, metrics, x_outs = self(x_in)
+        self.log_metrics_and_samples(loss, metrics, x_in, x_outs, batch_idx, prefix="test_")
         return loss
 
     def validation_step(self, batch, batch_idx):
-        x_out, loss, metrics, x_outs = self(batch[0])
-        self.log_metrics_and_samples(loss, metrics, batch[0], x_outs, batch_idx, prefix="val_")
+        x_in = self.preprocess(batch[0])
+        x_out, loss, metrics, x_outs = self(x_in)
+        self.log_metrics_and_samples(loss, metrics, x_in, x_outs, batch_idx, prefix="val_")
         return loss
 
     def configure_optimizers(self):
-        opt, sched = get_optimizer(self, **self.opt_params)
-        return [opt], [sched]
+        gopt, gsched = get_optimizer(self.generator, **self.opt_params)
+        if not self.with_discriminator:
+            return [gopt], [gsched]
+        # all parameters are given to the discriminator optimizer, because it optimizes also generator compression
+        # but detaches generator output before discriminator
+        dopt, dsched = get_optimizer(self, **self.opt_params)
+        return [gopt, dopt], [gsched, dsched]

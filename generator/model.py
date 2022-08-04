@@ -44,7 +44,7 @@ class LevelGenerator(LightningModule):
         self.log_interval = log_interval
         self.sr = vqvae.sr
         self.log_sample_bs, self.log_sample_size = log_sample_size
-        self.preprocessing = vqvae
+        self.preprocessing: VQVAE = vqvae
         self.preprocessing.freeze()
         self.bins = self.preprocessing.l_bins
         self.is_first_batch = True
@@ -86,7 +86,7 @@ class LevelGenerator(LightningModule):
                f" that last {self.sample_len/self.sr:.3} s.)"
 
     def get_vqvae_bins(self, level):
-        return self.preprocessing.bottleneck.level_blocks[level].k.detach()
+        return self.preprocessing.generator.bottleneck.level_blocks[level].k.detach()
 
     def init_emb(self, bins: nn.Module):
         if self.init_bins_from_vqvae:

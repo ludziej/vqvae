@@ -4,29 +4,30 @@ from vqvae.encdec import Encoder, assert_shape
 
 
 class Discriminator(nn.Module):
-    def __init__(self, input_channels, emb_width, level, downs_t, strides_t, **block_kwargs):
+    def __init__(self, input_channels, emb_width, level, downs_t, strides_t, reduce_type="max", **block_kwargs):
         super().__init__()
-        self.encoder = Encoder(input_channels, emb_width, level + 1,
-                               downs_t, strides_t, **block_kwargs)
+        self.reduce_type = reduce_type
+        self.encoder = Encoder(input_channels, emb_width, level + 1, downs_t, strides_t, **block_kwargs)
         self.fc = nn.Linear(emb_width, 2)
-        self.logsoftmax = nn.LogSoftmax()
-        self.nllloss = nn.NLLLoss()
+        self.logsoftmax = nn.LogSoftmax(dim=-1)
+        self.nllloss = nn.NLLLoss(reduction="none")
 
-    def get_proba(self, x):
-        x = self.encoder(x)
+    def forward(self, x):
+        x = self.encoder(x)[-1]
 
-        nb, ns, se = x.shape
-        logits = self.fc(x.reshape(nb * ns, se))
+        x = torch.max(x, dim=2).values if self.reduce_type == "max" else torch.mean(x, dim=2)
+        logits = self.fc(x)
         probs = self.logsoftmax(logits)
         return probs
 
-    def forward(self, x, y):
-        probs = self.get_proba(x)
+    def calculate_loss(self, x, y, balance=True):
+        probs = self.forward(x)
 
-        nb, ns, _ = probs.shape
-        assert_shape(y, (nb,))
-        y_true = y.view((nb, 1)).repeat(1, ns).reshape(nb * ns)
+        y_weight = (y / torch.sum(y) + (1 - y) / torch.sum(1 - y))/2 if balance else 1/len(y)
+        loss = torch.sum(self.nllloss(probs, y) * y_weight)
 
-        loss = self.nllloss(probs, y_true)
-        return loss
+        probs = torch.exp(probs)
+        cls = torch.round(probs[:, 1])
+        acc = torch.sum((cls == y) * y_weight)
+        return loss, probs, cls, acc
 
