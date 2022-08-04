@@ -156,7 +156,6 @@ class VQVAE(LightningModule):
         loss_fn = self.loss_fn
         metrics = {}
 
-
         # Encode/Decode
         x = self.postprocess(x_in)
         xs = []
