@@ -169,10 +169,10 @@ class BottleneckBlock(nn.Module):
 
         # Postprocess
         x_l, x_d = self.postprocess(x_l, x_d, (N,T))
-        return x_l, x_d, commit_loss, dict(fit=fit,
-                                           pn=prenorm,
-                                           pn_vec=prenorm_vec,
-                                           **update_metrics)
+        return x_l, x_d, commit_loss, prenorm, dict(fit=fit,
+                                                    pn=prenorm,
+                                                    pn_vec=prenorm_vec,
+                                                    **update_metrics)
 
 
 class Bottleneck(nn.Module):
@@ -194,21 +194,22 @@ class Bottleneck(nn.Module):
         return xs_quantised
 
     def forward(self, xs):
-        zs, xs_quantised, commit_losses, metrics = [], [], [], []
+        zs, xs_quantised, commit_losses, prenorms, metrics = [], [], [], [], []
         for level in range(self.levels):
             level_block = self.level_blocks[level]
             x = xs[level]
-            z, x_quantised, commit_loss, metric = level_block(x, update_k=self.training)
+            z, x_quantised, commit_loss, prenorm, metric = level_block(x, update_k=self.training)
             zs.append(z)
             if not self.training:
                 # Be extra paranoid and make sure the encoder weights can't
                 # change from straight-through estimator
                 x_quantised = x_quantised.detach()
             xs_quantised.append(x_quantised)
+            prenorms.append(prenorm)
             commit_losses.append(commit_loss)
             if self.training:
                 metrics.append(metric)
-        return zs, xs_quantised, commit_losses, metrics
+        return zs, xs_quantised, commit_losses, prenorms, metrics
 
 class NoBottleneckBlock(nn.Module):
     def restore_k(self):

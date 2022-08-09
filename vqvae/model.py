@@ -26,7 +26,7 @@ class VQVAE(LightningModule):
     def __init__(self, input_channels, levels, downs_t, strides_t, loss_fn, norm_before_vqvae, fixed_commit,
                  emb_width, l_bins, mu, commit, spectral, multispectral, forward_params, discriminator_level,
                  multipliers, use_bottleneck, with_discriminator, logger, log_interval, gan_loss_weight,
-                 disc_reduce_type, **params):
+                 disc_reduce_type, prenorm_normalisation, prenorm_loss_weight, **params):
         super().__init__()
 
         self.levels = levels
@@ -38,6 +38,8 @@ class VQVAE(LightningModule):
         self.log_interval = log_interval
         self.multipliers = multipliers
         self.gan_loss_weight = gan_loss_weight
+        self.prenorm_normalisation = prenorm_normalisation
+        self.prenorm_loss_weight = prenorm_loss_weight
 
         self.downs_t = downs_t
         self.strides_t = strides_t
@@ -166,13 +168,13 @@ class VQVAE(LightningModule):
 
     def forward(self, x_in):
         x_encoded = [encoder(x_in)[-1] for encoder in self.generator.encoders]
-        zs, xs_quantised, commit_losses, quantiser_metrics = self.generator.bottleneck(x_encoded)
+        zs, xs_quantised, commit_losses, prenorms, quantiser_metrics = self.generator.bottleneck(x_encoded)
 
         x_outs = [decoder(xs_quantised[level:level+1], all_levels=False)
                   for level, decoder in enumerate(self.generator.decoders)]
         [assert_shape(x_out, x_in.shape) for x_out in x_outs]
 
-        loss, metrics = self.calc_metrics_and_loss(commit_losses, quantiser_metrics, x_in, x_outs)
+        loss, metrics = self.calc_metrics_and_loss(commit_losses, quantiser_metrics, prenorms, x_in, x_outs)
         return loss, metrics, x_outs
 
     def forward_discriminator(self, x_in, gen_out, optimize_generator=False):
@@ -225,7 +227,7 @@ class VQVAE(LightningModule):
 
     # metrics
 
-    def calc_metrics_and_loss(self, commit_losses, quantiser_metrics, x_in, x_outs):
+    def calc_metrics_and_loss(self, commit_losses, quantiser_metrics, prenorms, x_in, x_outs):
         metrics = {}
         hps = self.forward_params
         x_target = audio_postprocess(self.postprocess(x_in).float(), hps)
@@ -251,8 +253,11 @@ class VQVAE(LightningModule):
             spec_loss += this_spec_loss
             multispec_loss += this_multispec_loss
         commit_loss = sum(commit_losses)
+        prenorm_loss = torch.sqrt(torch.mean((torch.stack(prenorms) - self.prenorm_normalisation)**2)) \
+            if self.prenorm_normalisation else 0
 
-        loss = recons_loss + self.spectral * spec_loss + self.multispectral * multispec_loss + self.commit * commit_loss
+        loss = recons_loss + self.spectral * spec_loss + self.multispectral * multispec_loss +\
+               self.commit * commit_loss + prenorm_loss * self.prenorm_loss_weight
 
         with t.no_grad():
             for level, x_out in enumerate(x_outs):
@@ -263,6 +268,7 @@ class VQVAE(LightningModule):
             for level in range(len(quantiser_metrics)):
                 for key, value in quantiser_metrics[level].items():
                     metrics[f"{key}/lvl_{level}"] = value
+            metrics["prenorm_loss"] = prenorm_loss
             metrics.update(average_metrics(quantiser_metrics, suffix="/total"))
             metrics.update({  # add level-aggregated stats
                 "recons_loss/total": recons_loss, "spectral_loss/total": spec_loss,
