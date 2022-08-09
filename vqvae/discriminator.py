@@ -24,10 +24,11 @@ class Discriminator(nn.Module):
         probs = self.forward(x)
 
         y_weight = (y / torch.sum(y) + (1 - y) / torch.sum(1 - y))/2 if balance else 1/len(y)
-        loss = torch.sum(self.nllloss(probs, y) * y_weight)
+        loss_ew = self.nllloss(probs, y)
+        loss = torch.sum(loss_ew * y_weight)
 
         probs = torch.exp(probs)
         cls = torch.round(probs[:, 1])
         acc = torch.sum((cls == y) * y_weight)
-        return loss, probs, cls, acc
+        return loss, probs, cls, acc, loss_ew
 

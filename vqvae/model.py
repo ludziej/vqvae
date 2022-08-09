@@ -183,8 +183,8 @@ class VQVAE(LightningModule):
         in_batch = torch.cat([gen_out, x_in])
         y_true = torch.cat([torch.zeros(len(gen_out)), torch.ones(len(x_in))]).to(x_in.device).long()
         y_opt = 1 - y_true if optimize_generator else y_true
-        loss, probs, cls, acc = self.discriminator.calculate_loss(in_batch, y_opt, balance=not optimize_generator)
-        metrics = self.disciminator_metrics(loss, acc, bs, cls, y_true, optimize_generator)
+        loss, probs, cls, acc, ewl = self.discriminator.calculate_loss(in_batch, y_opt, balance=not optimize_generator)
+        metrics = self.discriminator_metrics(loss, acc, bs, cls, y_true, ewl, optimize_generator)
         return loss, probs, cls, metrics
 
     def adversarial_optimization(self, loss, metrics, optimizer_idx, x_in, x_outs):
@@ -271,8 +271,15 @@ class VQVAE(LightningModule):
                 metrics[key] = val.detach()
         return loss, metrics
 
-    def disciminator_metrics(self, loss, acc, bs, cls, y_true, optimize_generator):
-        metrics = {("generator_" if optimize_generator else "discriminator_") + "loss": loss}
+    def discriminator_metrics(self, loss, acc, bs, cls, y_true, loss_ew, optimize_generator):
+        prefix = ("generator_" if optimize_generator else "discriminator_") + "loss/"
+        metrics = {prefix + "total": loss}
+        loss_real = None if optimize_generator else torch.mean(loss_ew[-bs:])
+        loss_ew = loss_ew[:self.levels * bs].reshape(self.levels, bs)
+        for level, lvl_loss in enumerate(loss_ew):
+            metrics[f"{prefix}lvl_{level}"] = torch.mean(lvl_loss) if optimize_generator else \
+                (torch.mean(lvl_loss) + torch.mean(loss_real))/2
+
         if not optimize_generator:  # log per level acc stats
             metrics["discriminator_acc/balanced"] = acc
             error = (y_true == cls).reshape(self.levels + 1, bs).float()
