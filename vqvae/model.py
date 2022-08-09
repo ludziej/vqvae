@@ -15,7 +15,7 @@ from vqvae.discriminator import Discriminator
 
 
 class VQVAEGenerator(nn.Module):
-    def __init__(self, encoders: nn.Module, decoders: nn.Module, bottleneck: nn.Module):
+    def __init__(self, encoders: nn.ModuleList, decoders: nn.ModuleList, bottleneck: nn.Module):
         super().__init__()
         self.encoders = encoders
         self.decoders = decoders
@@ -151,91 +151,32 @@ class VQVAE(LightningModule):
               for z_shape in self.get_z_lengths(sample_len)]
         return self.decode(zs)
 
+    def _spectral_loss(self, x_target, x_out):
+        if self.forward_params.use_nonrelative_specloss:
+            sl = spectral_loss(x_target, x_out, self.forward_params) / self.forward_params.bandwidth['spec']
+        else:
+            sl = spectral_convergence(x_target, x_out, self.forward_params)
+        sl = t.mean(sl)
+        return sl
+
+    def _multispectral_loss(self, x_target, x_out):
+        sl = multispectral_loss(x_target, x_out, self.forward_params) / self.forward_params.bandwidth['spec']
+        sl = t.mean(sl)
+        return sl
+
     def forward(self, x_in):
-        hps = self.forward_params
-        loss_fn = self.loss_fn
-        metrics = {}
+        x_encoded = [encoder(x_in)[-1] for encoder in self.generator.encoders]
+        zs, xs_quantised, commit_losses, quantiser_metrics = self.generator.bottleneck(x_encoded)
 
-        # Encode/Decode
-        x = self.postprocess(x_in)
-        xs = []
-        for level in range(self.levels):
-            encoder = self.generator.encoders[level]
-            x_out = encoder(x_in)
-            xs.append(x_out[-1])
+        x_outs = [decoder(xs_quantised[level:level+1], all_levels=False)
+                  for level, decoder in enumerate(self.generator.decoders)]
+        [assert_shape(x_out, x_in.shape) for x_out in x_outs]
 
-        zs, xs_quantised, commit_losses, quantiser_metrics = self.generator.bottleneck(xs)
-        x_outs = []
-        for level in range(self.levels):
-            decoder = self.generator.decoders[level]
-            x_out = decoder(xs_quantised[level:level+1], all_levels=False)
-            assert_shape(x_out, x_in.shape)
-            x_outs.append(x_out)
-
-        # Loss
-        def _spectral_loss(x_target, x_out, hps):
-            if hps.use_nonrelative_specloss:
-                sl = spectral_loss(x_target, x_out, hps) / hps.bandwidth['spec']
-            else:
-                sl = spectral_convergence(x_target, x_out, hps)
-            sl = t.mean(sl)
-            return sl
-
-        def _multispectral_loss(x_target, x_out, hps):
-            sl = multispectral_loss(x_target, x_out, hps) / hps.bandwidth['spec']
-            sl = t.mean(sl)
-            return sl
-
-        recons_loss = t.zeros(()).to(x_in.device)
-        spec_loss = t.zeros(()).to(x_in.device)
-        multispec_loss = t.zeros(()).to(x_in.device)
-        x_target = audio_postprocess(x.float(), hps)
-
-        for i, xo in enumerate(x_outs):
-            metrics[f"x_out_norm_l{i+1}"] = torch.mean(norm(xo))
-        metrics["x_in_norm"] = torch.mean(norm(x))
-
-        for level in reversed(range(self.levels)):
-            x_out = self.postprocess(x_outs[level])
-            x_out = audio_postprocess(x_out, hps)
-            this_recons_loss = _loss_fn(loss_fn, x_target, x_out, hps)
-            this_spec_loss = _spectral_loss(x_target, x_out, hps)
-            this_multispec_loss = _multispectral_loss(x_target, x_out, hps)
-            metrics[f'recons_loss_l{level + 1}'] = this_recons_loss
-            metrics[f'spectral_loss_l{level + 1}'] = this_spec_loss
-            metrics[f'multispectral_loss_l{level + 1}'] = this_multispec_loss
-            recons_loss += this_recons_loss
-            spec_loss += this_spec_loss
-            multispec_loss += this_multispec_loss
-
-        commit_loss = sum(commit_losses)
-        loss = recons_loss + self.spectral * spec_loss + self.multispectral * multispec_loss + self.commit * commit_loss
-
-        with t.no_grad():
-            sc = t.mean(spectral_convergence(x_target, x_out, hps))
-            l2_loss = _loss_fn("l2", x_target, x_out, hps)
-            l1_loss = _loss_fn("l1", x_target, x_out, hps)
-            linf_loss = _loss_fn("linf", x_target, x_out, hps)
-
-        quantiser_metrics = average_metrics(quantiser_metrics)
-
-        metrics.update(dict(
-            recons_loss=recons_loss,
-            spectral_loss=spec_loss,
-            multispectral_loss=multispec_loss,
-            spectral_convergence=sc,
-            l2_loss=l2_loss,
-            l1_loss=l1_loss,
-            linf_loss=linf_loss,
-            commit_loss=commit_loss,
-            **quantiser_metrics))
-
-        for key, val in metrics.items():
-            metrics[key] = val.detach()
-
-        return x_out, loss, metrics, x_outs
+        loss, metrics = self.calc_metrics_and_loss(commit_losses, quantiser_metrics, x_in, x_outs)
+        return loss, metrics, x_outs
 
     def forward_discriminator(self, x_in, gen_out, optimize_generator=False):
+        bs = len(gen_out[0])
         gen_out = torch.cat(gen_out, dim=0)
         gen_out = gen_out if optimize_generator else gen_out.detach()
         x_in = x_in[0:0] if optimize_generator else x_in  # no need to forward on input optimizing generator
@@ -243,7 +184,105 @@ class VQVAE(LightningModule):
         y_true = torch.cat([torch.zeros(len(gen_out)), torch.ones(len(x_in))]).to(x_in.device).long()
         y_opt = 1 - y_true if optimize_generator else y_true
         loss, probs, cls, acc = self.discriminator.calculate_loss(in_batch, y_opt, balance=not optimize_generator)
-        return loss, probs, cls, acc
+        metrics = self.disciminator_metrics(loss, acc, bs, cls, y_true, optimize_generator)
+        return loss, probs, cls, metrics
+
+    def adversarial_optimization(self, loss, metrics, optimizer_idx, x_in, x_outs):
+        optimize_generator = optimizer_idx == 0
+        gan_loss, _, _, adv_metrics = self.forward_discriminator(x_in, x_outs, optimize_generator=optimize_generator)
+        metrics.update(adv_metrics)
+        loss += gan_loss * self.gan_loss_weight
+        return loss
+
+    def training_step(self, batch, batch_idx, optimizer_idx=-1):
+        x_in = self.preprocess(batch[0])
+        recon_loss, metrics, x_outs = self(x_in)
+        loss = self.adversarial_optimization(recon_loss, metrics, optimizer_idx, x_in, x_outs) \
+            if self.with_discriminator else recon_loss
+        self.log_metrics_and_samples(recon_loss, metrics, x_in, x_outs, batch_idx)
+        return loss
+
+    def test_step(self, batch, batch_idx):
+        x_in = self.preprocess(batch[0])
+        loss, metrics, x_outs = self(x_in)
+        self.log_metrics_and_samples(loss, metrics, x_in, x_outs, batch_idx, prefix="test_")
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        x_in = self.preprocess(batch[0])
+        loss, metrics, x_outs = self(x_in)
+        self.log_metrics_and_samples(loss, metrics, x_in, x_outs, batch_idx, prefix="val_")
+        return loss
+
+    def configure_optimizers(self):
+        gopt, gsched = get_optimizer(self.generator, **self.opt_params)
+        if not self.with_discriminator:
+            return [gopt], [gsched]
+        # all parameters are given to the discriminator optimizer, because it optimizes also generator compression
+        # but detaches generator output before discriminator
+        dopt, dsched = get_optimizer(self, **self.opt_params)
+        return [gopt, dopt], [gsched, dsched]
+
+    # metrics
+
+    def calc_metrics_and_loss(self, commit_losses, quantiser_metrics, x_in, x_outs):
+        metrics = {}
+        hps = self.forward_params
+        x_target = audio_postprocess(self.postprocess(x_in).float(), hps)
+
+        metrics["x_in_norm"] = torch.mean(norm(x_target))
+        for i, xo in enumerate(x_outs):
+            metrics[f"x_out_norm/lvl_{i + 1}"] = torch.mean(norm(xo))
+
+        x_outs = [self.postprocess(x_out) for x_out in x_outs]
+        recons_loss = t.zeros(()).to(x_in.device)
+        spec_loss = t.zeros(()).to(x_in.device)
+        multispec_loss = t.zeros(()).to(x_in.device)
+        for level in reversed(range(self.levels)):
+            x_out = audio_postprocess(x_outs[level], hps)
+            this_recons_loss = _loss_fn(self.loss_fn, x_target, x_out, hps)
+            this_spec_loss = self._spectral_loss(x_target, x_out)
+            this_multispec_loss = self._multispectral_loss(x_target, x_out)
+            metrics[f'recons_loss/lvl_{level + 1}'] = this_recons_loss
+            metrics[f'spectral_loss/lvl_{level + 1}'] = this_spec_loss
+            metrics[f'multispectral_loss/lvl_{level + 1}'] = this_multispec_loss
+            metrics[f'commit_loss/lvl_{level + 1}'] = commit_losses[level]
+            recons_loss += this_recons_loss
+            spec_loss += this_spec_loss
+            multispec_loss += this_multispec_loss
+        commit_loss = sum(commit_losses)
+
+        loss = recons_loss + self.spectral * spec_loss + self.multispectral * multispec_loss + self.commit * commit_loss
+
+        with t.no_grad():
+            for level, x_out in enumerate(x_outs):
+                metrics[f"spectral_convergence/lvl_{level + 1}"] = t.mean(spectral_convergence(x_target, x_out, hps))
+                metrics[f"l2_loss/lvl_{level + 1}"] = _loss_fn("l2", x_target, x_out, hps)
+                metrics[f"l1_loss/lvl_{level + 1}"] = _loss_fn("l1", x_target, x_out, hps)
+                metrics[f"linf_loss/lvl_{level + 1}"] = _loss_fn("linf", x_target, x_out, hps)
+            for level in range(len(quantiser_metrics)):
+                for key, value in quantiser_metrics[level].items():
+                    metrics[f"{key}/lvl_{level}"] = value
+            metrics.update(average_metrics(quantiser_metrics, suffix="/total"))
+            metrics.update({  # add level-aggregated stats
+                "recons_loss/total": recons_loss, "spectral_loss/total": spec_loss,
+                "multispectral_loss/total": multispec_loss, "commit_loss/total": commit_loss})
+            for key, val in metrics.items():
+                metrics[key] = val.detach()
+        return loss, metrics
+
+    def disciminator_metrics(self, loss, acc, bs, cls, y_true, optimize_generator):
+        metrics = {("generator_" if optimize_generator else "discriminator_") + "loss": loss}
+        if not optimize_generator:  # log per level acc stats
+            metrics["discriminator_acc/balanced"] = acc
+            error = (y_true == cls).reshape(self.levels + 1, bs).float()
+            real_acc = torch.mean(error[-1])  # accuracy on real input
+            metrics["discriminator_acc/on_real"] = real_acc
+            for i in range(self.levels):
+                fake_acc = torch.mean(error[i])  # accuracy on fake input on given level
+                metrics[f"discriminator_acc/lvl_{i + 1}"] = (real_acc + fake_acc) / 2  # average with real to balance
+                metrics[f"discriminator_acc/on_fake_lvl_{i + 1}"] = fake_acc
+        return metrics
 
     def log_metrics_and_samples(self, loss, metrics, batch, batch_outs, batch_idx, prefix=""):
         self.log(prefix + "loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
@@ -260,41 +299,4 @@ class VQVAE(LightningModule):
 
         for level, xouts in enumerate(batch_outs):
             for i, out in enumerate(xouts):
-                tlogger.add_audio(prefix + f"sample_out_{i}_lvl_{level}", out, nr, self.sr)
-
-    def training_step(self, batch, batch_idx, optimizer_idx=-1):
-        x_in = self.preprocess(batch[0])
-        x_out, recon_loss, metrics, x_outs = self(x_in)
-        loss = recon_loss
-        if optimizer_idx == 0 and self.with_discriminator:  # optimize generator
-            gan_loss, _, _, disc_acc = self.forward_discriminator(x_in, x_outs, optimize_generator=True)
-            metrics["generator_loss"] = gan_loss
-            loss += gan_loss * self.gan_loss_weight
-        elif optimizer_idx == 1 and self.with_discriminator:  # optimize discriminator
-            gan_loss, _, _, disc_acc = self.forward_discriminator(x_in, x_outs)
-            metrics["discriminator_loss"] = gan_loss
-            metrics["discriminator_b_acc"] = disc_acc
-            loss += gan_loss * self.gan_loss_weight
-        self.log_metrics_and_samples(recon_loss, metrics, x_in, x_outs, batch_idx)
-        return loss
-
-    def test_step(self, batch, batch_idx):
-        x_in = self.preprocess(batch[0])
-        x_out, loss, metrics, x_outs = self(x_in)
-        self.log_metrics_and_samples(loss, metrics, x_in, x_outs, batch_idx, prefix="test_")
-        return loss
-
-    def validation_step(self, batch, batch_idx):
-        x_in = self.preprocess(batch[0])
-        x_out, loss, metrics, x_outs = self(x_in)
-        self.log_metrics_and_samples(loss, metrics, x_in, x_outs, batch_idx, prefix="val_")
-        return loss
-
-    def configure_optimizers(self):
-        gopt, gsched = get_optimizer(self.generator, **self.opt_params)
-        if not self.with_discriminator:
-            return [gopt], [gsched]
-        # all parameters are given to the discriminator optimizer, because it optimizes also generator compression
-        # but detaches generator output before discriminator
-        dopt, dsched = get_optimizer(self, **self.opt_params)
-        return [gopt, dopt], [gsched, dsched]
+                tlogger.add_audio(prefix + f"sample_out_{i}/lvl_{level}", out, nr, self.sr)
