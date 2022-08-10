@@ -30,6 +30,22 @@ default_forward_params = Hparams(
     bandwidth=None,
 )
 
+adv_params = Hparams(
+    with_discriminator=False,
+    adv_latency=2000,  # steps
+    gan_loss_weight=0.1,
+    discriminator_level=1,
+    wav_reduce_type="max",
+    type="joined",  # "mel", "wav" or "joined"
+    n_fft=2048,
+    hop_length=240,
+    window_size=1200,
+    mel_emb_width=666,
+    leaky=1e-2,
+    res_depth=4,
+    first_channels=32,
+)
+
 default_vqvae_model_params = Hparams(
     levels=2,
     loss_fn="l2",
@@ -56,11 +72,9 @@ default_vqvae_model_params = Hparams(
     fixed_commit=False,
     norm_type="none",
     log_interval=100,
-    with_discriminator=False,
-    gan_loss_weight=0.1,
-    discriminator_level=0,
-    disc_reduce_type="max",
+    adv_params=adv_params,
     forward_params=default_forward_params,
+    skip_valid_logs=True,
     from_last_checkpot=True,
     leaky_param=1e-2,
     use_bottleneck=True,
@@ -89,7 +103,7 @@ default_vqvae_opt_hparams = Hparams(
     eps=1e-08,
     rms_normalize_sound=True,
     rms_normalize_level=-13,
-    prenorm_normalisation=1,
+    prenorm_normalisation=None,
     prenorm_loss_weight=1,
     lr_warmup=100.0,
     lr_decay=3000,

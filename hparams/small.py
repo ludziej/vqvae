@@ -26,7 +26,6 @@ small_vqvae_model_params = default_vqvae_model_params.update(
     sr=22050,
     num_workers=5,
     norm_type="none",
-    with_discriminator=False,
     forward_params=small_forward_params,
     from_last_checkpot=True,
     main_dir="generated/models/small_vqvae/",

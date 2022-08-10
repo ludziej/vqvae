@@ -26,7 +26,6 @@ big_vqvae_model_params = default_vqvae_model_params.update(
     sr=44100,
     num_workers=5,
     norm_type="none",
-    with_discriminator=False,
     forward_params=big_forward_params,
     main_dir="generated/models/big_vqvae/",
 )

@@ -1,5 +1,21 @@
 import numpy as np
 import torch as t
+from old_ml_utils.audio_utils import spectral_convergence, spectral_loss, multispectral_loss, audio_postprocess, norm
+
+
+def spectral_loss_util(forward_params, x_target, x_out):
+    if forward_params.use_nonrelative_specloss:
+        sl = spectral_loss(x_target, x_out, forward_params) / forward_params.bandwidth['spec']
+    else:
+        sl = spectral_convergence(x_target, x_out, forward_params)
+    sl = t.mean(sl)
+    return sl
+
+
+def multispectral_loss_util(forward_params, x_target, x_out):
+    sl = multispectral_loss(x_target, x_out, forward_params) / forward_params.bandwidth['spec']
+    sl = t.mean(sl)
+    return sl
 
 
 def calculate_strides(strides, downs):
