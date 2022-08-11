@@ -82,5 +82,9 @@ class ResNet2d(nn.Module):
                 )
             for i in range(depth)])
 
+        self.downsample = 2 ** (depth + 1)
+        self.logits_size = first_channels * 2**depth
+
     def forward(self, x):
+        x = self.layer0(x)
         return self.encoder(x)

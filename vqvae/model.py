@@ -261,4 +261,4 @@ class VQVAE(LightningModule):
 
         for level, xouts in enumerate(batch_outs):
             for i, out in enumerate(xouts):
-                tlogger.add_audio(prefix + f"sample_out_{i}/lvl_{level}", out, nr, self.sr)
+                tlogger.add_audio(prefix + f"sample_out_{i}/lvl_{level + 1}", out, nr, self.sr)
