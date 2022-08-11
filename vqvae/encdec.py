@@ -8,7 +8,7 @@ class EncoderConvBlock(nn.Module):
     def __init__(self, input_emb_width, output_emb_width, down_t,
                  stride_t, width, depth, m_conv, norm_type,
                  dilation_growth_rate=1, dilation_cycle=None,
-                 res_scale=False, leaky_param=1e-2, **params):
+                 res_scale=False, leaky_param=1e-2, use_weight_standard=True, **params):
         super().__init__()
         blocks = []
         filter_t, pad_t = stride_t * 2, stride_t // 2
@@ -17,7 +17,7 @@ class EncoderConvBlock(nn.Module):
                 block = nn.Sequential(
                     nn.Conv1d(input_emb_width if i == 0 else width, width, filter_t, stride_t, pad_t),
                     Resnet1D(width, depth, m_conv, dilation_growth_rate, dilation_cycle, res_scale,
-                             norm_type=norm_type, leaky_param=leaky_param,),
+                             norm_type=norm_type, leaky_param=leaky_param, use_weight_standard=use_weight_standard),
                 )
                 blocks.append(block)
             block = nn.Conv1d(width, output_emb_width, 3, 1, 1)
@@ -31,7 +31,7 @@ class EncoderConvBlock(nn.Module):
 class DecoderConvBock(nn.Module):
     def __init__(self, input_emb_width, output_emb_width, down_t,
                  stride_t, width, depth, m_conv, norm_type, dilation_growth_rate=1, dilation_cycle=None,
-                 res_scale=False, reverse_decoder_dilation=False, leaky_param=1e-2, **params):
+                 res_scale=False, reverse_decoder_dilation=False, leaky_param=1e-2, use_weight_standard=True, **params):
         super().__init__()
         blocks = []
         if down_t > 0:
@@ -41,7 +41,8 @@ class DecoderConvBock(nn.Module):
             for i in range(down_t):
                 block = nn.Sequential(
                     Resnet1D(width, depth, m_conv, dilation_growth_rate, dilation_cycle, leaky_param=leaky_param,
-                             norm_type=norm_type, res_scale=res_scale, reverse_dilation=reverse_decoder_dilation),
+                             norm_type=norm_type, res_scale=res_scale, reverse_dilation=reverse_decoder_dilation,
+                             use_weight_standard=use_weight_standard),
                     nn.ConvTranspose1d(width, input_emb_width if i == (down_t - 1) else width, filter_t, stride_t, pad_t),
                 )
                 blocks.append(block)

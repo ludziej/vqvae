@@ -71,6 +71,7 @@ default_vqvae_model_params = Hparams(
     norm_before_vqvae=False,
     fixed_commit=False,
     norm_type="none",
+    use_weight_standard=False,
     log_interval=100,
     adv_params=adv_params,
     forward_params=default_forward_params,
