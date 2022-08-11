@@ -34,6 +34,7 @@ adv_params = Hparams(
     with_discriminator=False,
     adv_latency=2000,  # steps
     gan_loss_weight=0.1,
+    gan_loss_warmup=1000,
     discriminator_level=1,
     reduce_type="max",
     type="joined",  # "mel", "wav" or "joined"

@@ -19,11 +19,12 @@ def get_discriminator(with_discriminator, type, **params):
 
 
 class AdversarialTrainer(nn.Module):
-    def __init__(self, gan_loss_weight, adv_latency, levels, with_discriminator, **params):
+    def __init__(self, gan_loss_weight, gan_loss_warmup, adv_latency, levels, with_discriminator, **params):
         super().__init__()
         self.with_discriminator = with_discriminator
         self.levels = levels
         self.gan_loss_weight = gan_loss_weight
+        self.gan_loss_warmup = gan_loss_warmup
         self.adv_latency = adv_latency
         self.discriminator = get_discriminator(with_discriminator=with_discriminator, **params)
 
@@ -49,7 +50,13 @@ class AdversarialTrainer(nn.Module):
         optimize_generator = optimizer_idx == 0
         gan_loss, adv_metrics = self.forward(x_in, x_outs, optimize_generator=optimize_generator)
         metrics.update(adv_metrics)
-        return gan_loss * self.gan_loss_weight
+        return self.with_warmup(gan_loss, batch_idx, metrics, optimize_generator)
+
+    def with_warmup(self, gan_loss, batch_idx, metrics, optimize_generator):
+        gan_warmup_weight = min(1, (batch_idx - self.adv_latency)/self.gan_loss_warmup) if optimize_generator else 1
+        metrics["gan_warmup_weight"] = torch.tensor(gan_warmup_weight, dtype=torch.float)
+        weight = self.gan_loss_weight * gan_warmup_weight
+        return gan_loss * weight
 
     def discriminator_metrics(self, optimize_generator, loss, pred, acc, bs, cls, y, loss_ew, name):
         prefix = f"{name}_{('generator' if optimize_generator else 'discriminator')}"
