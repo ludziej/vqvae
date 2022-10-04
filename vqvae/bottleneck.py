@@ -68,7 +68,7 @@ class BottleneckBlock(nn.Module):
                 self.k = t.nn.functional.normalize(self.k)
             _k_prob = _k_elem / t.sum(_k_elem)  # x_l_onehot.mean(dim=-1)  # prob of each bin
             entropy = -t.sum(_k_prob * t.log(_k_prob + 1e-8))  # entropy ie how diverse
-            used_curr = (_k_elem >= self.threshold).sum()
+            used_curr = (_k_elem >= self.threshold).sum().float()
             usage = t.sum(usage)
             dk = t.norm(self.k.detach() - old_k) / np.sqrt(np.prod(old_k.shape))
         return dict(entropy=entropy,
