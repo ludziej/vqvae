@@ -29,8 +29,11 @@ def generic_train(model, hparams, train, test, model_hparams, root_dir):
     trainer = Trainer(gpus=hparams.gpus, profiler="simple", max_epochs=hparams.max_epochs,
                       max_steps=hparams.max_steps if hparams.max_steps != 0 else -1,
                       gradient_clip_val=hparams.gradient_clip_val, callbacks=callbacks,
-                      log_every_n_steps=10, logger=tb_logger, strategy=hparams.accelerator, detect_anomaly=True,
-                      default_root_dir=root_dir / model_hparams.default_ckpt_root, track_grad_norm=2)
+                      log_every_n_steps=hparams.log_every_n_steps,
+                      logger=tb_logger, strategy=hparams.accelerator,
+                      detect_anomaly=hparams.detect_anomaly,
+                      default_root_dir=root_dir / model_hparams.default_ckpt_root,
+                      track_grad_norm=hparams.track_grad_norm)
     trainer.fit(model, train_dataloaders=train, val_dataloaders=test)
 
 

@@ -19,6 +19,9 @@ config_big_hparams = Hparams(
     gradient_clip_val=1,
     logging="INFO",
     log_file="logs.txt",
+    track_grad_norm=0,
+    log_every_n_steps=10,
+    detect_anomaly=True,
 )
 
 config_small_hparams = Hparams(
@@ -27,15 +30,18 @@ config_small_hparams = Hparams(
     upsampler=[small_upsampler_params, small_upsampler_params],
     prior=small_prior_params,
     vqvae=small_vqvae_params,
+    accelerator='dp',
     gpus=[0],
     train_path="resources/music_data/",
     test_path=None,
-    accelerator='dp',
     max_epochs=50000,
     max_steps=0,
     gradient_clip_val=1,
     logging="INFO",
     log_file="logs.txt",
+    track_grad_norm=0,
+    log_every_n_steps=10,
+    detect_anomaly=True,
 )
 
 hparams_registry = dict(
