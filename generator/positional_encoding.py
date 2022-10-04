@@ -2,6 +2,7 @@ import numpy as np
 from torch import nn as nn
 import torch
 import math
+from torch import Tensor
 
 from generator.conditioner import get_normal
 
