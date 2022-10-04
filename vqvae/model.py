@@ -200,9 +200,9 @@ class VQVAE(LightningModule):
         hps = self.forward_params
         x_target = audio_postprocess(self.postprocess(x_in).float(), hps)
 
-        metrics["x_in_norm"] = torch.mean(norm(x_target))
+        metrics["x_norm/in"] = torch.mean(norm(x_target))
         for i, xo in enumerate(x_outs):
-            metrics[f"x_out_norm/lvl_{i + 1}"] = torch.mean(norm(xo))
+            metrics[f"x_norm/out_lvl_{i + 1}"] = torch.mean(norm(xo))
 
         x_outs = [self.postprocess(x_out) for x_out in x_outs]
         recons_loss = t.zeros(()).to(x_in.device)
@@ -261,4 +261,4 @@ class VQVAE(LightningModule):
 
         for level, xouts in enumerate(batch_outs):
             for i, out in enumerate(xouts):
-                tlogger.add_audio(prefix + f"sample_{i}/outt_lvl_{level + 1}", out, nr, self.sr)
+                tlogger.add_audio(prefix + f"sample_{i}/out_lvl_{level + 1}[{}]", out, nr, self.sr, self.global_rank)
