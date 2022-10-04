@@ -1,7 +1,6 @@
-import torch as t
 import torch.nn as nn
 from vqvae.resnet import Resnet1D
-from old_ml_utils.misc import assert_shape
+from utils.old_ml_utils.misc import assert_shape
 
 
 class EncoderConvBlock(nn.Module):

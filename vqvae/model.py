@@ -4,10 +4,10 @@ import torch as t
 import torch.nn as nn
 from pytorch_lightning import LightningModule
 
-from vqvae.encdec import Encoder, Decoder, assert_shape
+from vqvae.encdec import Encoder, Decoder
 from vqvae.bottleneck import NoBottleneck, Bottleneck
-from old_ml_utils.misc import average_metrics
-from old_ml_utils.audio_utils import spectral_convergence, audio_postprocess, norm
+from utils.old_ml_utils.misc import average_metrics, assert_shape
+from utils.old_ml_utils.audio_utils import spectral_convergence, audio_postprocess, norm
 from optimization.opt_maker import get_optimizer
 from vqvae.helpers import calculate_strides, _loss_fn, multispectral_loss_util, spectral_loss_util
 from vqvae.adversarial.trainer import AdversarialTrainer

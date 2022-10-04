@@ -3,7 +3,7 @@ from pathlib import Path
 from data_processing.dataset import MusicDataset
 from vqvae.model import VQVAE
 from utils.misc import lazy_compute_pickle
-from old_ml_utils.audio_utils import calculate_bandwidth
+from utils.old_ml_utils.audio_utils import calculate_bandwidth
 from environment.train_utils import generic_train, get_last_path, create_logger
 
 

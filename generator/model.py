@@ -5,7 +5,8 @@ import statistics
 from pytorch_lightning import LightningModule
 from generator.performer import Performer
 from vqvae.model import VQVAE
-from generator.conditioner import Conditioner, PositionEmbedding
+from generator.conditioner import Conditioner
+from generator.positional_encoding import PositionEmbedding
 import torch.nn.functional as F
 from performer_pytorch.autoregressive_wrapper import top_k, repetition_penalty_fn
 from optimization.scheduler import ReduceLROnPlateauWarmup

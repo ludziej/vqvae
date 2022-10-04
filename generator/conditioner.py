@@ -1,6 +1,6 @@
 import torch as t
 import torch.nn as nn
-from old_ml_utils.misc import assert_shape
+from utils.old_ml_utils.misc import assert_shape
 from vqvae.encdec import DecoderConvBock
 import torch.nn.functional as F
 import numpy as np
@@ -11,17 +11,6 @@ def get_normal(*shape, std=0.01):
     w = t.empty(shape)
     nn.init.normal_(w, std=std)
     return w
-
-
-class PositionEmbedding(nn.Module):
-    def __init__(self, input_shape, width, init_scale=1.0):
-        super().__init__()
-        self.input_shape = input_shape
-        self.input_dims = np.prod(input_shape)
-        self.pos_emb = nn.Parameter(get_normal(self.input_dims, width, std=0.01 * init_scale))
-
-    def forward(self):
-        return self.pos_emb
 
 
 class LayerNorm(nn.LayerNorm):

@@ -51,10 +51,16 @@ class SynchronousGenerator(nn.Module):
 
     # continuation
 
+    def continue_prior_tokens(self, previous, length, context=None, time=None):
+        raise Exception("Not Implemented")
+
+    def continue_upsampler_tokens(self, previous, length, context=None, time=None):
+        raise Exception("Not Implemented")
+
     # assumes sound is with correct sr = self.vqvae.sr
     def continue_sound(self, sound: torch.Tensor, sec_from: int, added_seconds: int, use_tqdm=True) -> torch.Tensor:
         sound = sound[:sec_from * self.vqvae.sr]
-        tokens_length = self.vqvae.get_z_lengths(self.vqvae.sr * added_seconds)
+        add_tokens_length = self.vqvae.get_z_lengths(self.vqvae.sr * added_seconds)
         prior = self.prior.generate_from_sound(sound, prefix_token_perc=1, use_tqdm=use_tqdm)
 
 
