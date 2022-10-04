@@ -24,12 +24,12 @@ def generic_train(model, hparams, train, test, model_hparams, root_dir):
     tqdm_pb = NoSmoothingTQDM()
     lr_monitor = LearningRateMonitor(logging_interval='step')
     device_stats = DeviceStatsMonitor()
-    callbacks = [checkpoint_callback, tqdm_pb, lr_monitor, device_stats]
+    callbacks = [checkpoint_callback, tqdm_pb, lr_monitor]  # , device_stats]
 
     trainer = Trainer(gpus=hparams.gpus, profiler="simple", max_epochs=hparams.max_epochs,
                       max_steps=hparams.max_steps if hparams.max_steps != 0 else -1,
                       gradient_clip_val=hparams.gradient_clip_val, callbacks=callbacks,
-                      log_every_n_steps=1, logger=tb_logger, strategy=hparams.accelerator, detect_anomaly=True,
+                      log_every_n_steps=10, logger=tb_logger, strategy=hparams.accelerator, detect_anomaly=True,
                       default_root_dir=root_dir / model_hparams.default_ckpt_root, track_grad_norm=2)
     trainer.fit(model, train_dataloaders=train, val_dataloaders=test)
 
