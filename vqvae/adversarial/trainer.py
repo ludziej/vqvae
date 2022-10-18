@@ -56,7 +56,7 @@ class AdversarialTrainer(nn.Module):
         gan_warmup_weight = 1
         if optimize_generator:
             gan_warmup_weight = min(1, (batch_idx - self.adv_latency)/self.gan_loss_warmup)
-            metrics["gan_warmup_weight"] = torch.tensor(gan_warmup_weight, dtype=torch.float)
+            metrics["gan_loss_weight"] = torch.tensor(gan_warmup_weight * self.gan_loss_weight, dtype=torch.float)
         return gan_loss * self.gan_loss_weight * gan_warmup_weight
 
     def discriminator_metrics(self, optimize_generator, loss, pred, acc, bs, cls, y, loss_ew, name):

@@ -23,8 +23,9 @@ def generic_train(model, hparams, train, test, model_hparams, root_dir):
                                           every_n_train_steps=model_hparams.ckpt_freq)
     tqdm_pb = NoSmoothingTQDM()
     lr_monitor = LearningRateMonitor(logging_interval='step')
-    device_stats = DeviceStatsMonitor()
     callbacks = [checkpoint_callback, tqdm_pb, lr_monitor]  # , device_stats]
+    if hparams.device_stats:
+        callbacks.append(DeviceStatsMonitor())
 
     trainer = Trainer(gpus=hparams.gpus, profiler="simple", max_epochs=hparams.max_epochs,
                       max_steps=hparams.max_steps if hparams.max_steps != 0 else -1,

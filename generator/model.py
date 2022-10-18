@@ -12,8 +12,15 @@ from performer_pytorch.autoregressive_wrapper import top_k, repetition_penalty_f
 from optimization.scheduler import ReduceLROnPlateauWarmup
 from optimization.normalization import CustomNormalization
 from utils.misc import time_run
+from typing import NamedTuple
 import tqdm
 import logging
+
+
+class GenerationParams(NamedTuple):
+    artist: torch.Tensor
+    time: torch.Tensor
+    # here add also BPM/genre etc
 
 
 class LevelGenerator(LightningModule):
@@ -151,12 +158,15 @@ class LevelGenerator(LightningModule):
             pos_emb = torch.cat([pad, pos_emb], dim=1)
         return pos_emb
 
-    def get_all_conditioning(self, bs, length, context=None, up_tokens=None, time=None):
-        pos_cond = self.get_pos_emb(bs=bs, length=length)
-        lvl_cond = self.get_lvl_conditioning(up_tokens, bs, length) if up_tokens is not None else None
-        context_cond = self.get_context_conditioning(context, bs, length) if context is not None else None
-        time_cond = self.get_time_conditioning(time, bs, length) if time is not None else None
-        return dict(pos_cond=pos_cond, lvl_cond=lvl_cond, context_cond=context_cond, time_cond=time_cond)
+    def get_all_conditioning(self, bs, length, params: GenerationParams, up_tokens=None):
+        args = dict(bs=bs, length=length)
+        conditionings = dict(
+            pos_cond=(True, lambda: self.get_pos_emb(**args)),
+            lvl_cond=(up_tokens, lambda: self.get_lvl_conditioning(up_tokens, **args)),
+            context_cond=(params.artist, lambda: self.get_context_conditioning(params.artist, **args)),
+            time_cond=(params.time, lambda: self.get_time_conditioning(params.time, **args))
+        )
+        return {k: f() for k, (v, f) in conditionings.items() if v is not None}
 
     def get_conditioned_emb(self, tokens, up_tokens=None, context=None, time=None):
         b, t = tokens.shape[:2]
@@ -231,23 +241,23 @@ class LevelGenerator(LightningModule):
         return torch.randint(size, (bs, self.start_gen_sample_len), device=self.device)
 
     @torch.no_grad()
-    def generate_no_sound(self, seq_len: int, start_random_size=10, bs=1, context=None, time=None, with_tqdm=False,
+    def generate_no_sound(self, seq_len: int, params: GenerationParams, start_random_size=10, bs=1, with_tqdm=False,
                           **sampling_kwargs):
         beginning = self.recreate_beginning(start_random_size, bs)
-        conditioning = self.get_all_conditioning(bs, seq_len, context=context, time=time)
+        conditioning = self.get_all_conditioning(bs, seq_len, params)
         out_tokens = self.autoregressive_generate_prior(beginning, seq_len, conditioning, with_tqdm=with_tqdm,
                                                         **sampling_kwargs)
         sound = self.decode_sound(out_tokens)
         return sound
 
     @torch.no_grad()
-    def generate_from_sound(self, sound: torch.Tensor, prefix_token_perc: float, seq_len=None, context=None,
-                            time=None, with_begin=True, return_speed=False, with_tqdm=False, **sampling_kwargs):
+    def generate_from_sound(self, sound: torch.Tensor, prefix_token_perc: float, params: GenerationParams, seq_len=None,
+                            with_begin=True, return_speed=False, with_tqdm=False, **sampling_kwargs):
         tokens, up_tokens = self.get_tokens(sound)
         bs, t_len = tokens.shape[:2]
         seq_len = seq_len if seq_len is not None else t_len
         beginning = tokens[:, :int(t_len * prefix_token_perc)]
-        conditioning = self.get_all_conditioning(bs, seq_len, context=context, up_tokens=up_tokens, time=time)
+        conditioning = self.get_all_conditioning(bs, seq_len, params, up_tokens=up_tokens,)
 
         runtime, out_tokens = time_run(
             lambda: self.autoregressive_generate_prior(beginning, seq_len, conditioning,

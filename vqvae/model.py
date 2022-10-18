@@ -116,6 +116,10 @@ class VQVAE(LightningModule):
         x_out = self.postprocess(x_out)
         return x_out
 
+    def on_train_batch_end(self, outputs, batch, batch_idx: int, unused=0) -> None:
+        super().on_train_batch_end(outputs, batch, batch_idx, unused)
+        pass
+
     def decode(self, zs, start_level=0, end_level=None, bs_chunks=1):
         z_chunks = [t.chunk(z, bs_chunks, dim=0) for z in zs]
         x_outs = []
@@ -255,10 +259,10 @@ class VQVAE(LightningModule):
         nr = self.log_nr.get(prefix, 0)
         self.log_nr[prefix] = nr + 1
         tlogger = self.logger.experiment
-
+        dev_id = f"[{self.global_rank}]" if self.global_rank is not None else ""
         for i, xin in enumerate(batch):
-            tlogger.add_audio(prefix + f"sample_{i}/in", xin, nr, self.sr)
+            tlogger.add_audio(prefix + f"sample_{i}{dev_id}[{dev_id}]/in", xin, nr, self.sr)
 
         for level, xouts in enumerate(batch_outs):
             for i, out in enumerate(xouts):
-                tlogger.add_audio(prefix + f"sample_{i}/out_lvl_{level + 1}[{self.global_rank}]", out, nr, self.sr)
+                tlogger.add_audio(prefix + f"sample_{i}{dev_id}/out_lvl_{level + 1}", out, nr, self.sr)

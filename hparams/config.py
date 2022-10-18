@@ -13,15 +13,16 @@ config_big_hparams = Hparams(
     gpus=[0],
     train_path="resources/string_quartets/preprocessed",
     test_path=None,
-    accelerator='dp',
+    accelerator='ddp',
     max_epochs=50000,
     max_steps=0,
-    gradient_clip_val=1,
+    gradient_clip_val=5,
     logging="INFO",
     log_file="logs.txt",
-    track_grad_norm=0,
+    track_grad_norm=-1,
     log_every_n_steps=10,
     detect_anomaly=True,
+    device_stats=False,
 )
 
 config_small_hparams = Hparams(
@@ -30,18 +31,19 @@ config_small_hparams = Hparams(
     upsampler=[small_upsampler_params, small_upsampler_params],
     prior=small_prior_params,
     vqvae=small_vqvae_params,
-    accelerator='dp',
+    accelerator='ddp',
     gpus=[0],
     train_path="resources/music_data/",
     test_path=None,
     max_epochs=50000,
     max_steps=0,
-    gradient_clip_val=1,
+    gradient_clip_val=5,
     logging="INFO",
     log_file="logs.txt",
-    track_grad_norm=0,
+    track_grad_norm=-1,
     log_every_n_steps=10,
     detect_anomaly=True,
+    device_stats=False,
 )
 
 hparams_registry = dict(
