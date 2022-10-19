@@ -19,13 +19,15 @@ def get_discriminator(with_discriminator, type, **params):
 
 
 class AdversarialTrainer(nn.Module):
-    def __init__(self, gan_loss_weight, gan_loss_warmup, adv_latency, levels, with_discriminator, **params):
+    def __init__(self, gan_loss_weight, gan_loss_warmup, adv_latency, levels, with_discriminator,
+                 disc_loss_weight, **params):
         super().__init__()
         self.with_discriminator = with_discriminator
         self.levels = levels
         self.gan_loss_weight = gan_loss_weight
         self.gan_loss_warmup = gan_loss_warmup
         self.adv_latency = adv_latency
+        self.disc_loss_weight = disc_loss_weight
         self.discriminator = get_discriminator(with_discriminator=with_discriminator, **params)
 
     def forward(self, x_in, gen_out, optimize_generator=False):
@@ -44,20 +46,21 @@ class AdversarialTrainer(nn.Module):
         metrics = ChainMap(*[self.discriminator_metrics(**params, **stats._asdict()) for stats in calced_stats])
         return loss, dict(metrics)
 
-    def training_step(self, metrics, optimizer_idx, x_in, x_outs, batch_idx, current_epoch):
+    def training_step(self, metrics, optimize_generator, x_in, x_outs, batch_idx, current_epoch):
         if not self.with_discriminator or (self.adv_latency > batch_idx and current_epoch == 0):
             return 0
-        optimize_generator = optimizer_idx == 0
         gan_loss, adv_metrics = self.forward(x_in, x_outs, optimize_generator=optimize_generator)
         metrics.update(adv_metrics)
-        return self.with_warmup(gan_loss, batch_idx, metrics, optimize_generator)
+        return self.adjust_adv_lr(gan_loss, batch_idx, metrics, optimize_generator)
 
-    def with_warmup(self, gan_loss, batch_idx, metrics, optimize_generator):
-        gan_warmup_weight = 1
-        if optimize_generator:
-            gan_warmup_weight = min(1, (batch_idx - self.adv_latency)/self.gan_loss_warmup)
-            metrics["gan_loss_weight"] = torch.tensor(gan_warmup_weight * self.gan_loss_weight, dtype=torch.float)
-        return gan_loss * self.gan_loss_weight * gan_warmup_weight
+    def adjust_adv_lr(self, gan_loss, batch_idx, metrics, optimize_generator):
+        weight_modifier = self.gan_loss_weight
+        if optimize_generator:  # warmup
+            weight_modifier *= min(1, (batch_idx - self.adv_latency) / self.gan_loss_warmup)
+            metrics["gan_loss_weight"] = torch.tensor(weight_modifier, dtype=torch.float)
+        else: # discriminator adjustment
+            weight_modifier *= self.disc_loss_weight
+        return gan_loss * weight_modifier
 
     def discriminator_metrics(self, optimize_generator, loss, pred, acc, bs, cls, y, loss_ew, name):
         prefix = f"{name}_{('generator' if optimize_generator else 'discriminator')}"

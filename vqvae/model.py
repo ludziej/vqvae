@@ -167,26 +167,27 @@ class VQVAE(LightningModule):
         loss, metrics = self.calc_metrics_and_loss(commit_losses, quantiser_metrics, prenorms, x_in, x_outs)
         return loss, metrics, x_outs
 
+    @torch.no_grad()
+    def no_grad_forward(self, x_in):
+        return self(x_in)
+
+    def evaluation_step(self, batch, batch_idx, optimizer_idx, phase="train"):
+        optimize_generator = optimizer_idx == 0
+        x_in = self.preprocess(batch[0])
+        loss, metrics, x_outs = self(x_in) if optimize_generator else self.no_grad_forward(x_in)
+        loss += self.discriminator.training_step(metrics, optimize_generator, x_in, x_outs, batch_idx, self.current_epoch)
+        if phase == "train" or not self.skip_valid_logs:
+            self.log_metrics_and_samples(loss, metrics, x_in, x_outs, batch_idx, prefix="_" + phase)
+        return loss
+
     def training_step(self, batch, batch_idx, optimizer_idx=-1):
-        x_in = self.preprocess(batch[0])
-        loss, metrics, x_outs = self(x_in)
-        loss += self.discriminator.training_step(metrics, optimizer_idx, x_in, x_outs, batch_idx, self.current_epoch)
-        self.log_metrics_and_samples(loss, metrics, x_in, x_outs, batch_idx)
-        return loss
+        return self.evaluation_step(batch, batch_idx, optimizer_idx, "train")
 
-    def test_step(self, batch, batch_idx):
-        x_in = self.preprocess(batch[0])
-        loss, metrics, x_outs = self(x_in)
-        if not self.skip_valid_logs:
-            self.log_metrics_and_samples(loss, metrics, x_in, x_outs, batch_idx, prefix="test_")
-        return loss
+    def test_step(self, batch, batch_idx, optimizer_idx=-1):
+        return self.evaluation_step(batch, batch_idx, optimizer_idx, "test")
 
-    def validation_step(self, batch, batch_idx):
-        x_in = self.preprocess(batch[0])
-        loss, metrics, x_outs = self(x_in)
-        if not self.skip_valid_logs:
-            self.log_metrics_and_samples(loss, metrics, x_in, x_outs, batch_idx, prefix="val_")
-        return loss
+    def validation_step(self, batch, batch_idx, optimizer_idx=-1):
+        return self.evaluation_step(batch, batch_idx, optimizer_idx, "val")
 
     def configure_optimizers(self):
         gopt, gsched = get_optimizer(self.generator, **self.opt_params)
