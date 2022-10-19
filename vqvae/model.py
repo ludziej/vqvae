@@ -124,7 +124,8 @@ class VQVAE(LightningModule):
         loss, metrics, x_outs = self(x_in) if optimize_generator else self.no_grad_forward(x_in)
         loss += self.discriminator.training_step(metrics, optimize_generator, x_in, x_outs, batch_idx, self.current_epoch)
         if phase == "train" or not self.skip_valid_logs:
-            self.log_metrics_and_samples(loss, metrics, x_in, x_outs, batch_idx, optimize_generator, prefix=phase + "_")
+            self.log_metrics_and_samples(loss, metrics, x_in, x_outs, batch_idx, optimize_generator,
+                                         prefix=phase + "_" if phase != "train" else "")
         return loss
 
     # lightning train boilerplate
@@ -213,9 +214,9 @@ class VQVAE(LightningModule):
         nr = self.log_nr.get(prefix, 0)
         self.log_nr[prefix] = nr + 1
         tlogger = self.logger.experiment
-        dev_id = f"[{self.global_rank}]" if self.global_rank is not None else ""
+        dev_id = f"[{self.local_rank}]" if self.local_rank is not None else ""
         for i, xin in enumerate(batch):
-            tlogger.add_audio(prefix + f"sample_{i}{dev_id}[{dev_id}]/in", xin, nr, self.sr)
+            tlogger.add_audio(prefix + f"sample_{i}{dev_id}/in", xin, nr, self.sr)
 
         for level, xouts in enumerate(batch_outs):
             for i, out in enumerate(xouts):
