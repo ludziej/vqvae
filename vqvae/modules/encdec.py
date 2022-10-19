@@ -1,5 +1,5 @@
 import torch.nn as nn
-from vqvae.resnet import Resnet1D
+from vqvae.modules.resnet import Resnet1D
 from utils.old_ml_utils.misc import assert_shape
 
 

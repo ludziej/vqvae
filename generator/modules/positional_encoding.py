@@ -4,7 +4,7 @@ import torch
 import math
 from torch import Tensor
 
-from generator.conditioner import get_normal
+from generator.modules.conditioner import get_normal
 
 
 class PositionEmbedding(nn.Module):

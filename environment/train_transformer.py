@@ -1,10 +1,9 @@
 from pathlib import Path
-import logging
 
 from environment.train_embeddings import get_model_with_data
 from generator.model import LevelGenerator
 from environment.train_utils import generic_train, get_last_path, create_logger
-from vqvae.helpers import get_sample_len_from_tokens
+from vqvae.modules.helpers import get_sample_len_from_tokens
 
 
 def get_model(main_dir, ckpt_dir, restore_ckpt, **params):

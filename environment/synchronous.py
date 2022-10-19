@@ -38,7 +38,7 @@ class SynchronousTokenGenerator(nn.Module):
 
     def generate(self, time: float, params: GenerationParams, bs: int = 1, decode_level=0, with_tqdm=True)\
             -> torch.Tensor:
-        tokens_length = self.vqvae.get_z_lengths(self.vqvae.sr * time)
+        tokens_length = self.vqvae.samples_num_to_tokens(self.vqvae.sr * time)
         tokens = self.generate_prior(tokens_length[-1], bs=bs, params=params, with_tqdm=with_tqdm)
         for level in reversed(range(decode_level, self.prior.level)):
             tokens = self.generate_upsampler(tokens_length[level], tokens, level,
@@ -86,7 +86,7 @@ class SynchronousGenerator(nn.Module):
     def continue_sound(self, sound: torch.Tensor, sec_from: int, added_seconds: int, params: GenerationParams,
                        use_tqdm=True, decode_level=0,) -> torch.Tensor:
         sound = sound[:sec_from * self.vqvae.sr]
-        add_tokens_length = self.vqvae.get_z_lengths(self.vqvae.sr * added_seconds)
+        add_tokens_length = self.vqvae.samples_num_to_tokens(self.vqvae.sr * added_seconds)
         encoded = self.encode_sound(sound)
         new_tokens = self.tokens_gen.continuation(encoded, add_tokens_length, use_tqdm=use_tqdm, params=params,
                                                   decode_level=decode_level)

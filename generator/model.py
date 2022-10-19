@@ -3,10 +3,10 @@ import torch.nn as nn
 import numpy as np
 import statistics
 from pytorch_lightning import LightningModule
-from generator.performer import Performer
+from generator.modules.performer import Performer
 from vqvae.model import VQVAE
-from generator.conditioner import Conditioner
-from generator.positional_encoding import PositionEmbedding
+from generator.modules.conditioner import Conditioner
+from generator.modules.positional_encoding import PositionEmbedding
 import torch.nn.functional as F
 from performer_pytorch.autoregressive_wrapper import top_k, repetition_penalty_fn
 from optimization.scheduler import ReduceLROnPlateauWarmup
@@ -14,7 +14,6 @@ from optimization.normalization import CustomNormalization
 from utils.misc import time_run
 from typing import NamedTuple
 import tqdm
-import logging
 
 
 class GenerationParams(NamedTuple):
@@ -68,14 +67,14 @@ class LevelGenerator(LightningModule):
         self.cond_dropout = nn.Dropout(conditioning_dropout)
         self.x_emb = nn.Embedding(self.bins, self.token_dim)
         self.init_emb(self.x_emb)
-        self.sample_len = self.preprocessing.samples_from_z_length(self.n_ctx, self.level)
+        self.sample_len = self.preprocessing.tokens_to_samples_num(self.n_ctx, self.level)
         self.start_layer = nn.ModuleList([nn.Linear(self.token_dim, self.dim), nn.ReLU()])
 
         if self.layer_for_logits:
             self.final_layer_norm = CustomNormalization(dim, norm_type=norm_type)
             self.to_out = nn.Linear(dim, self.bins)
 
-        z_shapes = self.preprocessing.get_z_lengths(self.sample_len)
+        z_shapes = self.preprocessing.samples_num_to_tokens(self.sample_len)
         z_shapes = [(z_shape[0] * self.n_ctx // z_shapes[self.level][0],) for z_shape in z_shapes]
         if self.context_on_level:
             u_level = self.level + 1
