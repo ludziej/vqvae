@@ -172,12 +172,14 @@ class VQVAE(LightningModule):
         return self(x_in)
 
     def evaluation_step(self, batch, batch_idx, optimizer_idx, phase="train"):
-        optimize_generator = optimizer_idx == 0
+        optimize_generator = optimizer_idx != 1
+        if not optimize_generator and not self.discriminator.is_used(batch_idx,  self.current_epoch):
+            return None
         x_in = self.preprocess(batch[0])
         loss, metrics, x_outs = self(x_in) if optimize_generator else self.no_grad_forward(x_in)
         loss += self.discriminator.training_step(metrics, optimize_generator, x_in, x_outs, batch_idx, self.current_epoch)
         if phase == "train" or not self.skip_valid_logs:
-            self.log_metrics_and_samples(loss, metrics, x_in, x_outs, batch_idx, prefix="_" + phase)
+            self.log_metrics_and_samples(loss, metrics, x_in, x_outs, batch_idx, optimize_generator, prefix="_" + phase)
         return loss
 
     def training_step(self, batch, batch_idx, optimizer_idx=-1):
@@ -251,11 +253,11 @@ class VQVAE(LightningModule):
                 metrics[key] = val.detach()
         return loss, metrics
 
-    def log_metrics_and_samples(self, loss, metrics, batch, batch_outs, batch_idx, prefix=""):
+    def log_metrics_and_samples(self, loss, metrics, batch, batch_outs, batch_idx, optimize_generator, prefix=""):
         self.log(prefix + "loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         for name, val in metrics.items():
             self.log(prefix + name, val,  on_step=True, on_epoch=True, logger=True)
-        if batch_idx % self.log_interval != 0:
+        if batch_idx % self.log_interval != 0 and optimize_generator:
             return  # log samples once per interval
         nr = self.log_nr.get(prefix, 0)
         self.log_nr[prefix] = nr + 1

@@ -46,8 +46,11 @@ class AdversarialTrainer(nn.Module):
         metrics = ChainMap(*[self.discriminator_metrics(**params, **stats._asdict()) for stats in calced_stats])
         return loss, dict(metrics)
 
+    def is_used(self, batch_idx, current_epoch):
+        return self.with_discriminator and (self.adv_latency <= batch_idx or current_epoch != 0)
+
     def training_step(self, metrics, optimize_generator, x_in, x_outs, batch_idx, current_epoch):
-        if not self.with_discriminator or (self.adv_latency > batch_idx and current_epoch == 0):
+        if not self.is_used(batch_idx, current_epoch):
             return 0
         gan_loss, adv_metrics = self.forward(x_in, x_outs, optimize_generator=optimize_generator)
         metrics.update(adv_metrics)
