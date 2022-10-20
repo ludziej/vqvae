@@ -20,8 +20,9 @@ def get_discriminator(with_discriminator, type, **params):
 
 class AdversarialTrainer(nn.Module):
     def __init__(self, gan_loss_weight, gan_loss_warmup, adv_latency, levels, with_discriminator,
-                 disc_loss_weight, **params):
+                 disc_loss_weight, disc_use_freq, **params):
         super().__init__()
+        self.disc_use_freq = disc_use_freq
         self.with_discriminator = with_discriminator
         self.levels = levels
         self.gan_loss_weight = gan_loss_weight
@@ -47,7 +48,8 @@ class AdversarialTrainer(nn.Module):
         return loss, dict(metrics)
 
     def is_used(self, batch_idx, current_epoch):
-        return self.with_discriminator and (self.adv_latency <= batch_idx or current_epoch != 0)
+        return self.with_discriminator and (self.adv_latency <= batch_idx or current_epoch != 0) and \
+               batch_idx % self.disc_use_freq == 0
 
     def training_step(self, metrics, optimize_generator, x_in, x_outs, batch_idx, current_epoch):
         if not self.is_used(batch_idx, current_epoch):
@@ -61,7 +63,7 @@ class AdversarialTrainer(nn.Module):
         if optimize_generator:  # warmup
             weight_modifier *= min(1, (batch_idx - self.adv_latency) / self.gan_loss_warmup)
             metrics["gan_loss_weight"] = torch.tensor(weight_modifier, dtype=torch.float)
-        else: # discriminator adjustment
+        else:  # discriminator adjustment
             weight_modifier *= self.disc_loss_weight
         return gan_loss * weight_modifier
 

@@ -122,10 +122,9 @@ class VQVAE(LightningModule):
             return None
         x_in = self.generator.preprocess(batch[0])
         loss, metrics, x_outs = self(x_in) if optimize_generator else self.no_grad_forward(x_in)
-        loss += self.discriminator.training_step(metrics, optimize_generator, x_in, x_outs, batch_idx, self.current_epoch)
-        if phase == "train" or not self.skip_valid_logs:
-            self.log_metrics_and_samples(loss, metrics, x_in, x_outs, batch_idx, optimize_generator,
-                                         prefix=phase + "_" if phase != "train" else "")
+        loss += self.discriminator.training_step(metrics, optimize_generator, x_in, x_outs, batch_idx,
+                                                 self.current_epoch)
+        self.log_metrics_and_samples(loss, metrics, x_in, x_outs, batch_idx, optimize_generator, phase)
         return loss
 
     # lightning train boilerplate
@@ -205,16 +204,17 @@ class VQVAE(LightningModule):
                 metrics[key] = val.detach()
         return loss, metrics
 
-    def log_metrics_and_samples(self, loss, metrics, batch, batch_outs, batch_idx, optimize_generator, prefix=""):
+    def log_metrics_and_samples(self, loss, metrics, batch, batch_outs, batch_idx, optimize_generator, phase):
+        prefix = phase + "_" if phase != "train" else ""
         self.log(prefix + "loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         for name, val in metrics.items():
             self.log(prefix + name, val,  on_step=True, on_epoch=True, logger=True)
-        if batch_idx % self.log_interval != 0 and optimize_generator and self.local_rank == 0:
+        if batch_idx % self.log_interval != 0 and optimize_generator and self.local_rank == 0 and \
+                (phase == "train" or not self.skip_valid_logs):
             return  # log samples once per interval
         nr = self.log_nr.get(prefix, 0)
         self.log_nr[prefix] = nr + 1
         tlogger = self.logger.experiment
-        dev_id = f"[{self.local_rank}]" if self.local_rank is not None else ""
         for i, xin in enumerate(batch):
             tlogger.add_audio(prefix + f"sample_{i}/in", xin, nr, self.sr)
 
