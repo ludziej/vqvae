@@ -86,7 +86,7 @@ class VQVAE(LightningModule):
         x_outs = []
         for i in range(bs_chunks):
             zs_i = [z_chunk[i] for z_chunk in z_chunks]
-            x_out = self.decode_one_chunk(zs_i, start_level=start_level, end_level=end_level)
+            x_out = self.generator.decode_one_chunk(zs_i, start_level=start_level, end_level=end_level)
             x_outs.append(x_out)
         return t.cat(x_outs, dim=0)
 
@@ -94,7 +94,7 @@ class VQVAE(LightningModule):
         x_chunks = t.chunk(x, bs_chunks, dim=0)
         zs_list = []
         for x_i in x_chunks:
-            zs_i = self.encode_one_chunk(x_i, start_level=start_level, end_level=end_level)
+            zs_i = self.generator.encode_one_chunk(x_i, start_level=start_level, end_level=end_level)
             zs_list.append(zs_i)
         zs = [t.cat(zs_level_list, dim=0) for zs_level_list in zip(*zs_list)]
         return zs
@@ -209,8 +209,8 @@ class VQVAE(LightningModule):
         self.log(prefix + "loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         for name, val in metrics.items():
             self.log(prefix + name, val,  on_step=True, on_epoch=True, logger=True)
-        if batch_idx % self.log_interval != 0 and optimize_generator and self.local_rank == 0 and \
-                (phase == "train" or not self.skip_valid_logs):
+        if not (batch_idx % self.log_interval == 0 and optimize_generator and self.local_rank == 0 and
+                (phase == "train" or not self.skip_valid_logs)):
             return  # log samples once per interval
         nr = self.log_nr.get(prefix, 0)
         self.log_nr[prefix] = nr + 1

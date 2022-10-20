@@ -117,7 +117,8 @@ default_vqvae_opt_hparams = Hparams(
     lr_start_linear_decay=0,
     ckpt_freq=10,
     band_est_dur=1000,
-    ckpt_name='model_{epoch}_{loss_step:.2f}',
+    #ckpt_name='model_{epoch}_{loss_step:.2f}',
+    ckpt_name='last_model',
     **dirs_config.__dict__,
 )
 
@@ -146,7 +147,8 @@ default_transformer_params = Hparams(
     sch_factor=0.9,
     conditioning_dropout=0.,
     log_interval=5000,
-    ckpt_name="model-{epoch}-{val_loss:.2f}-{loss:.2f}",
+    #ckpt_name="model-{epoch}-{val_loss:.2f}-{loss:.2f}",
+    ckpt_name='last_model',
     **dirs_config.__dict__,
 )
 

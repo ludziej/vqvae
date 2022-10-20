@@ -46,7 +46,29 @@ config_small_hparams = Hparams(
     device_stats=False,
 )
 
+config_gen_big_hparams = Hparams(
+    upsampler=[big_upsampler_params, big_upsampler_params],
+    prior=big_prior_params,
+    vqvae=big_vqvae_params,
+    gpus=[0],
+    logging="INFO",
+    logger_dir="generated/gen_logs/",
+    train_path="resources/music_data/",  # needed to estimate stats
+    log_file="logs.txt",
+    action="vqvae_encdec",  # ["encdec", "continue", "generate"]
+    filepaths=("in_file.wav",),
+    out_path="out",
+    level=0,
+    bs=1,
+    sec_from=-1,
+    use_tqdm=True,
+    artist=-1,  # -1 means randomize
+    time=-1,  # seconds
+    bpm=-1,
+)
+
 hparams_registry = dict(
+    gen_big=config_gen_big_hparams,
     default=config_small_hparams,
     config_big=config_big_hparams,
     config_small=config_small_hparams,
