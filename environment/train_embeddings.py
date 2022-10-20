@@ -45,7 +45,7 @@ def get_model_with_data(batch_size, sample_len, num_workers, sr, shuffle_data, l
         train_data, test_data = train_data.split_into_two(test_perc=test_perc)
     train_dataloader = DataLoader(train_data, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle_data,
                                   prefetch_factor=prefetch_data)
-    test_dataloader = DataLoader(test_data, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle_data,
+    test_dataloader = DataLoader(test_data, batch_size=batch_size, num_workers=num_workers, shuffle=False,
                                  prefetch_factor=prefetch_data)
     return model, train_dataloader, test_dataloader
 
