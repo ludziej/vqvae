@@ -118,7 +118,7 @@ class VQVAE(LightningModule):
 
     def evaluation_step(self, batch, batch_idx, optimizer_idx, phase="train"):
         optimize_generator = optimizer_idx != 1
-        if not optimize_generator and not self.discriminator.is_used(batch_idx,  self.current_epoch):
+        if not optimize_generator and not self.discriminator.is_used(batch_idx, self.current_epoch):
             return None
         x_in = self.generator.preprocess(batch[0])
         loss, metrics, x_outs = self(x_in) if optimize_generator else self.no_grad_forward(x_in)
@@ -209,15 +209,15 @@ class VQVAE(LightningModule):
         self.log(prefix + "loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         for name, val in metrics.items():
             self.log(prefix + name, val,  on_step=True, on_epoch=True, logger=True)
-        if batch_idx % self.log_interval != 0 and optimize_generator:
+        if batch_idx % self.log_interval != 0 and optimize_generator and self.local_rank == 0:
             return  # log samples once per interval
         nr = self.log_nr.get(prefix, 0)
         self.log_nr[prefix] = nr + 1
         tlogger = self.logger.experiment
         dev_id = f"[{self.local_rank}]" if self.local_rank is not None else ""
         for i, xin in enumerate(batch):
-            tlogger.add_audio(prefix + f"sample_{i}{dev_id}/in", xin, nr, self.sr)
+            tlogger.add_audio(prefix + f"sample_{i}/in", xin, nr, self.sr)
 
         for level, xouts in enumerate(batch_outs):
             for i, out in enumerate(xouts):
-                tlogger.add_audio(prefix + f"sample_{i}{dev_id}/out_lvl_{level + 1}", out, nr, self.sr)
+                tlogger.add_audio(prefix + f"sample_{i}/out_lvl_{level + 1}", out, nr, self.sr)
