@@ -13,6 +13,5 @@ def run():
     hparams = HparamsParser(hparams_registry).create_hparams()
     run_trainer(hparams)
 
-
 if __name__ == "__main__":
     run()
