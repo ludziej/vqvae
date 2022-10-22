@@ -1,16 +1,19 @@
+import logging
+
 import torch
 
-from environment.train_embeddings import get_model
+from environment.train_embeddings import get_model, VQVAE
 from hparams import hparams
 import torchaudio
 import numpy as np
+from tqdm import tqdm
 
 
-def ready_model():
+def ready_model() -> VQVAE:
     return get_model(**hparams, train_path="resources/full_dataset", data_depth=2).to("cuda").eval()
 
 
-def model_forward(model, wave, only_encoding=False, level=1):
+def model_forward(model, wave, only_encoding=False, level=0):
     indata = wave.reshape(1, -1, 1).to("cuda")
     if only_encoding:
         return model.encode(indata, start_level=level, end_level=level+1)[0][0].to("cpu")
@@ -44,6 +47,17 @@ def process_single_file(infile, outfile=None, only_encoding=False, start_from=0,
     torchaudio.save(outfile, out_wave, hparams["sr"])
 
 
+def check_augment(infile, outfile=None, end_on=None, level=0):
+    wave = safe_load_mono(infile)
+    wave = wave[:end_on] if end_on is not None else wave
+    model = ready_model()
+    enc_signal = model_forward(model, wave, only_encoding=True, level=level).to('cuda').reshape(1, -1)
+    aug_loss, aug_acc, out_wave, cl,  sig_var, aug_rss, var_loss, last_layer_acc, last_layer_usage = model.augmentation_is_close(wave.reshape(1, 1, -1), enc_signal, verbose=True)
+    model.my_logger.info("Aug acc: {}, Aug loss: {}, Last Layer acc: {} Last layer usage: {}".format(aug_acc, aug_loss,last_layer_acc, last_layer_usage))
+    if outfile is not None:
+        torchaudio.save(outfile, out_wave[0], hparams["sr"])
+
+
 def process_stream(input_stream, suffix_size=1/4, to_numpy=False, only_encoding=False):
     model = ready_model()
     prev_suffix = None
@@ -56,7 +70,7 @@ def process_stream(input_stream, suffix_size=1/4, to_numpy=False, only_encoding=
             new_suff = data[-suff_len:]
             out = model_forward(model, data, only_encoding)
             to_remove = int(len(out)*(len(data) - in_data_len)/len(data))
-            print("out = {}, to_remove = {}, returned = {}".format(out.shape, to_remove, out.shape[0] - to_remove))
+            model.my_logger.info("out = {}, to_remove = {}, returned = {}".format(out.shape, to_remove, out.shape[0] - to_remove))
             out = out[to_remove:] if prev_suffix is not None else out
             yield out.numpy() if to_numpy else out
             prev_suffix = new_suff
@@ -92,13 +106,15 @@ if __name__ == "__main__":
     working_chunk_05_s = 11250
     working_chunk_02_s = 5625
 
-    #process_single_file("generated/input.wav", "generated/output.wav")
+    #out = process_single_file("resources/full_dataset/webern_symphony/webern_symphony_ref_1.wav", "generated/output.wav", only_encoding=True)
     #coded = process_single_file("generated/input.wav", None, only_encoding=True)
-    #print(coded.shape)
+    #logging.info(coded.shape)
                                                           #chunk_size=220416//3//2, chunks_number=4, suffix_size=2)
-
-    find_working_chunk_size("resources/cls_dataset/10.wav", start_i=working_chunk_05_s, chunks=10, suffix_size=4)
-    find_working_chunk_size("resources/cls_dataset/10.wav", start_i=working_chunk_05_s, chunks=10, suffix_size=10)
-    find_working_chunk_size("resources/cls_dataset/10.wav", start_i=working_chunk_02_s, chunks=10, suffix_size=4)
-    find_working_chunk_size("resources/cls_dataset/10.wav", start_i=working_chunk_02_s, chunks=10, suffix_size=10)
+    for i in range(40):
+        print(i)
+        check_augment("resources/cls_dataset/10.wav",  "generated/out_aug{}.wav".format(i), end_on=150500)
+    #find_working_chunk_size("resources/cls_dataset/10.wav", start_i=working_chunk_05_s, chunks=10, suffix_size=4)
+    #find_working_chunk_size("resources/cls_dataset/10.wav", start_i=working_chunk_05_s, chunks=10, suffix_size=10)
+    #find_working_chunk_size("resources/cls_dataset/10.wav", start_i=working_chunk_02_s, chunks=10, suffix_size=4)
+    #find_working_chunk_size("resources/cls_dataset/10.wav", start_i=working_chunk_02_s, chunks=50, suffix_size=10)
     pass

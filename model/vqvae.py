@@ -38,6 +38,9 @@ def _loss_fn(loss_fn, x_target, x_pred, hps):
         if hps.lmix_linf:
             loss += hps.lmix_linf * _loss_fn('linf', x_target, x_pred, hps)
         return loss
+    elif loss_fn == 0:
+       	#print(x_target.shape)
+       	return x_target[0][0][0]*0
     else:
         assert False, f"Unknown loss_fn {loss_fn}"
 

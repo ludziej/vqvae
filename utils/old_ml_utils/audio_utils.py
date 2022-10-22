@@ -1,9 +1,10 @@
 import numpy as np
 import torch as t
-import ml_utils.dist_adapter as dist
 import soundfile
 import librosa
-from ml_utils.dist_utils import print_once
+from tqdm import tqdm
+import logging
+
 
 class DefaultSTFTValues:
     def __init__(self, hps):
@@ -19,65 +20,51 @@ class STFTValues:
         self.hop_length = hop_length
         self.window_size = window_size
 
-def calculate_bandwidth(dataset, hps, duration=600):
+
+def calculate_bandwidth(dataset, hps, duration=100):
     hps = DefaultSTFTValues(hps)
     n_samples = int(hps.sr * duration)
     l1, total, total_sq, n_seen, idx = 0.0, 0.0, 0.0, 0.0, 0
     spec_norm_total, spec_nelem = 0.0, 0.0
-    while n_seen < 1:
-        x = dataset[idx]
-        if isinstance(x, (tuple, list)):
-            x, y = x
+    progress = tqdm(total=n_samples, desc="Calculating bandwidth")
+    while n_seen < n_samples:
+        x = dataset[idx][0].squeeze(1).numpy()
         samples = x.astype(np.float64)
-        stft = librosa.core.stft(samples, hps.n_fft, hop_length=hps.hop_length, win_length=hps.window_size)
+        stft = librosa.core.stft(samples, n_fft=hps.n_fft, hop_length=hps.hop_length, win_length=hps.window_size)
         spec = np.absolute(stft)
         spec_norm_total += np.linalg.norm(spec)
         spec_nelem += 1
-        n_seen += int(np.prod(samples.shape))
+        new_seen = int(np.prod(samples.shape))
+        n_seen += new_seen
         l1 += np.sum(np.abs(samples))
         total += np.sum(samples)
         total_sq += np.sum(samples ** 2)
-        idx += 1
+        progress.update(new_seen)
+        idx = (idx + 1) % len(dataset)
+    progress.close()
 
     mean = total / n_seen
     bandwidth = dict(l2 = total_sq / n_seen - mean ** 2,
                      l1 = l1 / n_seen,
                      spec = spec_norm_total / spec_nelem)
-    #print(bandwidth)
+    logging.info(bandwidth)
     return bandwidth
 
-def audio_preprocess(x, hps):
-    # Extra layer in case we want to experiment with different preprocessing
-    # For two channel, blend randomly into mono (standard is .5 left, .5 right)
-
-    # x: NTC
-    x = x.float()
-    if x.shape[-1]==2:
-        if hps.aug_blend:
-            mix=t.rand((x.shape[0],1), device=x.device) #np.random.rand()
-        else:
-            mix = 0.5
-        x=(mix*x[:,:,0]+(1-mix)*x[:,:,1])
-    elif x.shape[-1]==1:
-        x=x[:,:,0]
-    else:
-        assert False, f'Expected channels {hps.channels}. Got unknown {x.shape[-1]} channels'
-
-    # x: NT -> NTC
-    x = x.unsqueeze(2)
-    return x
 
 def audio_postprocess(x, hps):
     return x
 
 def stft(sig, hps):
-    return t.stft(sig, hps.n_fft, hps.hop_length, win_length=hps.window_size, window=t.hann_window(hps.window_size, device=sig.device))
+    return t.stft(sig, n_fft=hps.n_fft, hop_length=hps.hop_length, win_length=hps.window_size, window=t.hann_window(hps.window_size, device=sig.device), return_complex=False)
 
 def spec(x, hps):
     return t.norm(stft(x, hps), p=2, dim=-1)
 
 def norm(x):
-    return (x.view(x.shape[0], -1) ** 2).sum(dim=-1).sqrt()
+    x = x.view(x.shape[0], -1) ** 2
+    x = x.sum(dim=-1)
+    x = x.add(1e-6).sqrt()
+    return x
 
 def squeeze(x):
     if len(x.shape) == 3:

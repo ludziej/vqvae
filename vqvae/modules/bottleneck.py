@@ -2,22 +2,29 @@ import numpy as np
 import torch as t
 import torch.nn as nn
 import torch.nn.functional as F
-import ml_utils.dist_adapter as dist
+
 
 class BottleneckBlock(nn.Module):
-    def __init__(self, k_bins, emb_width, mu):
+    def __init__(self, k_bins, emb_width, mu, norm_before_vqvae, fixed_commit):
         super().__init__()
         self.k_bins = k_bins
+        self.fixed_commit = fixed_commit
         self.emb_width = emb_width
         self.mu = mu
-        self.reset_k()
+        self.norm_before_vqvae = norm_before_vqvae
         self.threshold = 1.0
+        self.reset_k()
 
     def reset_k(self):
         self.init = False
-        self.k_sum = None
-        self.k_elem = None
-        self.register_buffer('k', t.zeros(self.k_bins, self.emb_width).cuda())
+        if self.norm_before_vqvae:
+            self.register_buffer('k', t.rand(self.k_bins, self.emb_width) - 0.5)
+            self.k = t.nn.functional.normalize(self.k)
+        else:
+            self.register_buffer('k', t.zeros(self.k_bins, self.emb_width))
+
+        self.register_buffer('k_sum', t.zeros(self.k_bins, self.emb_width))
+        self.register_buffer('k_elem', t.ones(self.k_bins, device=self.k.device))
 
     def _tile(self, x):
         d, ew = x.shape
@@ -29,28 +36,15 @@ class BottleneckBlock(nn.Module):
         return x
 
     def init_k(self, x):
-        mu, emb_width, k_bins = self.mu, self.emb_width, self.k_bins
+        emb_width, k_bins = self.emb_width, self.k_bins
         self.init = True
         # init k_w using random vectors from x
         y = self._tile(x)
         _k_rand = y[t.randperm(y.shape[0])][:k_bins]
-        #dist.broadcast(_k_rand, 0)
         self.k = _k_rand
         assert self.k.shape == (k_bins, emb_width)
-        self.k_sum = self.k
+        self.k_sum = self.k.detach()
         self.k_elem = t.ones(k_bins, device=self.k.device)
-
-    def restore_k(self, num_tokens=None, threshold=1.0):
-        mu, emb_width, k_bins = self.mu, self.emb_width, self.k_bins
-        self.init = True
-        assert self.k.shape == (k_bins, emb_width)
-        self.k_sum = self.k.clone()
-        self.k_elem = t.ones(k_bins, device=self.k.device)
-        if num_tokens is not None:
-            expected_usage = num_tokens / k_bins
-            self.k_elem.data.mul_(expected_usage)
-            self.k_sum.data.mul_(expected_usage)
-        self.threshold = threshold
 
     def update_k(self, x, x_l):
         mu, emb_width, k_bins = self.mu, self.emb_width, self.k_bins
@@ -64,22 +58,19 @@ class BottleneckBlock(nn.Module):
             y = self._tile(x)
             _k_rand = y[t.randperm(y.shape[0])][:k_bins]
 
-            #dist.broadcast(_k_rand, 0)
-            #dist.all_reduce(_k_sum)
-            #dist.all_reduce(_k_elem)
-
             # Update centres
-            old_k = self.k
+            old_k = self.k.detach()
             self.k_sum = mu * self.k_sum + (1. - mu) * _k_sum  # w, k_bins
             self.k_elem = mu * self.k_elem + (1. - mu) * _k_elem  # k_bins
             usage = (self.k_elem.view(k_bins, 1) >= self.threshold).float()
-            self.k = usage * (self.k_sum.view(k_bins, emb_width) / self.k_elem.view(k_bins, 1)) \
-                     + (1 - usage) * _k_rand
+            self.k = usage * (self.k_sum.view(k_bins, emb_width) / self.k_elem.view(k_bins, 1)) + (1 - usage) * _k_rand
+            if self.norm_before_vqvae:
+                self.k = t.nn.functional.normalize(self.k)
             _k_prob = _k_elem / t.sum(_k_elem)  # x_l_onehot.mean(dim=-1)  # prob of each bin
             entropy = -t.sum(_k_prob * t.log(_k_prob + 1e-8))  # entropy ie how diverse
-            used_curr = (_k_elem >= self.threshold).sum()
+            used_curr = (_k_elem >= self.threshold).sum().float()
             usage = t.sum(usage)
-            dk = t.norm(self.k - old_k) / np.sqrt(np.prod(old_k.shape))
+            dk = t.norm(self.k.detach() - old_k) / np.sqrt(np.prod(old_k.shape))
         return dict(entropy=entropy,
                     used_curr=used_curr,
                     usage=usage,
@@ -90,6 +81,7 @@ class BottleneckBlock(nn.Module):
         x = x.permute(0, 2, 1).contiguous()
         x = x.view(-1, x.shape[-1])  # x_en = (N * L, w), k_j = (w, k_bins)
 
+        prenorm_vec = t.mean(t.norm(x.detach(), dim=1))
         if x.shape[-1] == self.emb_width:
             prenorm = t.norm(x - t.mean(x)) / np.sqrt(np.prod(x.shape))
         elif x.shape[-1] == 2 * self.emb_width:
@@ -100,7 +92,9 @@ class BottleneckBlock(nn.Module):
             x = x1 + x2
         else:
             assert False, f"Expected {x.shape[-1]} to be (1 or 2) * {self.emb_width}"
-        return x, prenorm
+        if self.norm_before_vqvae:
+            x = t.nn.functional.normalize(x)
+        return x, prenorm, prenorm_vec
 
     def postprocess(self, x_l, x_d, x_shape):
         # [NT, C] -> NTC -> NCT
@@ -111,7 +105,7 @@ class BottleneckBlock(nn.Module):
 
     def quantise(self, x):
         # Calculate latent code x_l
-        k_w = self.k.t()
+        k_w = self.k.detach().t()
         distance = t.sum(x ** 2, dim=-1, keepdim=True) - 2 * t.matmul(x, k_w) + t.sum(k_w ** 2, dim=0,
                                                                                             keepdim=True)  # (N * L, b)
         min_distance, x_l = t.min(distance, dim=-1)
@@ -119,14 +113,14 @@ class BottleneckBlock(nn.Module):
         return x_l, fit
 
     def dequantise(self, x_l):
-        x = F.embedding(x_l, self.k)
+        x = F.embedding(x_l, self.k.detach())
         return x
 
     def encode(self, x):
         N, width, T = x.shape
 
         # Preprocess.
-        x, prenorm = self.preprocess(x)
+        x, prenorm, prenorm_vec = self.preprocess(x)
 
         # Quantise
         x_l, fit = self.quantise(x)
@@ -150,7 +144,7 @@ class BottleneckBlock(nn.Module):
         N, width, T = x.shape
 
         # Preprocess
-        x, prenorm = self.preprocess(x)
+        x, prenorm, prenorm_vec = self.preprocess(x)
 
         # Init k if not inited
         if update_k and not self.init:
@@ -167,26 +161,27 @@ class BottleneckBlock(nn.Module):
             update_metrics = {}
 
         # Loss
-        commit_loss = t.norm(x_d.detach() - x) ** 2 / np.prod(x.shape)
+        commit_loss = t.mean(t.norm(x_d.detach() - x, dim=1)) if self.fixed_commit else\
+            t.norm(x_d.detach() - x) ** 2 / np.prod(x.shape)
 
         # Passthrough
         x_d = x + (x_d - x).detach()
 
         # Postprocess
         x_l, x_d = self.postprocess(x_l, x_d, (N,T))
-        return x_l, x_d, commit_loss, dict(fit=fit,
-                                           pn=prenorm,
-                                           **update_metrics)
+        return x_l, x_d, commit_loss, prenorm, dict(fit=fit,
+                                                    pn=prenorm,
+                                                    pn_vec=prenorm_vec,
+                                                    **update_metrics)
 
 
 class Bottleneck(nn.Module):
-    def __init__(self, l_bins, emb_width, mu, levels):
+    def __init__(self, l_bins, emb_width, mu, levels, norm_before_vqvae, fixed_commit):
         super().__init__()
         self.levels = levels
-        level_block = lambda level: BottleneckBlock(l_bins, emb_width, mu)
-        self.level_blocks = nn.ModuleList()
-        for level in range(self.levels):
-            self.level_blocks.append(level_block(level))
+        self.level_blocks = nn.ModuleList([BottleneckBlock(l_bins, emb_width, mu, norm_before_vqvae,
+                                                           fixed_commit)
+                                           for level in range(self.levels)])
 
     def encode(self, xs):
         zs = [level_block.encode(x) for (level_block, x) in zip(self.level_blocks, xs)]
@@ -199,21 +194,22 @@ class Bottleneck(nn.Module):
         return xs_quantised
 
     def forward(self, xs):
-        zs, xs_quantised, commit_losses, metrics = [], [], [], []
+        zs, xs_quantised, commit_losses, prenorms, metrics = [], [], [], [], []
         for level in range(self.levels):
             level_block = self.level_blocks[level]
             x = xs[level]
-            z, x_quantised, commit_loss, metric = level_block(x, update_k=self.training)
+            z, x_quantised, commit_loss, prenorm, metric = level_block(x, update_k=self.training)
             zs.append(z)
             if not self.training:
                 # Be extra paranoid and make sure the encoder weights can't
                 # change from straight-through estimator
                 x_quantised = x_quantised.detach()
             xs_quantised.append(x_quantised)
+            prenorms.append(prenorm)
             commit_losses.append(commit_loss)
             if self.training:
                 metrics.append(metric)
-        return zs, xs_quantised, commit_losses, metrics
+        return zs, xs_quantised, commit_losses, prenorms, metrics
 
 class NoBottleneckBlock(nn.Module):
     def restore_k(self):
