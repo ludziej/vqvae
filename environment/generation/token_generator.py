@@ -14,20 +14,21 @@ class SynchronousTokenGenerator(nn.Module):
     # generation
 
     def generate_prior(self, length, params: GenerationParams, bs=1, with_tqdm=True):
-        raise Exception("Not Implemented") # TODO
-        return self.prior.generate_no_sound(length, context=context, with_tqdm=with_tqdm, bs=bs)
+        return self.prior.generate_tokens(length, param=params, with_tqdm=with_tqdm, bs=bs)
 
     def generate_upsampler(self, length, prev_tokens, level, params: GenerationParams, with_tqdm=True):
-        upsampler = self.upsamplers[level]
-        raise Exception("Not Implemented") # TODO
-        return upsampler.generate_no_sound(length, context=context, with_tqdm=with_tqdm, bs=prev_tokens.shape[0])
+        return self.upsamplers[level].generate_tokens(length, param=params, with_tqdm=with_tqdm,
+                                                      bs=prev_tokens.shape[0], up_tokens=prev_tokens)
 
-    def continue_prior(self, previous, length, params: GenerationParams, use_tqdm=True):
-        prior = self.prior.generate_from_sound(sound, prefix_token_perc=1, use_tqdm=use_tqdm)
-        raise Exception("Not Implemented")  # TODO
+    def continue_prior(self, previous, length, params: GenerationParams, with_tqdm=True, with_begin=True):
+        return self.prior.continue_tokens(tokens=previous, prefix_token_perc=1, with_tqdm=with_tqdm,
+                                          length=previous.shape[-1] + length, params=params, with_begin=with_begin)
 
-    def continue_upsampler(self, previous, length, up_tokens, params: GenerationParams, use_tqdm=True):
-        raise Exception("Not Implemented")  # TODO
+    def continue_upsampler(self, previous, length, up_tokens, level, params: GenerationParams, with_tqdm=True,
+                           with_begin=True):
+        return self.upsamplers[level].continue_tokens(tokens=previous, prefix_token_perc=1, with_tqdm=with_tqdm,
+                                                      length=previous.shape[-1] + length, params=params,
+                                                      up_tokens=up_tokens, with_begin=with_begin)
 
     # synchronous token operations
 
@@ -40,10 +41,10 @@ class SynchronousTokenGenerator(nn.Module):
         return tokens
 
     def continuation(self, encoded: [torch.Tensor], add_tokens_length: [int], params: GenerationParams,
-                     use_tqdm=True, decode_level=0,) -> torch.Tensor:
+                     with_tqdm=True, decode_level=0,) -> torch.Tensor:
         tokens = self.continue_prior(encoded[-1], length=add_tokens_length[-1],
-                                     params=params, use_tqdm=use_tqdm)
+                                     params=params, with_tqdm=with_tqdm)
         for level in reversed(range(decode_level, self.prior.level)):
             tokens = self.continue_upsampler(encoded[level], add_tokens_length[level], tokens,
-                                             params=params, use_tqdm=use_tqdm)
+                                             params=params, with_tqdm=with_tqdm)
         return tokens
