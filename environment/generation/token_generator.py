@@ -1,7 +1,8 @@
 import torch
 from torch import nn as nn
 
-from generator.model import LevelGenerator, GenerationParams
+from generator.model import LevelGenerator
+from generator.modules.conditioner import GenerationParams
 
 
 class SynchronousTokenGenerator(nn.Module):
@@ -45,6 +46,6 @@ class SynchronousTokenGenerator(nn.Module):
         tokens = self.continue_prior(encoded[-1], length=add_tokens_length[-1],
                                      params=params, with_tqdm=with_tqdm)
         for level in reversed(range(decode_level, self.prior.level)):
-            tokens = self.continue_upsampler(encoded[level], add_tokens_length[level], tokens,
+            tokens = self.continue_upsampler(encoded[level], add_tokens_length[level], tokens, level=level,
                                              params=params, with_tqdm=with_tqdm)
         return tokens

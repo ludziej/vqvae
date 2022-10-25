@@ -5,30 +5,23 @@ import statistics
 from pytorch_lightning import LightningModule
 from generator.modules.performer import Performer
 from vqvae.model import VQVAE
-from generator.modules.conditioner import Conditioner
-from generator.modules.positional_encoding import PositionEmbedding
 import torch.nn.functional as F
 from performer_pytorch.autoregressive_wrapper import top_k, repetition_penalty_fn
 from optimization.scheduler import ReduceLROnPlateauWarmup
 from optimization.normalization import CustomNormalization
 from utils.misc import time_run
-from typing import NamedTuple
 import tqdm
-
-
-class GenerationParams(NamedTuple):
-    artist: torch.Tensor
-    time: torch.Tensor
-    # here add also BPM/genre etc
+from generator.modules.conditioner import Conditioner, GenerationParams
 
 
 class LevelGenerator(LightningModule):
     def __init__(self, vqvae: VQVAE, level: int, log_sample_size: int, context_on_level: int,
                  dim: int, depth: int, heads: int,  lr: float, start_gen_sample_len: int,
                  log_starting_context_perc: int, log_context_time: float, n_ctx: int, feature_redraw_interval: int,
-                 pos_init_scale: int, bins_init_scale: float, dim_head: int, norm_type: bool, no_scheduler: bool,
+                 pos_init_scale: int, bins_init_scale: float, dim_head: int, norm_type: bool,
                  conds_kwargs: dict, init_bins_from_vqvae: bool, layer_for_logits: bool, conditioning_dropout: float,
-                 warmup_time: int, sch_patience: int, sch_factor: int, log_interval, token_dim: int,  **params):
+                 warmup_time: int, sch_patience: int, sch_factor: int, log_interval, token_dim: int,
+                 scheduler_type: str, pos_enc_type: str, **params):
         super().__init__()
         self.n_ctx = n_ctx
         self.level = level
@@ -42,7 +35,8 @@ class LevelGenerator(LightningModule):
         self.log_context_time = log_context_time
         self.pos_init_scale = pos_init_scale
         self.bins_init_scale = bins_init_scale
-        self.no_scheduler = no_scheduler
+        self.scheduler_type = scheduler_type
+        self.pos_enc_type = pos_enc_type
         self.init_bins_from_vqvae = init_bins_from_vqvae
         self.layer_for_logits = layer_for_logits
         self.warmup_time = warmup_time
@@ -62,31 +56,23 @@ class LevelGenerator(LightningModule):
 
         self.transformer = Performer(causal=True, dim=dim, depth=depth, heads=heads, dim_head=dim_head,
                                      feature_redraw_interval=feature_redraw_interval)
-        self.pos_emb = PositionEmbedding(input_shape=(self.n_ctx,), width=self.token_dim, init_scale=self.pos_init_scale)
-        self.pos_embeddings_is_absolute = True  # needs to recalculate when we move windows by 1
-        self.cond_dropout = nn.Dropout(conditioning_dropout)
-        self.x_emb = nn.Embedding(self.bins, self.token_dim)
-        self.init_emb(self.x_emb)
+
         self.sample_len = self.preprocessing.tokens_to_samples_num(self.n_ctx, self.level)
         self.start_layer = nn.ModuleList([nn.Linear(self.token_dim, self.dim), nn.ReLU()])
+        z_shapes = self.preprocessing.samples_num_to_tokens(self.sample_len)
+        z_shapes = [(z_shape[0] * self.n_ctx // z_shapes[self.level][0],) for z_shape in z_shapes]
+
+        self.token_distr = np.zeros(self.bins)
+        self.token_log_quantiles = 10
+        self.training_started = set()
+        self.my_logger.info(str(self))
 
         if self.layer_for_logits:
             self.final_layer_norm = CustomNormalization(dim, norm_type=norm_type)
             self.to_out = nn.Linear(dim, self.bins)
 
-        z_shapes = self.preprocessing.samples_num_to_tokens(self.sample_len)
-        z_shapes = [(z_shape[0] * self.n_ctx // z_shapes[self.level][0],) for z_shape in z_shapes]
-        if self.context_on_level:
-            u_level = self.level + 1
-            bins_init = None if not self.init_bins_from_vqvae else self.get_vqvae_bins(u_level)
-            self.conditioner = Conditioner(input_shape=z_shapes[u_level], bins=self.preprocessing.l_bins,
-                                           out_width=self.token_dim, down_t=self.preprocessing.downs_t[u_level],
-                                           bins_init=bins_init, stride_t=self.preprocessing.strides_t[u_level],
-                                           **conds_kwargs)
-        self.token_distr = np.zeros(self.bins)
-        self.token_log_quantiles = 10
-        self.training_started = set()
-        self.my_logger.info(str(self))
+        self.conditioner = Conditioner(conds_kwargs=conds_kwargs, z_shapes=z_shapes,
+                                       conditioning_dropout=conditioning_dropout)
 
     def __str__(self):
         return f"Upsampler level {self.level} with n_ctx={self.n_ctx} and tokens={self.sample_len}"\
@@ -94,12 +80,6 @@ class LevelGenerator(LightningModule):
 
     def get_vqvae_bins(self, level):
         return self.preprocessing.generator.bottleneck.level_blocks[level].k.detach()
-
-    def init_emb(self, bins: nn.Module):
-        if self.init_bins_from_vqvae:
-            bins.weight = torch.nn.Parameter((self.get_vqvae_bins(self.level)))
-        else:
-            nn.init.normal_(bins.weight, std=0.02 * self.bins_init_scale)
 
     def get_transformer_logits(self, x_emb):
         x = self.start_layer[1](self.start_layer[0](x_emb))
@@ -112,9 +92,9 @@ class LevelGenerator(LightningModule):
             # TODO implement some version using embedding location for classification task, instead of just linear layer
             raise NotImplementedError("currently no method of token classification other then plain layer")
 
-    def forward(self, sound: torch.Tensor, context=None, time=None) -> torch.Tensor:
+    def forward(self, sound: torch.Tensor, gen_params: GenerationParams = None) -> torch.Tensor:
         tokens, up_tokens = self.get_tokens(sound)
-        embedding = self.get_conditioned_emb(tokens, up_tokens, context, time)
+        embedding = self.get_conditioned_emb(tokens, up_tokens, gen_params)
         loss = self.autoregressive_forward_loss(embedding, tokens)
         return loss
 
@@ -135,64 +115,6 @@ class LevelGenerator(LightningModule):
         return tokens, up_tokens
 
     # conditionals
-
-    # TODO implement
-    def get_context_conditioning(self, context, bs, length):
-        raise NotImplementedError("currently no context conditioning")
-
-    # TODO implement
-    def get_time_conditioning(self, time, bs, length):
-        raise NotImplementedError("currently no time conditioning")
-
-    # TODO implement batched version for different lengths (like jukebox)
-    def get_lvl_conditioning(self, up_level, bs, length):
-        from_up_lvl = self.conditioner(up_level)
-        assert from_up_lvl.shape == (bs, length, self.token_dim)
-        return from_up_lvl
-
-    def get_pos_emb(self, bs, start_at=0, length=None):
-        pos_emb = self.pos_emb().repeat(bs, 1).reshape(bs, self.n_ctx, self.token_dim)
-        if start_at != 0:
-            pad = torch.zeros((bs, start_at, self.token_dim), dtype=pos_emb.dtype, device=pos_emb.device)
-            pos_emb = torch.cat([pad, pos_emb], dim=1)
-        return pos_emb
-
-    def get_all_conditioning(self, bs, length, params: GenerationParams, up_tokens=None):
-        args = dict(bs=bs, length=length)
-        conditionings = dict(
-            pos_cond=(True, lambda: self.get_pos_emb(**args)),
-            lvl_cond=(up_tokens, lambda: self.get_lvl_conditioning(up_tokens, **args)),
-            context_cond=(params.artist, lambda: self.get_context_conditioning(params.artist, **args)),
-            time_cond=(params.time, lambda: self.get_time_conditioning(params.time, **args))
-        )
-        return {k: f() for k, (v, f) in conditionings.items() if v is not None}
-
-    def get_conditioned_emb(self, tokens, up_tokens=None, context=None, time=None):
-        b, t = tokens.shape[:2]
-        embeddings = self.x_emb(tokens)
-        conditioning = self.get_all_conditioning(b, t, context=context, up_tokens=up_tokens, time=time)
-        embeddings = self.join_conditioning(embeddings, **conditioning)
-        return embeddings
-
-    # TODO implement
-    def conditioning_concat_projection(self, x, conds):
-        raise NotImplementedError("concat conditioning not implemented")
-
-    def join_conditioning(self, x, lvl_cond=None, context_cond=None, pos_cond=None, time_cond=None,
-                          token_interv=None):
-        x = x[:, token_interv[0]: token_interv[1], :] if token_interv is not None else x
-        bs, size = x.shape[:2]
-        conds = [lvl_cond, context_cond, pos_cond, time_cond]
-        is_const_window = [False, True, True, False]
-        conds = [(c, m) for c, m in zip(conds, is_const_window) if c is not None]
-        conds = [c if token_interv is None else c[:, :size] if moving else c[:, token_interv[0]: token_interv[1]]
-                 for c, moving in conds]
-        conds = [self.cond_dropout(c) for c in conds]
-        if self.conditioning_concat:
-            return self.conditioning_concat_projection(x, conds)
-        else:
-            assert all(c.shape == x.shape for c in conds)  # each conditioning has to have same size as x
-            return x + sum(conds)
 
     # generation
 
@@ -337,24 +259,25 @@ class LevelGenerator(LightningModule):
 
     # boilerplate
 
-    def step(self, batch, batch_idx, time=None, context=None, name=""):
-        if name not in self.training_started:
-            self.training_started.add(name)
-            self.my_logger.info(f"{(name or 'train')} loop started - first batch arrived")
+    def step(self, batch, batch_idx, gen_params: GenerationParams = None, phase=""):
+        gen_params = gen_params if gen_params is not None else GenerationParams(None, None)
+        if phase not in self.training_started:
+            self.training_started.add(phase)
+            self.my_logger.info(f"{(phase or 'train')} loop started - first batch arrived")
         batch, = batch
         assert batch.shape[1] == self.sample_len
-        loss = self(batch)
-        self.log_metrics_and_samples(loss, batch, batch_idx, name)
+        loss = self(batch, gen_params)
+        self.log_metrics_and_samples(loss, batch, batch_idx, phase)
         return loss
 
-    def training_step(self, batch, batch_idx, name=""):
-        return self.step(batch, batch_idx, name="")
+    def training_step(self, batch, batch_idx, gen_params: GenerationParams = None):
+        return self.step(batch, batch_idx, phase="")
 
-    def test_step(self, batch, batch_idx):
-        return self.step(batch, batch_idx, name="test_")
+    def test_step(self, batch, batch_idx, gen_params: GenerationParams = None):
+        return self.step(batch, batch_idx, phase="test_")
 
-    def validation_step(self, batch, batch_idx):
-        return self.step(batch, batch_idx, name="val_")
+    def validation_step(self, batch, batch_idx, gen_params: GenerationParams = None):
+        return self.step(batch, batch_idx, phase="val_")
 
     def configure_optimizers(self):
         if self.no_scheduler:

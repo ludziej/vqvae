@@ -3,7 +3,8 @@ import torch.nn as nn
 
 from environment.generation.token_generator import SynchronousTokenGenerator
 from vqvae.model import VQVAE
-from generator.model import LevelGenerator, GenerationParams
+from generator.model import LevelGenerator
+from generator.modules.conditioner import GenerationParams
 from data_processing.tools import load_file, save_file
 
 
@@ -51,7 +52,7 @@ class SynchronousGenerator(nn.Module):
         decoded = self.decode_sound(tokens, decode_level)
         return decoded
 
-    # file operations
+    # file helpers
 
     def load_file(self, filenames):
         if isinstance(filenames, str):

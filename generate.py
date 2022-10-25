@@ -1,6 +1,7 @@
 from hparams.parser import HparamsParser
 from hparams.config import hparams_registry
-from environment.generation.synchronous import SynchronousGenerator, GenerationParams
+from environment.generation.synchronous import SynchronousGenerator
+from generator.modules.conditioner import GenerationParams
 from environment.train_transformer import get_model as get_transformer
 from environment.train_embeddings import get_model as get_vqvae
 from environment.train_utils import create_logger
@@ -42,7 +43,7 @@ def run_generation(**params):
 def run():
     hparams = HparamsParser(hparams_registry).create_hparams()
     if "operation" not in hparams:
-        raise Exception(f"Wrong config selected, for generation available are {legal_generation_configs}")
+        raise Exception(f"Wrong config selected, for generation only {legal_generation_configs} are available")
     return run_generation(**hparams)
 
 

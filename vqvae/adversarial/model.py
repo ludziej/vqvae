@@ -86,7 +86,7 @@ class FFTDiscriminator(AbstractDiscriminator):
     def encode(self, x):
         x = self.preprocess(x)
         x = self.encoder(x)
-        x = torch.max(x, dim=-1).values
+        x = torch.max(x, dim=-1).values if self.reduce_type == "max" else torch.mean(x, dim=-1)
         x = x.reshape(x.shape[0], self.emb_width)
         return x
 
