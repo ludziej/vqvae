@@ -44,12 +44,15 @@ class Resnet1D(nn.Module):
 
 
 class ResBlock2d(nn.Module):
-    def __init__(self, in_channels, out_channels, downsample, leaky=0):
+    def __init__(self, in_channels, out_channels, downsample, pooltype="max", leaky=0):
         super().__init__()
-        stride = 2 if downsample else 1
+        stride = 2 if downsample and pooltype == "max" else 1  # for pooltype=max, use stride, either way use avg pool
+        self.downlayer = nn.AvgPool2d(kernel_size=2, padding=0, stride=2) \
+            if pooltype == "avg" and downsample else nn.Sequential()
         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1)
+
         self.shortcut = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=2),
+            nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride),
             nn.BatchNorm2d(out_channels)
         ) if downsample else nn.Sequential()
 
@@ -59,6 +62,7 @@ class ResBlock2d(nn.Module):
         self.activ = nn.ReLU() if leaky == 0 else nn.LeakyReLU(negative_slope=leaky)
 
     def forward(self, x):
+        x = self.downlayer(x)
         shortcut = self.shortcut(x)
         x = self.activ(self.bn1(self.conv1(x)))
         x = self.activ(self.bn2(self.conv2(x)))
@@ -67,18 +71,20 @@ class ResBlock2d(nn.Module):
 
 
 class ResNet2d(nn.Module):
-    def __init__(self, in_channels, first_channels=32, depth=4, leaky=1e-2):
+    def __init__(self, in_channels, first_channels=32, depth=4, pooltype="max", leaky=1e-2):
         super().__init__()
+        self.pool = nn.MaxPool2d if pooltype == "max" else nn.AvgPool2d if pooltype == "avg" else None
         self.layer0 = nn.Sequential(
             nn.Conv2d(in_channels, first_channels, kernel_size=7, stride=1, padding=3),
-            nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
+            self.pool(kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(first_channels),
-            nn.ReLU()
+            nn.ReLU() if leaky == 0 else nn.LeakyReLU(negative_slope=leaky)
         )
+        args = dict(pooltype=pooltype, leaky=leaky)
         self.encoder = nn.Sequential(*[
                 nn.Sequential(
-                    ResBlock2d(first_channels * 2**i, first_channels * 2**(i+1), downsample=True, leaky=leaky),
-                    ResBlock2d(first_channels * 2**(i+1), first_channels * 2**(i+1), downsample=False, leaky=leaky)
+                    ResBlock2d(first_channels * 2**i, first_channels * 2**(i+1), downsample=True, **args),
+                    ResBlock2d(first_channels * 2**(i+1), first_channels * 2**(i+1), downsample=False, **args)
                 )
             for i in range(depth)])
 

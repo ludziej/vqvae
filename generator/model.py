@@ -218,7 +218,7 @@ class LevelGenerator(LightningModule):
         num_zeros = sum(distr == 0) / self.bins
         quantiles = [np.min(distr)] + statistics.quantiles(distr, n=self.token_log_quantiles) + [np.max(distr)]
 
-        self.log("dead_tokens_perc", num_zeros, logger=True, prog_bar=True)
+        self.log("dead_tokens_perc", num_zeros, logger=True, prog_bar=True, sync_dist=True)
         q_dict = {f"{(i / self.token_log_quantiles * 100):.0f}%": q for i, q in enumerate(quantiles)}
         self.logger.experiment.add_scalars('tok_discr_quant', q_dict)
 
@@ -231,8 +231,8 @@ class LevelGenerator(LightningModule):
         nr = self.log_nr.get(prefix, 0)
         self.log_nr[prefix] = nr + 1
         for i, pg in enumerate(self.optimizers().param_groups):
-            self.log(f"lr_{i}", pg["lr"], logger=True, prog_bar=True)
-        self.log(prefix + "loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+            self.log(f"lr_{i}", pg["lr"], logger=True, prog_bar=True, sync_dist=True)
+        self.log(prefix + "loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
         if self.is_sampling_time(prefix, batch_idx):
             self.log_samples(batch, nr, prefix)
         self.is_first_batch = False if not self.trainer.sanity_checking else self.is_first_batch
@@ -242,7 +242,7 @@ class LevelGenerator(LightningModule):
         tlogger = self.logger.experiment
         con_samples, speed = self.continue_sound(batch, prefix_token_perc=self.log_starting_context_perc,
                                                  return_speed=True, with_begin=True)
-        self.log("1s_gen_time", speed)
+        self.log("1s_gen_time", speed, sync_dist=True, logger=True, on_step=True)
         for i, sample in enumerate(con_samples):
             tlogger.add_audio(prefix + f"sample_con_{i}", sample, nr, self.sr)
 

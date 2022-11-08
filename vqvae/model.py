@@ -139,7 +139,7 @@ class VQVAE(LightningModule):
         return self.evaluation_step(batch, batch_idx, optimizer_idx, "val")
 
     def on_train_batch_end(self, outputs, batch, batch_idx: int, unused=0) -> None:
-        super().on_train_batch_end(outputs, batch, batch_idx, unused)
+        super().on_train_batch_end(outputs, batch, batch_idx)
         pass
 
     def configure_optimizers(self):
@@ -206,9 +206,9 @@ class VQVAE(LightningModule):
 
     def log_metrics_and_samples(self, loss, metrics, batch, batch_outs, batch_idx, optimize_generator, phase):
         prefix = phase + "_" if phase != "train" else ""
-        self.log(prefix + "loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        self.log(prefix + "loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
         for name, val in metrics.items():
-            self.log(prefix + name, val,  on_step=True, on_epoch=True, logger=True)
+            self.log(prefix + name, val,  on_step=True, on_epoch=True, logger=True, sync_dist=True)
         if not (batch_idx % self.log_interval == 0 and optimize_generator and self.local_rank == 0 and
                 (phase == "train" or not self.skip_valid_logs)):
             return  # log samples once per interval

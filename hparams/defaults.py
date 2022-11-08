@@ -38,6 +38,7 @@ adv_params = Hparams(
     disc_loss_weight=0.1,
     gan_loss_warmup=1000,
     discriminator_level=0,
+    pooltype="avg",   # ["max", "avg"]
     reduce_type="avg",  # ["max", "avg"]
     type="joined",  # "mel", "wav" or "joined"
     n_mels=256,
