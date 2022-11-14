@@ -61,8 +61,8 @@ def get_prepr(type, n_fft, n_mels, sample_rate, **params):
     elif type == "fft":
         return lambda x: torch.view_as_real(torch.stft(
                 input=x.squeeze(1), return_complex=True,
-                n_fft=n_fft, center=True, **params))\
-            .permute(0, 3, 1, 2), 2, n_fft//2 + 1
+                n_fft=n_fft, center=True, **params)).permute(0, 3, 1, 2),\
+            2, n_fft//2 + 1
     raise Exception("Not implemented")
 
 

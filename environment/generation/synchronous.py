@@ -17,7 +17,7 @@ class SynchronousGenerator(nn.Module):
         self.upsamplers = torch.nn.ModuleList(upsamplers)
         self.tokens_gen = SynchronousTokenGenerator(vqvae, prior, upsamplers)
 
-    # vqvae operations
+    # compressor operations
 
     def decode_sound(self, tokens, level):
         return self.preprocessing.decode([tokens], start_level=level, end_level=level + 1).squeeze(2).detach()

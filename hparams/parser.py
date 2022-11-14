@@ -8,7 +8,7 @@ from utils.misc import fst
 
 class HparamsParser:
     help_dictionary = {
-        "model": "type of model: 'prior' or 'vqvae' pr 'upsampler'"
+        "model": "type of model: 'prior' or 'compressor' pr 'upsampler'"
     }
     type_dict = {int: int, float: float}
 

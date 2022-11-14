@@ -1,11 +1,15 @@
 from hparams.parser import Hparams
-from hparams.big import big_prior_params, big_vqvae_params, big_upsampler_params, big_transformer_params, \
-    big_upsampler_conditioner_params
-from hparams.small import small_upsampler_params, small_prior_params, small_vqvae_params, dirs_config, small_forward_params, \
-    small_vqvae_opt_hparams, small_transformer_params, small_upsampler_conditioner_params
+from hparams.generator.transformer import big_transformer_params, small_transformer_params
+from hparams.generator.prior import big_prior_params, small_prior_params
+from hparams.compressor.model import big_vqvae_params, small_vqvae_params
+from hparams.compressor.forward import small_forward_params
+from hparams.compressor.modules import small_vqvae_opt_hparams
+from hparams.generator.upsampler import small_upsampler_conditioner_params, small_upsampler_params, \
+    big_upsampler_conditioner_params, big_upsampler_params
+from hparams.compressor.misc import dirs_config
 
 config_big_hparams = Hparams(
-    model="vqvae",
+    model="compressor",
     level=0,
     upsampler=[big_upsampler_params, big_upsampler_params],
     prior=big_prior_params,
@@ -26,7 +30,7 @@ config_big_hparams = Hparams(
 )
 
 config_small_hparams = Hparams(
-    model="vqvae",
+    model="compressor",
     level=0,
     upsampler=[small_upsampler_params, small_upsampler_params],
     prior=small_prior_params,
