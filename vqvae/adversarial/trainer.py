@@ -11,8 +11,8 @@ def get_discriminator(with_discriminator, type, **params):
         return None
     if type == "joined":
         return JoinedDiscriminator(**params)
-    elif type == "mel":
-        return FFTDiscriminator(**params)
+    elif type == "mel" or type == "fft":
+        return FFTDiscriminator(prep_type=type, **params)
     elif type == "wav":
         return WavDiscriminator(**params)
     raise Exception("Not Implemented")

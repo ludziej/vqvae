@@ -55,12 +55,14 @@ class WavDiscriminator(AbstractDiscriminator):
         return x
 
 
-def get_prepr(type, n_fft, n_mels, **params):
+def get_prepr(type, n_fft, n_mels, sample_rate, **params):
     if type == "mel":
-        return MelSpectrogram(n_mels=n_mels, n_fft=n_fft, **params), 1, n_mels
-    elif type == "stft":
-        return lambda x: torch.stft(input=x, return_complex=True, n_fft=n_fft, **params)\
-            .unsqueeze(1).permute(0, 3, 1, 2), 2, n_fft
+        return MelSpectrogram(n_mels=n_mels, n_fft=n_fft, sample_rate=sample_rate, **params), 1, n_mels
+    elif type == "fft":
+        return lambda x: torch.view_as_real(torch.stft(
+                input=x.squeeze(1), return_complex=True,
+                n_fft=n_fft, center=True, **params))\
+            .permute(0, 3, 1, 2), 2, n_fft + 1
     raise Exception("Not implemented")
 
 
