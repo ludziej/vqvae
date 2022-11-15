@@ -293,6 +293,7 @@ class LevelGenerator(LightningModule):
                         'reduce_on_plateau': True
                 }])
         elif self.scheduler_type == "step":
+            raise Exception(f"Not implemented")
 
         else:
             raise Exception(f"Unknown scheduler_type = {self.scheduler_type}")

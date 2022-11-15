@@ -44,7 +44,6 @@ big_transformer_params = default_transformer_params.update(
     sch_factor=0.9,
     conditioning_dropout=0.,
     log_interval=5000,
-    conds_kwargs=None,
     log_context_time=0,  # 2.5 s
 )
 

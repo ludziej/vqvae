@@ -8,6 +8,7 @@ default_prior_params = Hparams(
     context_on_level=False,
     log_starting_context_len=390,
     res_scale=False,
+    conds_kwargs=None,
 )
 
 big_prior_params = big_transformer_params.update(

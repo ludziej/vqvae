@@ -19,6 +19,8 @@ adv_params = Hparams(
     leaky=1e-2,
     res_depth=4,
     first_channels=32,
+    trainable_prep=False,
+    n_bins=108,
 )
 default_vqvae_opt_hparams = Hparams(
     chunk_timeout=2,

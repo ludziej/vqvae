@@ -5,6 +5,7 @@ from vqvae.modules.resnet import ResNet2d
 from torchaudio.transforms import MelSpectrogram
 from collections import namedtuple
 import abc
+from nnAudio.Spectrogram import CQT2010v2
 
 
 class AbstractDiscriminator(nn.Module, abc.ABC):
@@ -55,21 +56,28 @@ class WavDiscriminator(AbstractDiscriminator):
         return x
 
 
-def get_prepr(type, n_fft, n_mels, sample_rate, **params):
+def get_prepr(type, n_fft, n_mels, sample_rate, n_bins, hop_length, trainable, **params):
     if type == "mel":
-        return MelSpectrogram(n_mels=n_mels, n_fft=n_fft, sample_rate=sample_rate, **params), 1, n_mels
+        return MelSpectrogram(n_mels=n_mels, n_fft=n_fft, sample_rate=sample_rate, hop_length=hop_length,
+                              **params), 1, n_mels
     elif type == "fft":
         return lambda x: torch.view_as_real(torch.stft(
                 input=x.squeeze(1), return_complex=True,
-                n_fft=n_fft, center=True, **params)).permute(0, 3, 1, 2),\
+                n_fft=n_fft, center=True, hop_length=hop_length, **params)).permute(0, 3, 1, 2),\
             2, n_fft//2 + 1
+    elif type == "cqt":
+        spec = CQT2010v2(sr=sample_rate, hop_length=hop_length, output_format="Complex",
+                         n_bins=n_bins, norm=1, window='hann', pad_mode='constant', trainable=trainable)
+        return lambda x: spec(x).permute(0, 3, 1, 2), 2, n_bins
     raise Exception("Not implemented")
 
 
+
 class FFTDiscriminator(AbstractDiscriminator):
-    def __init__(self, n_fft, hop_length, window_size, sr, reduce_type="max", pooltype="avg", leaky=1e-2, res_depth=4,
-                 first_channels=32, prep_type="mel", n_mels=128, **params):
-        prep_params = dict(n_fft=n_fft, hop_length=hop_length, win_length=window_size, sample_rate=sr, n_mels=n_mels)
+    def __init__(self, n_fft, hop_length, window_size, sr, n_bins, reduce_type="max", pooltype="avg", leaky=1e-2,
+                 res_depth=4, first_channels=32, prep_type="mel", n_mels=128, trainable_prep=False, **params):
+        prep_params = dict(n_fft=n_fft, hop_length=hop_length, win_length=window_size, trainable=trainable_prep,
+                           sample_rate=sr, n_mels=n_mels, n_bins=n_bins)
         feature_extract, in_channels, height = get_prepr(prep_type, **prep_params)
 
         encoder = ResNet2d(in_channels=in_channels, leaky=leaky, depth=res_depth, pooltype=pooltype,

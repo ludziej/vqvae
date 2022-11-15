@@ -75,7 +75,7 @@ class ResNet2d(nn.Module):
         super().__init__()
         self.pool = nn.MaxPool2d if pooltype == "max" else nn.AvgPool2d if pooltype == "avg" else None
         self.layer0 = nn.Sequential(
-            nn.Conv2d(in_channels, first_channels, kernel_size=7, stride=1, padding=3),
+            nn.Conv2d(in_channels, first_channels, kernel_size=13, stride=1, padding=6),
             self.pool(kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(first_channels),
             nn.ReLU() if leaky == 0 else nn.LeakyReLU(negative_slope=leaky)
