@@ -21,7 +21,7 @@ class LevelGenerator(LightningModule):
                  pos_init_scale: int, bins_init_scale: float, dim_head: int, norm_type: bool,
                  conds_kwargs: dict, init_bins_from_vqvae: bool, layer_for_logits: bool, conditioning_dropout: float,
                  warmup_time: int, sch_patience: int, sch_factor: int, log_interval, token_dim: int,
-                 scheduler_type: str, pos_enc_type: str, **params):
+                 scheduler_type: str, pos_enc_type: str, pos_enc_lvl_over_bit: int, **params):
         super().__init__()
         self.n_ctx = n_ctx
         self.level = level
@@ -71,15 +71,14 @@ class LevelGenerator(LightningModule):
             self.final_layer_norm = CustomNormalization(dim, norm_type=norm_type)
             self.to_out = nn.Linear(dim, self.bins)
 
-        self.conditioner = Conditioner(conds_kwargs=conds_kwargs, z_shapes=z_shapes,
-                                       conditioning_dropout=conditioning_dropout)
+        self.conditioner = Conditioner(conds_kwargs=conds_kwargs, z_shapes=z_shapes, bins=self.bins,
+                                       pos_enc_type=self.pos_enc_type, pos_enc_lvl_over_bit=pos_enc_lvl_over_bit,
+                                       bins_init_scale=self.bins_init_scale, level=self.level, token_dim=self.token_dim,
+                                       conditioning_dropout=conditioning_dropout, preprocessing=self.preprocessing)
 
     def __str__(self):
         return f"Upsampler level {self.level} with n_ctx={self.n_ctx} and tokens={self.sample_len}"\
                f" that last {self.sample_len/self.sr:.3} s.)"
-
-    def get_vqvae_bins(self, level):
-        return self.preprocessing.generator.bottleneck.level_blocks[level].k.detach()
 
     def get_transformer_logits(self, x_emb):
         x = self.start_layer[1](self.start_layer[0](x_emb))
@@ -280,20 +279,20 @@ class LevelGenerator(LightningModule):
         return self.step(batch, batch_idx, phase="val_")
 
     def configure_optimizers(self):
-        if self.no_scheduler:
-            return torch.optim.Adam(self.parameters(), lr=self.lr)
-        opt = torch.optim.Adam(self.parameters(), lr=self.lr / self.warmup_time)
-        scheduler = ReduceLROnPlateauWarmup(opt, starting_lr=self.lr, warmup_time=self.warmup_time,
-                                            logger=self.my_logger, patience=self.sch_patience, factor=self.sch_factor)
-        return (
-            [opt],
-            [
-                {
-                    'scheduler': scheduler,
-                    'interval': 'step',
-                    'frequency': 1,
-                    'monitor': 'loss_step',
-                    'reduce_on_plateau': True
-                }
-            ]
-        )
+        opt = torch.optim.Adam(self.parameters(), lr=self.lr)
+        if self.scheduler_type == "none":
+            return opt
+        elif self.scheduler_type == "plateau":
+            scheduler = ReduceLROnPlateauWarmup(opt, starting_lr=self.lr, warmup_time=self.warmup_time,
+                                                logger=self.my_logger, patience=self.sch_patience, factor=self.sch_factor)
+            return ([opt], [{
+                        'scheduler': scheduler,
+                        'interval': 'step',
+                        'frequency': 1,
+                        'monitor': 'loss_step',
+                        'reduce_on_plateau': True
+                }])
+        elif self.scheduler_type == "step":
+
+        else:
+            raise Exception(f"Unknown scheduler_type = {self.scheduler_type}")

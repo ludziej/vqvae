@@ -23,21 +23,18 @@ default_upsampler_params = Hparams(
 
 small_upsampler_conditioner_params = default_upsampler_conditioner_params.update(
 )
-small_upsampler_params = Hparams(
+small_upsampler_params = default_upsampler_params.update(
     **small_transformer_params.__dict__,
-    n_ctx=1560,
     main_dir="generated/small_upsampler/",
-    context_on_level=True,
     log_context_time=49920,  # 2.5 s
     conds_kwargs=small_upsampler_conditioner_params,
 )
 
 big_upsampler_conditioner_params = default_upsampler_conditioner_params.update(
 )
-big_upsampler_params = big_transformer_params.update(
-    n_ctx=1560,
+big_upsampler_params = default_upsampler_params.update(
+    **big_transformer_params.__dict__,
     main_dir="generated/big_upsampler/",
-    context_on_level=True,
     conds_kwargs=big_upsampler_conditioner_params,
     log_context_time=49920,  # 2.5 s
 )

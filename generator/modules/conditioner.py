@@ -3,7 +3,8 @@ from typing import NamedTuple, Optional
 import torch.nn as nn
 import torch
 from generator.modules.uptokenconditioner import UpTokenConditioner
-from generator.modules.positional_encoding import PositionEmbedding
+from generator.modules.positional_encoding import TrainablePositionalEncoding, FourierFeaturesPositionalEncoding,\
+    BPMPositionalEncoding
 
 
 class GenerationParams(NamedTuple):
@@ -13,11 +14,19 @@ class GenerationParams(NamedTuple):
 
 
 class Conditioner(nn.Module):
-    def __init__(self, conditioning_dropout, conds_kwargs, z_shapes, bins, token_dim, l_bins, downs_t, bins_init, strides_t, level, bins_init_scale):
+    def __init__(self, preprocessing, conditioning_dropout, conds_kwargs, z_shapes, bins, token_dim, level,
+                 bins_init_scale, pos_enc_type, pos_enc_lvl_over_bit):
+        super().__init__()
+        self.pos_enc_lvl_over_bit = pos_enc_lvl_over_bit
+        self.pos_enc_type = pos_enc_type
+        self.level = level
+        self.preprocessing = preprocessing
+        self.bins_init_scale = bins_init_scale
+        self.token_dim = token_dim
+        self.bins = bins
 
         # is_absolute needs to recalculate when we move windows by 1
         self.pos_emb, self.pos_embeddings_is_absolute = self.create_pos_emb()
-        self.pos_embeddings_is_absolute = True  # needs to recalculate when we move windows by 1
         self.cond_dropout = nn.Dropout(conditioning_dropout)
         self.x_emb = nn.Embedding(self.bins, self.token_dim)
         self.init_emb(self.x_emb)
@@ -29,16 +38,17 @@ class Conditioner(nn.Module):
                                                   bins_init=bins_init, stride_t=self.preprocessing.strides_t[u_level],
                                                   **conds_kwargs)
 
+    def get_vqvae_bins(self, level):
+        return self.preprocessing.generator.bottleneck.level_blocks[level].k.detach()
+
     def create_pos_emb(self):
         if self.pos_enc_type == "trainable":
-            return PositionEmbedding(input_shape=(self.n_ctx,), width=self.token_dim, init_scale=self.pos_init_scale),\
-                   True
+            return TrainablePositionalEncoding(input_shape=(self.n_ctx,), width=self.token_dim,
+                                               init_scale=self.pos_init_scale), True
         elif self.pos_enc_type == "fourier":
-            return PositionEmbedding(input_shape=(self.n_ctx,), width=self.token_dim, init_scale=self.pos_init_scale),\
-                   True
-        elif self.pos_enc_type == "":
-            return PositionEmbedding(input_shape=(self.n_ctx,), width=self.token_dim, init_scale=self.pos_init_scale),\
-                   True
+            return FourierFeaturesPositionalEncoding(depth=self.token_dim), True
+        elif self.pos_enc_type == "bpm":
+            return BPMPositionalEncoding(depth=self.token_dim, levels_per_bit=self.pos_enc_lvl_over_bit), True
         else:
             raise Exception(f"Unknown pos_enc_type={self.pos_enc_type}")
 
