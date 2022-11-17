@@ -20,7 +20,7 @@ def get_discriminator(with_discriminator, type, **params):
 
 class AdversarialTrainer(nn.Module):
     def __init__(self, gan_loss_weight, gan_loss_warmup, adv_latency, levels, with_discriminator,
-                 disc_loss_weight, disc_use_freq, **params):
+                 disc_loss_weight, disc_use_freq, stop_disc_train_after, **params):
         super().__init__()
         self.disc_use_freq = disc_use_freq
         self.with_discriminator = with_discriminator
@@ -29,6 +29,7 @@ class AdversarialTrainer(nn.Module):
         self.gan_loss_warmup = gan_loss_warmup
         self.adv_latency = adv_latency
         self.disc_loss_weight = disc_loss_weight
+        self.stop_disc_train_after = stop_disc_train_after
         self.discriminator = get_discriminator(with_discriminator=with_discriminator, **params)
 
     def forward(self, x_in, gen_out, optimize_generator=False):
@@ -47,12 +48,13 @@ class AdversarialTrainer(nn.Module):
         metrics = ChainMap(*[self.discriminator_metrics(**params, **stats._asdict()) for stats in calced_stats])
         return loss, dict(metrics)
 
-    def is_used(self, batch_idx, current_epoch):
+    def is_used(self, batch_idx, current_epoch, optimize_generator):
         return self.with_discriminator and (self.adv_latency <= batch_idx or current_epoch != 0) and \
-               batch_idx % self.disc_use_freq == 0
+               (batch_idx % self.disc_use_freq == 0 or optimize_generator) and \
+               not (batch_idx > self.stop_disc_train_after and not optimize_generator)
 
     def training_step(self, metrics, optimize_generator, x_in, x_outs, batch_idx, current_epoch):
-        if not self.is_used(batch_idx, current_epoch):
+        if not self.is_used(batch_idx, current_epoch, optimize_generator):
             return 0
         gan_loss, adv_metrics = self.forward(x_in, x_outs, optimize_generator=optimize_generator)
         metrics.update(adv_metrics)

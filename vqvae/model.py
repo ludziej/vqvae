@@ -118,7 +118,7 @@ class VQVAE(LightningModule):
 
     def evaluation_step(self, batch, batch_idx, optimizer_idx, phase="train"):
         optimize_generator = optimizer_idx != 1
-        if not optimize_generator and not self.discriminator.is_used(batch_idx, self.current_epoch):
+        if not optimize_generator and not self.discriminator.is_used(batch_idx, self.current_epoch, optimize_generator):
             return None
         x_in = self.generator.preprocess(batch[0])
         loss, metrics, x_outs = self(x_in) if optimize_generator else self.no_grad_forward(x_in)
@@ -146,9 +146,7 @@ class VQVAE(LightningModule):
         gopt, gsched = get_optimizer(self.generator, **self.opt_params)
         if not self.with_discriminator:
             return [gopt], [gsched]
-        # all parameters are given to the discriminator optimizer, because it optimizes also generator compression
-        # but detaches generator output before discriminator
-        dopt, dsched = get_optimizer(self, **self.opt_params)
+        dopt, dsched = get_optimizer(self.discriminator, **self.opt_params)
         return [gopt, dopt], [gsched, dsched]
 
     # metrics & logging

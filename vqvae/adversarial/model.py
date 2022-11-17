@@ -72,7 +72,6 @@ def get_prepr(type, n_fft, n_mels, sample_rate, n_bins, hop_length, trainable, *
     raise Exception("Not implemented")
 
 
-
 class FFTDiscriminator(AbstractDiscriminator):
     def __init__(self, n_fft, hop_length, window_size, sr, n_bins, reduce_type="max", pooltype="avg", leaky=1e-2,
                  res_depth=4, first_channels=32, prep_type="mel", n_mels=128, trainable_prep=False, **params):
