@@ -1,5 +1,7 @@
 from hparams.compressor.misc import dirs_config
 from hparams.parser import Hparams
+import math
+
 
 adv_params = Hparams(
     with_discriminator=False,
@@ -21,6 +23,7 @@ adv_params = Hparams(
     first_channels=32,
     trainable_prep=False,
     n_bins=108,
+    stop_disc_train_after=math.inf
 )
 default_vqvae_opt_hparams = Hparams(
     chunk_timeout=2,

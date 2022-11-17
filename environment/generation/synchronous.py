@@ -88,4 +88,5 @@ class SynchronousGenerator(nn.Module):
         artist = artist if artist != -1 else 0  # TODO randomize
         time = time if time != -1 else 240  # TODO randomize over_sec_from, some distr
         bpm = None  # TODO some random distr
-        return GenerationParams(artist=artist, time=time)
+        bpm_offset = None  # TODO some random distr
+        return GenerationParams(artist=artist, time=time, bpm=bpm, bpm_offset=bpm_offset)

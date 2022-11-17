@@ -38,7 +38,7 @@ class FourierFeaturesPositionalEncoding(nn.Module):
         self.omega = omega
         self.register_buffer('pe', generate_fourier_features(depth, size=max_len, omega=omega))
 
-    def forward(self, length: int = None, offset: int = 0) -> Tensor:
+    def forward(self, length: int = None, offset: int = 0, **params) -> Tensor:
         if offset + length < self.max_len:
             return self.pe[offset:offset + length]
         return generate_fourier_features(self.depth, size=length, omega=self.omega, offset=offset)
@@ -62,5 +62,5 @@ class TrainablePositionalEncoding(nn.Module):
         self.input_dims = np.prod(input_shape)
         self.pos_emb = nn.Parameter(get_normal(self.input_dims, width, std=0.01 * init_scale))
 
-    def forward(self):
+    def forward(self, **params):
         return self.pos_emb

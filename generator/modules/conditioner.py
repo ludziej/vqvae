@@ -8,22 +8,28 @@ from generator.modules.positional_encoding import TrainablePositionalEncoding, F
 
 
 class GenerationParams(NamedTuple):
-    artist: Optional[torch.Tensor]
-    time: Optional[torch.Tensor]
+    artist: Optional[torch.Tensor] = None
+    time: Optional[torch.Tensor] = None
+    bpm: Optional[torch.Tensor] = None
+    bpm_offset: Optional[torch.Tensor] = None
     # here add also BPM/genre etc
 
 
 class Conditioner(nn.Module):
     def __init__(self, preprocessing, conditioning_dropout, conds_kwargs, z_shapes, bins, token_dim, level,
-                 bins_init_scale, pos_enc_type, pos_enc_lvl_over_bit):
+                 bins_init_scale, pos_enc_type, init_bins_from_vqvae, pos_enc_lvl_over_bit, context_on_level,
+                 conditioning_concat):
         super().__init__()
         self.pos_enc_lvl_over_bit = pos_enc_lvl_over_bit
+        self.init_bins_from_vqvae = init_bins_from_vqvae
+        self.context_on_level = context_on_level
         self.pos_enc_type = pos_enc_type
         self.level = level
         self.preprocessing = preprocessing
         self.bins_init_scale = bins_init_scale
         self.token_dim = token_dim
         self.bins = bins
+        self.conditioning_concat = conditioning_concat
 
         # is_absolute needs to recalculate when we move windows by 1
         self.pos_emb, self.pos_embeddings_is_absolute = self.create_pos_emb()
@@ -44,11 +50,11 @@ class Conditioner(nn.Module):
     def create_pos_emb(self):
         if self.pos_enc_type == "trainable":
             return TrainablePositionalEncoding(input_shape=(self.n_ctx,), width=self.token_dim,
-                                               init_scale=self.pos_init_scale), True
+                                               init_scale=self.pos_init_scale), False
         elif self.pos_enc_type == "fourier":
-            return FourierFeaturesPositionalEncoding(depth=self.token_dim), True
+            return FourierFeaturesPositionalEncoding(depth=self.token_dim), False
         elif self.pos_enc_type == "bpm":
-            return BPMPositionalEncoding(depth=self.token_dim, levels_per_bit=self.pos_enc_lvl_over_bit), True
+            return BPMPositionalEncoding(depth=self.token_dim, levels_per_bit=self.pos_enc_lvl_over_bit), False
         else:
             raise Exception(f"Unknown pos_enc_type={self.pos_enc_type}")
 
@@ -72,17 +78,18 @@ class Conditioner(nn.Module):
         assert from_up_lvl.shape == (bs, length, self.token_dim)
         return from_up_lvl
 
-    def get_pos_emb(self, bs, start_at=0, length=None):
-        pos_emb = self.pos_emb().repeat(bs, 1).reshape(bs, self.n_ctx, self.token_dim)
-        if start_at != 0:
-            pad = torch.zeros((bs, start_at, self.token_dim), dtype=pos_emb.dtype, device=pos_emb.device)
-            pos_emb = torch.cat([pad, pos_emb], dim=1)
+    def get_pos_emb(self, bs, length=None, bpm=None, bpm_offset=None):
+        pos_emb = self.pos_emb(length=length, bpm=bpm, bpm_offset=bpm_offset)
+        pos_emb = pos_emb.unsqueeze(0).repeat(bs, 1, 1)
+#        if start_at != 0:  # this does the same as applying relative conditioning, and both exclude each other
+#            pad = torch.zeros((bs, start_at, self.token_dim), dtype=pos_emb.dtype, device=pos_emb.device)
+#            pos_emb = torch.cat([pad, pos_emb], dim=1)
         return pos_emb
 
     def get_all_conditioning(self, bs, length, params: GenerationParams, up_tokens=None):
         args = dict(bs=bs, length=length)
         conditionings = dict(
-            pos_cond=(True, lambda: self.get_pos_emb(**args)),
+            pos_cond=(True, lambda: self.get_pos_emb(bpm=params.bpm, bpm_offset=params.bpm_offset, **args)),
             lvl_cond=(up_tokens, lambda: self.get_lvl_conditioning(up_tokens, **args)),
             context_cond=(params.artist, lambda: self.get_context_conditioning(params.artist, **args)),
             time_cond=(params.time, lambda: self.get_time_conditioning(params.time, **args))
@@ -104,14 +111,32 @@ class Conditioner(nn.Module):
                           token_interv=None):
         x = x[:, token_interv[0]: token_interv[1], :] if token_interv is not None else x
         bs, size = x.shape[:2]
-        conds = [lvl_cond, context_cond, pos_cond, time_cond]
-        is_const_window = [False, True, True, False]
-        conds = [(c, m) for c, m in zip(conds, is_const_window) if c is not None]
-        conds = [c if token_interv is None else c[:, :size] if moving else c[:, token_interv[0]: token_interv[1]]
-                 for c, moving in conds]
+        conds = self.apply_cond_relative_absolute(lvl_cond, context_cond, pos_cond, time_cond, size, token_interv)
         conds = [self.cond_dropout(c) for c in conds]
         if self.conditioning_concat:
             return self.conditioning_concat_projection(x, conds)
         else:
             assert all(c.shape == x.shape for c in conds)  # each conditioning has to have same size as x
             return x + sum(conds)
+
+    def apply_cond_relative_absolute(self, lvl_cond, context_cond, pos_cond, time_cond, size, token_interv):
+        conds = [lvl_cond, context_cond, pos_cond, time_cond]
+        is_cond_relative = [False, True, not self.pos_embeddings_is_absolute, False]
+        # is this conditioning relative - taken according to sliding window, or absolute - according to tracks position
+        conds = [(c, m) for c, m in zip(conds, is_cond_relative) if c is not None]
+        conds = [c if token_interv is None else
+                 c[:, :size] if moving else
+                 c[:, token_interv[0]: token_interv[1]] for c, moving in conds]
+        return conds
+
+    def get_autoregressive_conditioning(self, x_emb_cond, tokens_emb, ctx_start, i, conditioning, seq_len):
+        if not self.pos_embeddings_is_absolute:
+            return self.join_conditioning(tokens_emb, token_interv=(ctx_start, i), **conditioning)
+        else:
+            if x_emb_cond is None:
+                x_emb_cond = torch.zeros((tokens_emb.shape[0], seq_len, self.token_dim),
+                                         device=tokens_emb.device, dtype=tokens_emb.dtype)
+                x_emb_cond[:i] = self.join_conditioning(tokens_emb, token_interv=(ctx_start, i), **conditioning)
+            else:
+                x_emb_cond[i - 1: i] = self.join_conditioning(tokens_emb, token_interv=(i - 1, i), **conditioning)
+            return x_emb_cond

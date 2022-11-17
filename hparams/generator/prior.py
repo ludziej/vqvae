@@ -17,6 +17,7 @@ big_prior_params = big_transformer_params.update(
     context_on_level=False,
     log_starting_context_len=390,
     res_scale=False,
+    conds_kwargs=None,
 )
 
 small_prior_params = Hparams(
@@ -26,4 +27,5 @@ small_prior_params = Hparams(
     context_on_level=False,
     log_starting_context_len=390,
     res_scale=False,
+    conds_kwargs=None,
 )

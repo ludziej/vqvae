@@ -1,6 +1,16 @@
 from hparams.compressor.misc import dirs_config
 from hparams.parser import Hparams
 
+
+opt_params = Hparams(
+    lr_warmup=100.0,
+    lr_decay=3000,
+    lr_gamma=0.3,
+    lr_scale=1.0,
+    lr_use_linear_decay=False,
+    lr_start_linear_decay=0,
+)
+
 default_transformer_params = Hparams(
     dim=512,
     depth=4,
@@ -28,6 +38,8 @@ default_transformer_params = Hparams(
     log_interval=5000,
     #ckpt_name="model-{epoch}-{val_loss:.2f}-{loss:.2f}",
     ckpt_name='last_model',
+    conditioning_concat=False,
+    opt_params=opt_params,
     **dirs_config.__dict__,
 )
 

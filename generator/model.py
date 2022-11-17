@@ -12,6 +12,7 @@ from optimization.normalization import CustomNormalization
 from utils.misc import time_run
 import tqdm
 from generator.modules.conditioner import Conditioner, GenerationParams
+from optimization.opt_maker import get_lr_scheduler
 
 
 class LevelGenerator(LightningModule):
@@ -21,7 +22,8 @@ class LevelGenerator(LightningModule):
                  pos_init_scale: int, bins_init_scale: float, dim_head: int, norm_type: bool,
                  conds_kwargs: dict, init_bins_from_vqvae: bool, layer_for_logits: bool, conditioning_dropout: float,
                  warmup_time: int, sch_patience: int, sch_factor: int, log_interval, token_dim: int,
-                 scheduler_type: str, pos_enc_type: str, pos_enc_lvl_over_bit: int, **params):
+                 scheduler_type: str, pos_enc_type: str, pos_enc_lvl_over_bit: int, opt_params,
+                 conditioning_concat, **params):
         super().__init__()
         self.n_ctx = n_ctx
         self.level = level
@@ -37,12 +39,12 @@ class LevelGenerator(LightningModule):
         self.bins_init_scale = bins_init_scale
         self.scheduler_type = scheduler_type
         self.pos_enc_type = pos_enc_type
-        self.init_bins_from_vqvae = init_bins_from_vqvae
         self.layer_for_logits = layer_for_logits
         self.warmup_time = warmup_time
         self.sch_patience = sch_patience
         self.sch_factor = sch_factor
         self.log_interval = log_interval
+        self.opt_params = opt_params
         self.sr = vqvae.sr
         self.log_sample_bs, self.log_sample_size = log_sample_size
         self.preprocessing: VQVAE = vqvae
@@ -50,7 +52,6 @@ class LevelGenerator(LightningModule):
         self.bins = self.preprocessing.l_bins
         self.is_first_batch = True
         self.eos_token = None
-        self.conditioning_concat = False
         self.my_logger = self.preprocessing.my_logger
         self.log_nr = {"val_": 0, "": 0, "test_": 0}
 
@@ -74,7 +75,9 @@ class LevelGenerator(LightningModule):
         self.conditioner = Conditioner(conds_kwargs=conds_kwargs, z_shapes=z_shapes, bins=self.bins,
                                        pos_enc_type=self.pos_enc_type, pos_enc_lvl_over_bit=pos_enc_lvl_over_bit,
                                        bins_init_scale=self.bins_init_scale, level=self.level, token_dim=self.token_dim,
-                                       conditioning_dropout=conditioning_dropout, preprocessing=self.preprocessing)
+                                       conditioning_dropout=conditioning_dropout, preprocessing=self.preprocessing,
+                                       init_bins_from_vqvae=init_bins_from_vqvae, context_on_level=context_on_level,
+                                       conditioning_concat=conditioning_concat)
 
     def __str__(self):
         return f"Upsampler level {self.level} with n_ctx={self.n_ctx} and tokens={self.sample_len}"\
@@ -93,7 +96,7 @@ class LevelGenerator(LightningModule):
 
     def forward(self, sound: torch.Tensor, gen_params: GenerationParams = None) -> torch.Tensor:
         tokens, up_tokens = self.get_tokens(sound)
-        embedding = self.get_conditioned_emb(tokens, up_tokens, gen_params)
+        embedding = self.conditioner.get_conditioned_emb(tokens, up_tokens, gen_params)
         loss = self.autoregressive_forward_loss(embedding, tokens)
         return loss
 
@@ -133,17 +136,19 @@ class LevelGenerator(LightningModule):
         b, t = start_tokens.shape
         self.transformer.eval()
         tokens = start_tokens
-        tokens_emb = self.x_emb(start_tokens)
+        tokens_emb = self.conditioner.x_emb(start_tokens)
+        x_emb_cond = None
 
-        for i in tqdm.trange(t, seq_len, desc=f"Generating tokens [{self.level}]") if with_tqdm else range(t, seq_len):
+        for i in tqdm.trange(t, seq_len, desc=f"Generating tokens [l{self.level}]") if with_tqdm else range(t, seq_len):
             ctx_start = max(i - self.n_ctx + 1, 0)  # +1 because we effectively train in (n_ctx - 1) size
 
             # TODO all this conditioning can be done once per element, if positional_embedding is not absolute
-            x_emb_cond = self.join_conditioning(tokens_emb, token_interv=(ctx_start, i), **conditioning)
+            x_emb_cond = self.conditioner.get_autoregressive_conditioning(x_emb_cond, tokens_emb, ctx_start, i,
+                                                                          conditioning, seq_len)
 
             logits = self.get_transformer_logits(x_emb_cond)[:, -1, :]
             sample_token = self.logits_to_sample(logits, prev_out=tokens, **sampling_kwargs)
-            sample_emb = self.x_emb(sample_token)
+            sample_emb = self.conditioner.x_emb(sample_token)
 
             tokens = torch.cat((tokens, sample_token), dim=1)
             tokens_emb = torch.cat((tokens_emb, sample_emb), dim=1)
@@ -160,11 +165,14 @@ class LevelGenerator(LightningModule):
     def recreate_beginning(self, size, bs=1):
         return torch.randint(size, (bs, self.start_gen_sample_len), device=self.device)
 
+    def randomize_gen_params(self, ):
+        return GenerationParams()  # TODO implement
+
     @torch.no_grad()
-    def generate(self, seq_len: int, params: GenerationParams, start_random_size=10, bs=1, with_tqdm=False,
+    def generate(self, seq_len: int, start_random_size=10, bs=1, with_tqdm=False,
                  up_tokens=None, **sampling_kwargs):
-        out_tokens = self.generate_tokens(seq_len, params, sampling_kwargs, bs, start_random_size, with_tqdm,
-                                          up_tokens=up_tokens)
+        out_tokens = self.generate_tokens(seq_len, self.randomize_gen_params(), sampling_kwargs, up_tokens, bs,
+                                          start_random_size, with_tqdm, )
         sound = self.decode_sound(out_tokens)
         return sound
 
@@ -172,7 +180,7 @@ class LevelGenerator(LightningModule):
     def generate_tokens(self, seq_len, params: GenerationParams, sampling_kwargs, up_tokens=None,
                         bs=1, start_random_size=10, with_tqdm=False):
         beginning = self.recreate_beginning(start_random_size, bs)
-        conditioning = self.get_all_conditioning(bs, seq_len, params, up_tokens=up_tokens)
+        conditioning = self.conditioner.get_all_conditioning(bs, seq_len, params, up_tokens=up_tokens)
         out_tokens = self.autoregressive_generate_prior(beginning, seq_len, conditioning, with_tqdm=with_tqdm,
                                                         **sampling_kwargs)
         return out_tokens
@@ -181,8 +189,9 @@ class LevelGenerator(LightningModule):
     def continue_sound(self, sound: torch.Tensor, prefix_token_perc: float, params: GenerationParams, seq_len=None,
                        with_begin=True, return_speed=False, with_tqdm=False, **sampling_kwargs):
         tokens, up_tokens = self.get_tokens(sound)
-        beginning, out_tokens, runtime, sound = self.continue_tokens(tokens, up_tokens, params, prefix_token_perc,
-                                                                     seq_len, with_begin, with_tqdm, **sampling_kwargs)
+        beginning, out_tokens, runtime, sound = self.continue_tokens(tokens, params, prefix_token_perc, up_tokens,
+                                                                     seq_len, with_begin, with_tqdm,
+                                                                     **sampling_kwargs)
 
         generated_part = 1 - beginning.shape[-1] / out_tokens.shape[-1]
         generated_time = sound.shape[-1] / self.preprocessing.sr * generated_part
@@ -195,7 +204,7 @@ class LevelGenerator(LightningModule):
         bs, t_len = tokens.shape[:2]
         seq_len = seq_len if seq_len is not None else t_len
         beginning = tokens[:, :int(t_len * prefix_token_perc)]
-        conditioning = self.get_all_conditioning(bs, seq_len, params, up_tokens=up_tokens, )
+        conditioning = self.conditioner.get_all_conditioning(bs, seq_len, params, up_tokens=up_tokens, )
         runtime, out_tokens = time_run(
             lambda: self.autoregressive_generate_prior(beginning, seq_len, conditioning,
                                                        with_tqdm=with_tqdm, **sampling_kwargs))
@@ -223,24 +232,26 @@ class LevelGenerator(LightningModule):
 
     def is_sampling_time(self, prefix, batch_idx):
         """ log samples once per log_interval and once per valid """
-        return not self.is_first_batch and (batch_idx == 0 and not self.trainer.sanity_checking if prefix != "" else
-            (self.trainer.current_epoch * self.trainer.num_training_batches + batch_idx) % self.log_interval == 0)
+        return not self.is_first_batch and (
+             (batch_idx == 0 and not self.trainer.sanity_checking) if prefix != "" else
+             (self.trainer.current_epoch * self.trainer.num_training_batches + batch_idx) % self.log_interval == 0)
 
-    def log_metrics_and_samples(self, loss, batch, batch_idx, prefix=""):
+    def log_metrics_and_samples(self, loss, batch, batch_idx, gen_params: GenerationParams, prefix=""):
         nr = self.log_nr.get(prefix, 0)
         self.log_nr[prefix] = nr + 1
         for i, pg in enumerate(self.optimizers().param_groups):
             self.log(f"lr_{i}", pg["lr"], logger=True, prog_bar=True, sync_dist=True)
         self.log(prefix + "loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
         if self.is_sampling_time(prefix, batch_idx):
-            self.log_samples(batch, nr, prefix)
+            self.log_samples(batch, nr, prefix, gen_params=gen_params)
         self.is_first_batch = False if not self.trainer.sanity_checking else self.is_first_batch
 
-    def log_samples(self, batch, nr, prefix):
+    def log_samples(self, batch, nr, prefix, gen_params: GenerationParams, with_tqdm=True):
         # generate continuation audio
         tlogger = self.logger.experiment
         con_samples, speed = self.continue_sound(batch, prefix_token_perc=self.log_starting_context_perc,
-                                                 return_speed=True, with_begin=True)
+                                                 params=gen_params, return_speed=True, with_begin=True,
+                                                 with_tqdm=with_tqdm)
         self.log("1s_gen_time", speed, sync_dist=True, logger=True, on_step=True)
         for i, sample in enumerate(con_samples):
             tlogger.add_audio(prefix + f"sample_con_{i}", sample, nr, self.sr)
@@ -252,31 +263,31 @@ class LevelGenerator(LightningModule):
             return
 
         # raw generation logging only for train on prior, because it does not depend on input data
-        samples = self.generate(self.log_sample_size, bs=self.log_sample_bs)
+        samples = self.generate(self.log_sample_size, bs=self.log_sample_bs, with_tqdm=with_tqdm)
         for i, sample in enumerate(samples):
             tlogger.add_audio(prefix + f"sample_raw_{i}", sample, nr, self.sr)
 
     # boilerplate
 
     def step(self, batch, batch_idx, gen_params: GenerationParams = None, phase=""):
-        gen_params = gen_params if gen_params is not None else GenerationParams(None, None)
+        gen_params = gen_params if gen_params is not None else GenerationParams()
         if phase not in self.training_started:
             self.training_started.add(phase)
             self.my_logger.info(f"{(phase or 'train')} loop started - first batch arrived")
         batch, = batch
         assert batch.shape[1] == self.sample_len
         loss = self(batch, gen_params)
-        self.log_metrics_and_samples(loss, batch, batch_idx, phase)
+        self.log_metrics_and_samples(loss, batch, batch_idx, prefix=phase, gen_params=gen_params)
         return loss
 
     def training_step(self, batch, batch_idx, gen_params: GenerationParams = None):
-        return self.step(batch, batch_idx, phase="")
+        return self.step(batch, batch_idx, phase="", gen_params=gen_params)
 
     def test_step(self, batch, batch_idx, gen_params: GenerationParams = None):
-        return self.step(batch, batch_idx, phase="test_")
+        return self.step(batch, batch_idx, phase="test_", gen_params=gen_params)
 
     def validation_step(self, batch, batch_idx, gen_params: GenerationParams = None):
-        return self.step(batch, batch_idx, phase="val_")
+        return self.step(batch, batch_idx, phase="val_", gen_params=gen_params)
 
     def configure_optimizers(self):
         opt = torch.optim.Adam(self.parameters(), lr=self.lr)
@@ -284,7 +295,8 @@ class LevelGenerator(LightningModule):
             return opt
         elif self.scheduler_type == "plateau":
             scheduler = ReduceLROnPlateauWarmup(opt, starting_lr=self.lr, warmup_time=self.warmup_time,
-                                                logger=self.my_logger, patience=self.sch_patience, factor=self.sch_factor)
+                                                logger=self.my_logger, patience=self.sch_patience,
+                                                factor=self.sch_factor)
             return ([opt], [{
                         'scheduler': scheduler,
                         'interval': 'step',
@@ -293,7 +305,10 @@ class LevelGenerator(LightningModule):
                         'reduce_on_plateau': True
                 }])
         elif self.scheduler_type == "step":
-            raise Exception(f"Not implemented")
-
+            return ([opt], [{
+                'scheduler': get_lr_scheduler(opt, **self.opt_params),
+                'interval': 'step',
+                'frequency': 1,
+            }])
         else:
             raise Exception(f"Unknown scheduler_type = {self.scheduler_type}")
