@@ -78,7 +78,7 @@ class FFTDiscriminator(AbstractDiscriminator):
     def __init__(self, n_fft, hop_length, window_size, sr, n_bins, reduce_type="max", pooltype="avg", leaky=1e-2,
                  res_depth=4, first_channels=32, prep_type="mel", n_mels=128, trainable_prep=False,
                  first_double_downsample=0, **params):
-        prep_params = dict(n_fft=n_fft, hop_length=hop_length, win_length=window_size, trainable=trainable_prep,
+        prep_params = dict(n_fft=n_fft, hop_length=hop_length, win_length=window_size, trainable=bool(trainable_prep),
                            sr=sr, n_mels=n_mels, n_bins=n_bins)
         feature_extract, in_channels, height = get_prepr(prep_type, **prep_params)
 
