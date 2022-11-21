@@ -58,11 +58,11 @@ class WavDiscriminator(AbstractDiscriminator):
 
 def get_prepr(type, n_fft, n_mels, sr, n_bins, hop_length, trainable, win_length, **params):
     if type == "mel":
-        return MelSpectrogram(n_mels=n_mels, n_fft=n_fft, sample_rate=sr, hop_length=hop_length,
+        return None, MelSpectrogram(n_mels=n_mels, n_fft=n_fft, sample_rate=sr, hop_length=hop_length,
                               win_length=win_length, **params), 1, n_mels
     elif type == "fft":
         spec = STFT(n_fft=n_fft, center=True, hop_length=hop_length, win_length=win_length, sr=sr, trainable=trainable)
-        return lambda x: spec(x).permute(0, 3, 1, 2), 2, n_fft//2 + 1
+        return spec, lambda x: spec(x).permute(0, 3, 1, 2), 2, n_fft//2 + 1
 #        return lambda x: torch.view_as_real(torch.stft(
 #                input=x.squeeze(1), return_complex=True,
 #                n_fft=n_fft, center=True, hop_length=hop_length, **params)).permute(0, 3, 1, 2),\
@@ -70,7 +70,7 @@ def get_prepr(type, n_fft, n_mels, sr, n_bins, hop_length, trainable, win_length
     elif type == "cqt":
         spec = CQT2010v2(sr=sr, hop_length=hop_length, output_format="Complex",
                          n_bins=n_bins, norm=1, window='hann', pad_mode='constant', trainable=trainable)
-        return lambda x: spec(x).permute(0, 3, 1, 2), 2, n_bins
+        return spec, lambda x: spec(x).permute(0, 3, 1, 2), 2, n_bins
     raise Exception("Not implemented")
 
 
@@ -80,13 +80,14 @@ class FFTDiscriminator(AbstractDiscriminator):
                  first_double_downsample=0, **params):
         prep_params = dict(n_fft=n_fft, hop_length=hop_length, win_length=window_size, trainable=bool(trainable_prep),
                            sr=sr, n_mels=n_mels, n_bins=n_bins)
-        feature_extract, in_channels, height = get_prepr(prep_type, **prep_params)
+        spec, feature_extract, in_channels, height = get_prepr(prep_type, **prep_params)
 
         encoder = ResNet2d(in_channels=in_channels, leaky=leaky, depth=res_depth, pooltype=pooltype,
                            first_channels=first_channels, first_double_downsample=first_double_downsample)
         mel_emb_width = encoder.logits_size * (height // encoder.downsample)
 
         super().__init__(mel_emb_width)
+        self.spec = spec
         self.reduce_type = reduce_type
         self.prep_type = prep_type
         self.feature_extract = feature_extract
