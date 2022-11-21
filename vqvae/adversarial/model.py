@@ -5,7 +5,7 @@ from vqvae.modules.resnet import ResNet2d
 from torchaudio.transforms import MelSpectrogram
 from collections import namedtuple
 import abc
-from nnAudio.Spectrogram import CQT2010v2
+from nnAudio.Spectrogram import CQT2010v2, STFT
 
 
 class AbstractDiscriminator(nn.Module, abc.ABC):
@@ -56,17 +56,19 @@ class WavDiscriminator(AbstractDiscriminator):
         return x
 
 
-def get_prepr(type, n_fft, n_mels, sample_rate, n_bins, hop_length, trainable, **params):
+def get_prepr(type, n_fft, n_mels, sr, n_bins, hop_length, trainable, win_length, **params):
     if type == "mel":
-        return MelSpectrogram(n_mels=n_mels, n_fft=n_fft, sample_rate=sample_rate, hop_length=hop_length,
-                              **params), 1, n_mels
+        return MelSpectrogram(n_mels=n_mels, n_fft=n_fft, sample_rate=sr, hop_length=hop_length,
+                              win_length=win_length, **params), 1, n_mels
     elif type == "fft":
-        return lambda x: torch.view_as_real(torch.stft(
-                input=x.squeeze(1), return_complex=True,
-                n_fft=n_fft, center=True, hop_length=hop_length, **params)).permute(0, 3, 1, 2),\
-            2, n_fft//2 + 1
+        spec = STFT(n_fft=n_fft, center=True, hop_length=hop_length, win_length=win_length, sr=sr, trainable=trainable)
+        return lambda x: spec(x).permute(0, 3, 1, 2), 2, n_fft//2 + 1
+#        return lambda x: torch.view_as_real(torch.stft(
+#                input=x.squeeze(1), return_complex=True,
+#                n_fft=n_fft, center=True, hop_length=hop_length, **params)).permute(0, 3, 1, 2),\
+#            2, n_fft//2 + 1
     elif type == "cqt":
-        spec = CQT2010v2(sr=sample_rate, hop_length=hop_length, output_format="Complex",
+        spec = CQT2010v2(sr=sr, hop_length=hop_length, output_format="Complex",
                          n_bins=n_bins, norm=1, window='hann', pad_mode='constant', trainable=trainable)
         return lambda x: spec(x).permute(0, 3, 1, 2), 2, n_bins
     raise Exception("Not implemented")
@@ -74,13 +76,14 @@ def get_prepr(type, n_fft, n_mels, sample_rate, n_bins, hop_length, trainable, *
 
 class FFTDiscriminator(AbstractDiscriminator):
     def __init__(self, n_fft, hop_length, window_size, sr, n_bins, reduce_type="max", pooltype="avg", leaky=1e-2,
-                 res_depth=4, first_channels=32, prep_type="mel", n_mels=128, trainable_prep=False, **params):
+                 res_depth=4, first_channels=32, prep_type="mel", n_mels=128, trainable_prep=False,
+                 first_double_downsample=0, **params):
         prep_params = dict(n_fft=n_fft, hop_length=hop_length, win_length=window_size, trainable=trainable_prep,
-                           sample_rate=sr, n_mels=n_mels, n_bins=n_bins)
+                           sr=sr, n_mels=n_mels, n_bins=n_bins)
         feature_extract, in_channels, height = get_prepr(prep_type, **prep_params)
 
         encoder = ResNet2d(in_channels=in_channels, leaky=leaky, depth=res_depth, pooltype=pooltype,
-                           first_channels=first_channels)
+                           first_channels=first_channels, first_double_downsample=first_double_downsample)
         mel_emb_width = encoder.logits_size * (height // encoder.downsample)
 
         super().__init__(mel_emb_width)
@@ -104,7 +107,8 @@ class FFTDiscriminator(AbstractDiscriminator):
 class JoinedDiscriminator(nn.Module):
     def __init__(self, n_fft, hop_length, window_size, sr, emb_width, reduce_type, **params):
         super().__init__()
-        self.meldiscriminator = FFTDiscriminator(n_fft=n_fft, hop_length=hop_length, window_size=window_size, sr=sr, **params)
+        self.meldiscriminator = FFTDiscriminator(n_fft=n_fft, hop_length=hop_length, window_size=window_size, sr=sr,
+                                                 **params)
         self.wavdiscriminator = WavDiscriminator(reduce_type=reduce_type, emb_width=emb_width, **params)
 
     def forward(self, x):

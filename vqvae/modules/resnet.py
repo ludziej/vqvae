@@ -71,8 +71,9 @@ class ResBlock2d(nn.Module):
 
 
 class ResNet2d(nn.Module):
-    def __init__(self, in_channels, first_channels=32, depth=4, pooltype="max", leaky=1e-2):
+    def __init__(self, in_channels, first_channels=32, depth=4, pooltype="max", first_double_downsample=0, leaky=1e-2):
         super().__init__()
+        self.first_double_downsample = first_double_downsample
         self.pool = nn.MaxPool2d if pooltype == "max" else nn.AvgPool2d if pooltype == "avg" else None
         self.layer0 = nn.Sequential(
             nn.Conv2d(in_channels, first_channels, kernel_size=13, stride=1, padding=6),
@@ -84,11 +85,12 @@ class ResNet2d(nn.Module):
         self.encoder = nn.Sequential(*[
                 nn.Sequential(
                     ResBlock2d(first_channels * 2**i, first_channels * 2**(i+1), downsample=True, **args),
-                    ResBlock2d(first_channels * 2**(i+1), first_channels * 2**(i+1), downsample=False, **args)
+                    ResBlock2d(first_channels * 2**(i+1), first_channels * 2**(i+1),
+                               downsample=i < self.first_double_downsample, **args)
                 )
             for i in range(depth)])
 
-        self.downsample = 2 ** (depth + 1)
+        self.downsample = 2 ** (depth + 1 + self.first_double_downsample)
         self.logits_size = first_channels * 2**depth
 
     def forward(self, x):
