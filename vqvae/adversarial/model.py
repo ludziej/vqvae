@@ -107,7 +107,7 @@ class FFTDiscriminator(AbstractDiscriminator):
         ampl = (fft[:, 0]**2 + fft[:, 1]**2)**(1/2)
 
         fig, ax = plt.subplots()
-        data = ampl.detach()[0].numpy()
+        data = ampl.detach()[0].cpu().numpy()
         dbb = librosa.amplitude_to_db(data, ref=np.max)
         y_type = 'cqt_hz' if self.prep_type == "cqt" else "linear"
         img = librosa.display.specshow(dbb, x_axis='time', y_axis=y_type, ax=ax,
