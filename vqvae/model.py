@@ -204,6 +204,20 @@ class VQVAE(LightningModule):
                 metrics[key] = val.detach()
         return loss, metrics
 
+    def plot_spec_as(self, image, name, nr):
+        X = self.discriminator.discriminator.get_plot(image)
+        #  dbm = 20 * torch.log10(ampl) grid = torchvision.utils.make_grid(dbm)
+        self.logger.experiment.add_image(name, np.transpose(X, (2, 0, 1)), nr)
+
+    def plot_spectrorams(self, batch, batch_outs, nr):
+        if not (self.with_discriminator and self.discriminator.discriminator.can_plot):
+            return
+        for i, xin in enumerate(batch):
+            self.plot_spec_as(xin, f"spec_{i}/in", nr)
+        for level, lvl_outs in enumerate(batch_outs):
+            for i, xouts in enumerate(lvl_outs):
+                self.plot_spec_as(xouts, f"spec_{i}/out_lvl_{level}", nr)
+
     def log_metrics_and_samples(self, loss, metrics, batch, batch_outs, batch_idx, optimize_generator, phase):
         prefix = phase + "_" if phase != "train" else ""
         self.log(prefix + "loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
@@ -215,9 +229,10 @@ class VQVAE(LightningModule):
         nr = self.log_nr.get(prefix, 0)
         self.log_nr[prefix] = nr + 1
         tlogger = self.logger.experiment
+        self.plot_spectrorams(batch, batch_outs, nr)
+
         for i, xin in enumerate(batch):
             tlogger.add_audio(prefix + f"sample_{i}/in", xin, nr, self.sr)
-
         for level, xouts in enumerate(batch_outs):
             for i, out in enumerate(xouts):
                 tlogger.add_audio(prefix + f"sample_{i}/out_lvl_{level + 1}", out, nr, self.sr)

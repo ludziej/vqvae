@@ -6,15 +6,21 @@ from torchaudio.transforms import MelSpectrogram
 from collections import namedtuple
 import abc
 from nnAudio.Spectrogram import CQT2010v2, STFT
+import torchvision
+import librosa
+import librosa.display
+import matplotlib.pyplot as plt
+import numpy as np
 
 
 class AbstractDiscriminator(nn.Module, abc.ABC):
 
     LossData = namedtuple("LossData", "loss pred cls acc loss_ew name")
 
-    def __init__(self, emb_width):
+    def __init__(self, emb_width, can_plot=False):
         super().__init__()
         self.emb_width = emb_width
+        self.can_plot = can_plot
         self.fc = nn.Linear(emb_width, 2)
         self.logsoftmax = nn.LogSoftmax(dim=-1)
         self.nllloss = nn.NLLLoss(reduction="none")
@@ -33,7 +39,8 @@ class AbstractDiscriminator(nn.Module, abc.ABC):
     def calculate_loss(self, x, y, balance=True):
         probs = self.forward(x)
 
-        y_weight = (y / torch.sum(y) + (1 - y) / torch.sum(1 - y))/2 if balance else 1/len(y)
+        y_weight = (y / torch.sum(y) + (1 - y) / torch.sum(1 - y))/2 \
+            if balance and torch.sum(y) > 0 and torch.sum(1 - y) > 0 else 1 / len(y)
         loss_ew = self.nllloss(probs, y)
         loss = torch.sum(loss_ew * y_weight)
 
@@ -86,13 +93,31 @@ class FFTDiscriminator(AbstractDiscriminator):
                            first_channels=first_channels, first_double_downsample=first_double_downsample)
         mel_emb_width = encoder.logits_size * (height // encoder.downsample)
 
-        super().__init__(mel_emb_width)
+        super().__init__(mel_emb_width, can_plot=True)
+        self.prep_params = prep_params
         self.spec = spec
         self.reduce_type = reduce_type
         self.prep_type = prep_type
         self.feature_extract = feature_extract
         self.encoder = encoder
         self.name = prep_type
+
+    def get_plot(self, image):
+        fft = self.preprocess(image)
+        ampl = (fft[:, 0]**2 + fft[:, 1]**2)**(1/2)
+
+        fig, ax = plt.subplots()
+        data = ampl.detach()[0].numpy()
+        dbb = librosa.amplitude_to_db(data, ref=np.max)
+        y_type = 'cqt_hz' if self.prep_type == "cqt" else "linear"
+        img = librosa.display.specshow(dbb, x_axis='time', y_axis=y_type, ax=ax,
+                                       hop_length=self.prep_params["hop_length"],
+                                       sr=self.prep_params["sr"])
+        fig.colorbar(img, ax=ax)
+        fig.tight_layout()
+        fig.canvas.draw()
+        X = np.array(fig.canvas.renderer.buffer_rgba())
+        return X
 
     def preprocess(self, x):
         return self.feature_extract(x)
