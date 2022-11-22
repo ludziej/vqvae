@@ -50,6 +50,7 @@ class VQVAE(LightningModule):
         self.hop_lengths = np.cumprod(self.downsamples)
         self.log_nr = {"val_": 0, "": 0, "test_": 0}
         self.my_logger.info(str(self))
+        self.spec = STFT(n_fft=512, center=True, hop_length=128, sr=self.sr, verbose=False)
 
         assert len(multipliers) == levels, "Invalid number of multipliers"
 
@@ -212,8 +213,7 @@ class VQVAE(LightningModule):
         return loss, metrics
 
     def get_fft(self, sound):
-        spec = STFT(n_fft=512, center=True, hop_length=128, sr=self.sr, verbose=False)
-        return spec(sound).permute(0, 3, 1, 2)
+        return self.spec(sound).permute(0, 3, 1, 2)
 
     def get_plot(self, fft):
         ampl = (fft[0]**2 + fft[1]**2)**(1/2)
