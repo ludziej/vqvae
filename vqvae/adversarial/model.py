@@ -129,7 +129,7 @@ class FFTDiscriminator(AbstractDiscriminator):
         if self.use_amp:
             x = torch.sum(x**2, dim=1, keepdim=True)**(1/2)
         if self.use_log_scale and scale:
-            x = torch.log(x)
+            x = torch.log(x + 1e8)
         return x
 
     def encode(self, x):
