@@ -63,37 +63,42 @@ class WavDiscriminator(AbstractDiscriminator):
         return x
 
 
-def get_prepr(type, n_fft, n_mels, sr, n_bins, hop_length, trainable, win_length, **params):
+def post_process_fft(spec, use_amp, use_log_scale, bins):
+    assert not (use_log_scale and not use_amp)  # cannot use log scale of a signal without phase discarded
+    extract = lambda x: spec(x).permute(0, 3, 1, 2)
+    return spec, extract, 1 if use_amp else 2, bins
+
+
+def get_prepr(type, n_fft, n_mels, sr, n_bins, hop_length, trainable, win_length, use_amp, use_log_scale, **params):
     if type == "mel":
         return None, MelSpectrogram(n_mels=n_mels, n_fft=n_fft, sample_rate=sr, hop_length=hop_length,
                               win_length=win_length, **params), 1, n_mels
     elif type == "fft":
-        spec = STFT(n_fft=n_fft, center=True, hop_length=hop_length, sr=sr, trainable=trainable)
-        return spec, lambda x: spec(x).permute(0, 3, 1, 2), 2, n_fft//2 + 1
-#        return lambda x: torch.view_as_real(torch.stft(
-#                input=x.squeeze(1), return_complex=True,
-#                n_fft=n_fft, center=True, hop_length=hop_length, **params)).permute(0, 3, 1, 2),\
-#            2, n_fft//2 + 1
+        spec = STFT(n_fft=n_fft, freq_bins=n_fft//2, center=True, hop_length=hop_length, sr=sr, trainable=trainable)
+        return post_process_fft(spec, use_amp, use_log_scale, n_fft // 2)
     elif type == "cqt":
         spec = CQT2010v2(sr=sr, hop_length=hop_length, output_format="Complex",
                          n_bins=n_bins, norm=1, window='hann', pad_mode='constant', trainable=trainable)
-        return spec, lambda x: spec(x).permute(0, 3, 1, 2), 2, n_bins
+        return post_process_fft(spec, use_amp, use_log_scale, n_bins)
     raise Exception("Not implemented")
 
 
 class FFTDiscriminator(AbstractDiscriminator):
     def __init__(self, n_fft, hop_length, window_size, sr, n_bins, reduce_type="max", pooltype="avg", leaky=1e-2,
                  res_depth=4, first_channels=32, prep_type="mel", n_mels=128, trainable_prep=False,
-                 first_double_downsample=0, **params):
+                 first_double_downsample=0, use_stride=True, use_amp=True, use_log_scale=True,  **params):
         prep_params = dict(n_fft=n_fft, hop_length=hop_length, win_length=window_size, trainable=bool(trainable_prep),
-                           sr=sr, n_mels=n_mels, n_bins=n_bins)
+                           sr=sr, n_mels=n_mels, n_bins=n_bins, use_amp=use_amp, use_log_scale=use_log_scale)
         spec, feature_extract, in_channels, height = get_prepr(prep_type, **prep_params)
 
         encoder = ResNet2d(in_channels=in_channels, leaky=leaky, depth=res_depth, pooltype=pooltype,
-                           first_channels=first_channels, first_double_downsample=first_double_downsample)
+                           use_stride=use_stride, first_channels=first_channels,
+                           first_double_downsample=first_double_downsample)
         mel_emb_width = encoder.logits_size * (height // encoder.downsample)
 
         super().__init__(mel_emb_width, can_plot=True)
+        self.use_log_scale = use_log_scale
+        self.use_amp = use_amp
         self.prep_params = prep_params
         self.spec = spec
         self.reduce_type = reduce_type
@@ -103,8 +108,8 @@ class FFTDiscriminator(AbstractDiscriminator):
         self.name = prep_type
 
     def get_plot(self, image):
-        fft = self.preprocess(image)
-        ampl = (fft[:, 0]**2 + fft[:, 1]**2)**(1/2)
+        fft = self.preprocess(image, scale=False)
+        ampl = (fft[:, 0]**2 + fft[:, 1]**2)**(1/2) if not self.use_amp else fft.squeeze(1)
 
         fig, ax = plt.subplots()
         data = ampl.detach()[0].cpu().numpy()
@@ -119,8 +124,13 @@ class FFTDiscriminator(AbstractDiscriminator):
         X = np.array(fig.canvas.renderer.buffer_rgba())
         return X
 
-    def preprocess(self, x):
-        return self.feature_extract(x)
+    def preprocess(self, x, scale=True):
+        x = self.feature_extract(x)
+        if self.use_amp:
+            x = torch.sum(x**2, dim=1, keepdim=True)**(1/2)
+        if self.use_log_scale and scale:
+            x = torch.log(x)
+        return x
 
     def encode(self, x):
         x = self.preprocess(x)
@@ -146,3 +156,8 @@ class JoinedDiscriminator(nn.Module):
         return stats1 + stats2
 
 
+
+#        return lambda x: torch.view_as_real(torch.stft(
+#                input=x.squeeze(1), return_complex=True,
+#                n_fft=n_fft, center=True, hop_length=hop_length, **params)).permute(0, 3, 1, 2),\
+#            2, n_fft//2 + 1

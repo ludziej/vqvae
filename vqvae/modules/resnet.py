@@ -44,11 +44,11 @@ class Resnet1D(nn.Module):
 
 
 class ResBlock2d(nn.Module):
-    def __init__(self, in_channels, out_channels, downsample, pooltype="max", leaky=0):
+    def __init__(self, in_channels, out_channels, downsample, use_stride=True, leaky=0):
         super().__init__()
-        stride = 2 if downsample and pooltype == "max" else 1  # for pooltype=max, use stride, either way use avg pool
+        stride = 2 if downsample and use_stride else 1  # for pooltype=max, use stride, either way use avg pool
         self.downlayer = nn.AvgPool2d(kernel_size=2, padding=0, stride=2) \
-            if pooltype == "avg" and downsample else nn.Sequential()
+            if not use_stride and downsample else nn.Sequential()
         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False)
 
         self.shortcut = nn.Sequential(
@@ -71,8 +71,10 @@ class ResBlock2d(nn.Module):
 
 
 class ResNet2d(nn.Module):
-    def __init__(self, in_channels, first_channels=32, depth=4, pooltype="max", first_double_downsample=0, leaky=1e-2):
+    def __init__(self, in_channels, first_channels=32, depth=4, pooltype="max", use_stride=True,
+                 first_double_downsample=0, leaky=1e-2):
         super().__init__()
+        self.use_stride = use_stride
         self.first_double_downsample = first_double_downsample
         self.pool = nn.MaxPool2d if pooltype == "max" else nn.AvgPool2d if pooltype == "avg" else None
         self.layer0 = nn.Sequential(
@@ -81,10 +83,11 @@ class ResNet2d(nn.Module):
             nn.BatchNorm2d(first_channels),
             nn.ReLU() if leaky == 0 else nn.LeakyReLU(negative_slope=leaky)
         )
-        args = dict(pooltype=pooltype, leaky=leaky)
+        args = dict(leaky=leaky, use_stride=use_stride)
         self.encoder = nn.Sequential(*[
                 nn.Sequential(
-                    ResBlock2d(first_channels * 2**i, first_channels * 2**(i+1), downsample=True, **args),
+                    ResBlock2d(first_channels * 2**i, first_channels * 2**(i+1), downsample=True,
+                               **args),
                     ResBlock2d(first_channels * 2**(i+1), first_channels * 2**(i+1),
                                downsample=i < self.first_double_downsample, **args)
                 )
