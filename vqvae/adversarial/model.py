@@ -68,7 +68,7 @@ def get_prepr(type, n_fft, n_mels, sr, n_bins, hop_length, trainable, win_length
         return None, MelSpectrogram(n_mels=n_mels, n_fft=n_fft, sample_rate=sr, hop_length=hop_length,
                               win_length=win_length, **params), 1, n_mels
     elif type == "fft":
-        spec = STFT(n_fft=n_fft, center=True, hop_length=hop_length, win_length=win_length, sr=sr, trainable=trainable)
+        spec = STFT(n_fft=n_fft, center=True, hop_length=hop_length, sr=sr, trainable=trainable)
         return spec, lambda x: spec(x).permute(0, 3, 1, 2), 2, n_fft//2 + 1
 #        return lambda x: torch.view_as_real(torch.stft(
 #                input=x.squeeze(1), return_complex=True,
