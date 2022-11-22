@@ -9,6 +9,11 @@ from utils.old_ml_utils.audio_utils import spectral_convergence, audio_postproce
 from optimization.opt_maker import get_optimizer
 from vqvae.modules.helpers import calculate_strides, _loss_fn, multispectral_loss_util, spectral_loss_util
 from vqvae.adversarial.trainer import AdversarialTrainer
+import librosa
+import librosa.display
+import matplotlib.pyplot as plt
+import numpy as np
+from nnAudio.Spectrogram import CQT2010v2, STFT
 
 
 class VQVAE(LightningModule):
@@ -48,15 +53,17 @@ class VQVAE(LightningModule):
 
         assert len(multipliers) == levels, "Invalid number of multipliers"
 
-        def _block_kwargs(level):
+        def _block_kwargs(level, multiply=True):
             this_block_kwargs = dict(params)
-            this_block_kwargs["width"] *= self.multipliers[level]
-            this_block_kwargs["depth"] *= self.multipliers[level]
+            if multiply:
+                this_block_kwargs["width"] *= self.multipliers[level]
+                this_block_kwargs["depth"] *= self.multipliers[level]
             return this_block_kwargs
 
         self.generator: VQVAEGenerator = VQVAEGenerator(_block_kwargs, downs_t, emb_width, fixed_commit, input_channels,
                                                         l_bins, levels, mu, norm_before_vqvae, strides_t, use_bottleneck)
-        self.discriminator = AdversarialTrainer(**adv_params, **_block_kwargs(self.discriminator_level),
+        adv_block = _block_kwargs(self.discriminator_level, multiply=adv_params["multiply_level"])
+        self.discriminator = AdversarialTrainer(**adv_params, **adv_block,
                                                 input_channels=input_channels, level=self.discriminator_level,
                                                 downs_t=downs_t[:self.discriminator_level + 1], emb_width=emb_width,
                                                 strides_t=strides_t[:self.discriminator_level + 1], levels=self.levels)
@@ -204,19 +211,36 @@ class VQVAE(LightningModule):
                 metrics[key] = val.detach()
         return loss, metrics
 
-    def plot_spec_as(self, image, name, nr):
-        X = self.discriminator.discriminator.get_plot(image)
-        #  dbm = 20 * torch.log10(ampl) grid = torchvision.utils.make_grid(dbm)
-        self.logger.experiment.add_image(name, np.transpose(X, (2, 0, 1)), nr)
+    def get_fft(self, sound):
+        spec = STFT(n_fft=512, center=True, hop_length=128, sr=self.sr, verbose=False)
+        return spec(sound).permute(0, 3, 1, 2)
+
+    def get_plot(self, fft):
+        ampl = (fft[0]**2 + fft[1]**2)**(1/2)
+
+        fig, ax = plt.subplots()
+        data = ampl.detach().cpu().numpy()
+        dbb = librosa.amplitude_to_db(data, ref=np.max)
+        img = librosa.display.specshow(dbb, x_axis='time', y_axis="linear", ax=ax,
+                                       hop_length=128,
+                                       sr=self.sr)
+        fig.colorbar(img, ax=ax)
+        fig.tight_layout()
+        fig.canvas.draw()
+        X = np.array(fig.canvas.renderer.buffer_rgba())
+        plt.close(fig)
+        return X
+
+    def plot_spec_as(self, sounds, name, nr):
+        ffts = self.get_fft(sounds)
+        for i, fft in enumerate(ffts):
+            image = self.get_plot(fft)
+            self.logger.experiment.add_image(f"spec_{i}/{name}", np.transpose(image, (2, 0, 1)), nr)
 
     def plot_spectrorams(self, batch, batch_outs, nr):
-        if not (self.with_discriminator and self.discriminator.discriminator.can_plot):
-            return
-        for i, xin in enumerate(batch):
-            self.plot_spec_as(xin, f"spec_{i}/in", nr)
+        self.plot_spec_as(batch, f"in", nr)
         for level, lvl_outs in enumerate(batch_outs):
-            for i, xouts in enumerate(lvl_outs):
-                self.plot_spec_as(xouts, f"spec_{i}/out_lvl_{level}", nr)
+            self.plot_spec_as(lvl_outs, f"out_lvl_{level}", nr)
 
     def log_metrics_and_samples(self, loss, metrics, batch, batch_outs, batch_idx, optimize_generator, phase):
         prefix = phase + "_" if phase != "train" else ""

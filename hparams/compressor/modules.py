@@ -28,6 +28,7 @@ adv_params = Hparams(
     n_bins=108,
     stop_disc_train_after=math.inf,
     first_double_downsample=0,
+    multiply_level=False,
 )
 default_vqvae_opt_hparams = Hparams(
     chunk_timeout=2,
