@@ -6,6 +6,7 @@ from vqvae.model import VQVAE
 from generator.model import LevelGenerator
 from generator.modules.conditioner import GenerationParams
 from data_processing.tools import load_file, save_file
+from data_processing.normalization import rms_normalize
 
 
 class SynchronousGenerator(nn.Module):
@@ -15,16 +16,16 @@ class SynchronousGenerator(nn.Module):
         self.vqvae = vqvae
         self.prior = prior
         self.upsamplers = torch.nn.ModuleList(upsamplers)
-        self.tokens_gen = SynchronousTokenGenerator(vqvae, prior, upsamplers)
+        self.tokens_gen = SynchronousTokenGenerator(prior, upsamplers)
 
     # compressor operations
 
     def decode_sound(self, tokens, level):
-        return self.preprocessing.decode([tokens], start_level=level, end_level=level + 1).squeeze(2).detach()
+        return self.vqvae.decode([tokens], start_level=level, end_level=level + 1).squeeze(2).detach()
 
     def encode_sound(self, sound, start_level=0, end_level=None):
-        return [x.detach() for x in self.preprocessing.encode(sound, start_level=start_level,
-                                                              end_level=end_level or self.prior.level + 1)]
+        return [x.detach() for x in self.vqvae.encode(sound, start_level=start_level,
+                                                      end_level=end_level or self.prior.level + 1)]
 
     # assumes sound is with correct sr = self.vqvae.sr
     def get_sound_through_vqvae(self, sound: torch.Tensor, level=0):
@@ -56,14 +57,33 @@ class SynchronousGenerator(nn.Module):
 
     def load_file(self, filenames):
         if isinstance(filenames, str):
-            return load_file(filenames, sr=self.vqvae.sr)
-        return torch.stack([self.load_file(f) for f in filenames])
+            return torch.tensor(load_file(filenames, sr=self.vqvae.sr)[0])
+        sound = [self.load_file(f) for f in filenames]
+        lens = [s.shape[1] for s in sound]
+        minlen = min(lens)
+        if not all([l == minlen for l in lens]):
+            print(f"WARNING: trimming all input sounds to shortest, "
+                  f"because not all input files have the same length: {lens}")
+            sound = [s[:, :minlen] for s in sound]
+        sound = torch.stack([self.normalize_sound(s) for s in sound])
+        sound = self.vqvae.generator.preprocess(sound)
+        return sound
+
+    def normalize_sound(self, sound):
+        if sound.shape[0] == 2:
+            sound = sound[0:1] * 0.5 + sound[1:2] * 0.5
+        elif sound.shape[0] != 1:
+            Exception(f"Loaded wave with unexpected shape {sound.shape}")
+        # TODO
+        print("SKIPPING NORMALIZATION")
+        sound = rms_normalize(sound, rms_level=self.vqvae.rms_normalize_level)
+        return sound
 
     def save_file(self, data, filenames):
-        filenames = [f"{filenames}_{i}.wav" for i in range(data.shape[0])]\
+        filenames = [f"{filenames}{i}.wav" for i in range(data.shape[0])]\
             if isinstance(filenames, str) else [f + ".wav" for f in filenames]
         for f, d in zip(filenames, data):
-            return save_file(d, f, sr=self.vqvae.sr)
+            save_file(d.unsqueeze(1), f, sr=self.vqvae.sr)
 
     # file ops
 

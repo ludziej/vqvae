@@ -12,9 +12,9 @@ class HparamsParser:
     }
     type_dict = {int: int, float: float}
 
-    def __init__(self, hparams_registry):
+    def __init__(self, hparams_registry, default_hparams="default"):
         self.hparams_registry = hparams_registry
-        self.default_hparams = self.hparams_registry["default"]
+        self.default_hparams = self.hparams_registry[default_hparams]
 
     def create_hparams(self):
         """hparams_dict are all different Hparams defined, top_hparams define """

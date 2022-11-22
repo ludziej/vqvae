@@ -5,3 +5,5 @@ resources
 generated/
 train*.sh
 local_resources
+*.mp3
+*.wav

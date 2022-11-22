@@ -11,7 +11,7 @@ def create_vqvae(l_mu, from_last_checkpot, ckpt_dir, restore_ckpt, main_dir, log
     all_params = dict(input_channels=1, mu=l_mu, logger=logger, **params)
     last_path = get_last_path(main_dir, ckpt_dir, restore_ckpt) if from_last_checkpot else None
     logger.info(f"Restoring VQVAE from {last_path}" if last_path else f"Starting VQVAE training from scratch")
-    model = VQVAE.load_from_checkpoint(last_path, **all_params) if last_path is not None else VQVAE(**all_params)
+    model = VQVAE.load_from_checkpoint(last_path, **all_params, strict=False) if last_path is not None else VQVAE(**all_params)
     logger.debug(f"Model loaded")
     return model
 
@@ -31,7 +31,7 @@ def get_model(sample_len, sr, train_path, forward_params, band_est_dur, use_audi
     calc_dataset_dependent_params(train_data, forward_params, band_est_dur)
     params["forward_params"] = forward_params
     params["sr"] = sr
-    model = create_vqvae(**params, logger=logger)
+    model = create_vqvae(**params, rms_normalize_level=rms_normalize_level, logger=logger)
     return (model, train_data) if with_train_data else model
 
 

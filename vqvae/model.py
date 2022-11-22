@@ -14,7 +14,8 @@ from vqvae.adversarial.trainer import AdversarialTrainer
 class VQVAE(LightningModule):
     def __init__(self, input_channels, levels, downs_t, strides_t, loss_fn, norm_before_vqvae, fixed_commit, logger,
                  emb_width, l_bins, mu, commit, spectral, multispectral, forward_params, multipliers, use_bottleneck,
-                 adv_params, log_interval, prenorm_normalisation, prenorm_loss_weight, skip_valid_logs, **params):
+                 adv_params, log_interval, prenorm_normalisation, prenorm_loss_weight, skip_valid_logs,
+                 rms_normalize_level, **params):
         super().__init__()
 
         self.levels = levels
@@ -27,6 +28,7 @@ class VQVAE(LightningModule):
         self.prenorm_normalisation = prenorm_normalisation
         self.prenorm_loss_weight = prenorm_loss_weight
         self.skip_valid_logs = skip_valid_logs
+        self.rms_normalize_level = rms_normalize_level
 
         self.downs_t = downs_t
         self.strides_t = strides_t
