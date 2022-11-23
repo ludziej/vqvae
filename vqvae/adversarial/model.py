@@ -11,17 +11,19 @@ import librosa
 import librosa.display
 import matplotlib.pyplot as plt
 import numpy as np
+from utils.misc import get_normal
 
 
 class AbstractDiscriminator(nn.Module, abc.ABC):
 
     LossData = namedtuple("LossData", "loss pred cls acc loss_ew name")
 
-    def __init__(self, emb_width, can_plot=False):
+    def __init__(self, emb_width, classify_each_level, levels, can_plot=False):
         super().__init__()
         self.emb_width = emb_width
         self.can_plot = can_plot
-        self.fc = nn.Linear(emb_width, 2)
+        self.final_lvls = levels + 1 if classify_each_level else 2
+        self.fc = nn.Linear(emb_width, self.final_lvls)
         self.logsoftmax = nn.LogSoftmax(dim=-1)
         self.nllloss = nn.NLLLoss(reduction="none")
         self.name = "discriminator"
@@ -51,8 +53,8 @@ class AbstractDiscriminator(nn.Module, abc.ABC):
 
 
 class WavDiscriminator(AbstractDiscriminator):
-    def __init__(self, input_channels, emb_width, level, downs_t, strides_t, reduce_type, **block_kwargs):
-        super().__init__(emb_width)
+    def __init__(self, input_channels, emb_width, level, downs_t, strides_t, reduce_type, classify_each_level, levels, **block_kwargs):
+        super().__init__(emb_width, classify_each_level, levels)
         self.reduce_type = reduce_type
         self.encoder = Encoder(input_channels, emb_width, level + 1, downs_t, strides_t, **block_kwargs)
         self.name = f"wav_l{level + 1}"
@@ -84,19 +86,21 @@ def get_prepr(type, n_fft, n_mels, sr, n_bins, hop_length, trainable, win_length
 
 
 class FFTDiscriminator(AbstractDiscriminator):
-    def __init__(self, n_fft, hop_length, window_size, sr, n_bins, reduce_type="max", pooltype="avg", leaky=1e-2,
-                 res_depth=4, first_channels=32, prep_type="mel", n_mels=128, trainable_prep=False,
-                 first_double_downsample=0, use_stride=True, use_amp=True, use_log_scale=True,  **params):
+    def __init__(self, n_fft, hop_length, window_size, sr, n_bins, classify_each_level, levels, reduce_type="max",
+                 pooltype="avg", leaky=1e-2, res_depth=4, first_channels=32, prep_type="mel", n_mels=128,
+                 trainable_prep=False, pos_enc_size=0, first_double_downsample=0, use_stride=True, use_amp=True,
+                 use_log_scale=True, **params):
         prep_params = dict(n_fft=n_fft, hop_length=hop_length, win_length=window_size, trainable=bool(trainable_prep),
                            sr=sr, n_mels=n_mels, n_bins=n_bins, use_amp=use_amp, use_log_scale=use_log_scale)
         spec, feature_extract, in_channels, height = get_prepr(prep_type, **prep_params)
 
-        encoder = ResNet2d(in_channels=in_channels, leaky=leaky, depth=res_depth, pooltype=pooltype,
+        encoder = ResNet2d(in_channels=in_channels + pos_enc_size, leaky=leaky, depth=res_depth, pooltype=pooltype,
                            use_stride=use_stride, first_channels=first_channels,
                            first_double_downsample=first_double_downsample)
         mel_emb_width = encoder.logits_size * (height // encoder.downsample)
 
-        super().__init__(mel_emb_width, can_plot=True)
+        super().__init__(mel_emb_width, classify_each_level, levels, can_plot=True)
+        self.pos_enc_size = pos_enc_size
         self.use_log_scale = use_log_scale
         self.use_amp = use_amp
         self.prep_params = prep_params
@@ -106,6 +110,9 @@ class FFTDiscriminator(AbstractDiscriminator):
         self.feature_extract = feature_extract
         self.encoder = encoder
         self.name = prep_type
+        self.height = height
+        if self.pos_enc_size > 0:
+            self.pos_enc = nn.Parameter(get_normal(height, self.pos_enc_size, 0.1))
 
     def get_plot(self, image):
         fft = self.preprocess(image, scale=False)
@@ -122,6 +129,7 @@ class FFTDiscriminator(AbstractDiscriminator):
         fig.tight_layout()
         fig.canvas.draw()
         X = np.array(fig.canvas.renderer.buffer_rgba())
+        plt.close(fig)
         return X
 
     def preprocess(self, x, scale=True):
@@ -130,6 +138,9 @@ class FFTDiscriminator(AbstractDiscriminator):
             x = torch.sum(x**2, dim=1, keepdim=True)**(1/2)
         if self.use_log_scale and scale:
             x = torch.log(x + 1e8)
+        if self.pos_enc_size > 0:
+            pos_enc = x.view(1, self.pos_enc_size, self.height, 1).repeat(x.shape[0], 1, 1, x.shape[3])
+            x = torch.cat([x, pos_enc], dim=1)
         return x
 
     def encode(self, x):

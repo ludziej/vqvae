@@ -3,7 +3,7 @@ from hparams.generator.transformer import big_transformer_params, small_transfor
 from hparams.generator.prior import big_prior_params, small_prior_params
 from hparams.compressor.model import big_vqvae_params, small_vqvae_params
 from hparams.compressor.forward import small_forward_params
-from hparams.compressor.modules import small_vqvae_opt_hparams
+from hparams.compressor.optim import small_vqvae_opt_hparams
 from hparams.generator.upsampler import small_upsampler_conditioner_params, small_upsampler_params, \
     big_upsampler_conditioner_params, big_upsampler_params
 from hparams.compressor.misc import dirs_config

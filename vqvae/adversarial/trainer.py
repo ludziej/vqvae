@@ -20,7 +20,7 @@ def get_discriminator(with_discriminator, type, **params):
 
 class AdversarialTrainer(nn.Module):
     def __init__(self, gan_loss_weight, gan_loss_warmup, adv_latency, levels, with_discriminator,
-                 disc_loss_weight, disc_use_freq, stop_disc_train_after, **params):
+                 disc_loss_weight, disc_use_freq, stop_disc_train_after, classify_each_level, **params):
         super().__init__()
         self.disc_use_freq = disc_use_freq
         self.with_discriminator = with_discriminator
@@ -30,7 +30,8 @@ class AdversarialTrainer(nn.Module):
         self.adv_latency = adv_latency
         self.disc_loss_weight = disc_loss_weight
         self.stop_disc_train_after = stop_disc_train_after
-        self.discriminator = get_discriminator(with_discriminator=with_discriminator, **params)
+        self.discriminator = get_discriminator(with_discriminator=with_discriminator, levels=levels,
+                                               classify_each_level=classify_each_level, **params)
 
     def forward(self, x_in, gen_out, optimize_generator=False):
         bs = x_in.shape[0]
@@ -39,8 +40,9 @@ class AdversarialTrainer(nn.Module):
         x_in = x_in[0:0] if optimize_generator else x_in  # no need to forward on input optimizing generator
         in_batch = torch.cat([gen_out, x_in])
 
-        y_true = torch.cat([torch.zeros(len(gen_out)), torch.ones(len(x_in))]).to(x_in.device).long()
-        y_opt = 1 - y_true if optimize_generator else y_true
+        origins = sum([bs*[i + 1] for i in range(self.levels)], []) + len(x_in)*[0]
+        y_true = torch.tensor(origins, device=gen_out.device, dtype=torch.long)
+        y_opt = torch.zeros(y_true.shape, device=y_true.device).long() if optimize_generator else y_true
 
         calced_stats = self.discriminator.calculate_loss(in_batch, y_opt, balance=not optimize_generator)
         loss = sum([x.loss for x in calced_stats])

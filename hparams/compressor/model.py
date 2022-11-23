@@ -1,6 +1,7 @@
 from hparams.compressor.forward import default_forward_params, big_forward_params, small_forward_params
 from hparams.parser import Hparams
-from hparams.compressor.modules import adv_params, default_vqvae_opt_hparams, big_vqvae_opt_hparams, small_vqvae_opt_hparams
+from hparams.compressor.adversarial import adv_params
+from hparams.compressor.optim import default_vqvae_opt_hparams, big_vqvae_opt_hparams, small_vqvae_opt_hparams
 
 default_vqvae_model_params = Hparams(
     levels=2,

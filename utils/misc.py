@@ -5,6 +5,9 @@ from time import time
 import logging
 import json
 
+import torch as t
+from torch import nn as nn
+
 
 def time_run(fun):
     t = time()
@@ -47,3 +50,9 @@ def reverse_mapper(mapper):
 
 def fst(x, y):
     return x
+
+
+def get_normal(*shape, std=0.01):
+    w = t.empty(shape)
+    nn.init.normal_(w, std=std)
+    return w

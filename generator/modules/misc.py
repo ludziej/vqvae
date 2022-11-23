@@ -1,13 +1,6 @@
 import numpy as np
-import torch as t
 from torch import nn as nn
 from torch.nn import functional as F
-
-
-def get_normal(*shape, std=0.01):
-    w = t.empty(shape)
-    nn.init.normal_(w, std=std)
-    return w
 
 
 class LayerNorm(nn.LayerNorm):
