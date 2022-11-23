@@ -82,11 +82,11 @@ class AdversarialTrainer(nn.Module):
 
         if not optimize_generator:  # log per level acc stats
             metrics[f"{prefix}_acc/balanced"] = acc
-            error = (y == cls).reshape(self.levels + 1, bs).float()
-            real_acc = torch.mean(error[-1])  # accuracy on real input
+            correct = (y == cls).reshape(self.levels + 1, bs).float()
+            real_acc = torch.mean(correct[-1])  # accuracy on real input
             metrics[f"{prefix}_acc/on_real"] = real_acc
             for i in range(self.levels):
-                fake_acc = torch.mean(error[i])  # accuracy on fake input on given level
+                fake_acc = torch.mean(correct[i])  # accuracy on fake input on given level
                 metrics[f"{prefix}_acc/lvl_{i + 1}"] = (real_acc + fake_acc) / 2  # average with real to balance
                 metrics[f"{prefix}_acc/on_fake_lvl_{i + 1}"] = fake_acc
         return metrics

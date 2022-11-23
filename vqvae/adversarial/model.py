@@ -22,6 +22,7 @@ class AbstractDiscriminator(nn.Module, abc.ABC):
         super().__init__()
         self.emb_width = emb_width
         self.can_plot = can_plot
+        self.classify_each_level = classify_each_level
         self.final_lvls = levels + 1 if classify_each_level else 2
         self.fc = nn.Linear(emb_width, self.final_lvls)
         self.logsoftmax = nn.LogSoftmax(dim=-1)
@@ -41,8 +42,11 @@ class AbstractDiscriminator(nn.Module, abc.ABC):
     def calculate_loss(self, x, y, balance=True):
         probs = self.forward(x)
 
-        y_weight = (y / torch.sum(y) + (1 - y) / torch.sum(1 - y))/2 \
-            if balance and torch.sum(y) > 0 and torch.sum(1 - y) > 0 else 1 / len(y)
+        is_fake = (y != 0).long()
+        if balance and not self.classify_each_level and torch.sum(is_fake) > 0 and torch.sum(1 - is_fake) > 0:
+            y_weight = (is_fake / torch.sum(is_fake) + (1 - is_fake) / torch.sum(1 - is_fake))/2
+        else:
+            y_weight = 1 / len(y)
         loss_ew = self.nllloss(probs, y)
         loss = torch.sum(loss_ew * y_weight)
 
