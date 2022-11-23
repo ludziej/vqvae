@@ -51,7 +51,7 @@ class AbstractDiscriminator(nn.Module, abc.ABC):
         loss = torch.sum(loss_ew * y_weight)
 
         probs = torch.exp(probs)
-        cls = torch.round(probs[:, 1])
+        cls = probs.argmax(dim=-1)
         acc = torch.sum((cls == y) * y_weight)
         return [AbstractDiscriminator.LossData(loss, probs, cls, acc, loss_ew, self.name)]
 
