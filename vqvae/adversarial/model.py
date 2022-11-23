@@ -101,7 +101,7 @@ class FFTDiscriminator(AbstractDiscriminator):
         encoder = ResNet2d(in_channels=in_channels + pos_enc_size, leaky=leaky, depth=res_depth, pooltype=pooltype,
                            use_stride=use_stride, first_channels=first_channels,
                            first_double_downsample=first_double_downsample)
-        mel_emb_width = encoder.logits_size * (height // encoder.downsample)
+        mel_emb_width = encoder.logits_size * (max(height // encoder.downsample, 1))
 
         super().__init__(mel_emb_width, classify_each_level, levels, can_plot=True)
         self.pos_enc_size = pos_enc_size
