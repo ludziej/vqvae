@@ -112,7 +112,7 @@ class FFTDiscriminator(AbstractDiscriminator):
         self.name = prep_type
         self.height = height
         if self.pos_enc_size > 0:
-            self.pos_enc = nn.Parameter(get_normal(height, self.pos_enc_size, 0.1))
+            self.pos_enc = nn.Parameter(get_normal(height, self.pos_enc_size, std=0.01))
 
     def get_plot(self, image):
         fft = self.preprocess(image, scale=False)
@@ -139,7 +139,7 @@ class FFTDiscriminator(AbstractDiscriminator):
         if self.use_log_scale and scale:
             x = torch.log(x + 1e8)
         if self.pos_enc_size > 0:
-            pos_enc = x.view(1, self.pos_enc_size, self.height, 1).repeat(x.shape[0], 1, 1, x.shape[3])
+            pos_enc = self.pos_enc.view(1, self.pos_enc_size, self.height, 1).repeat(x.shape[0], 1, 1, x.shape[3])
             x = torch.cat([x, pos_enc], dim=1)
         return x
 
