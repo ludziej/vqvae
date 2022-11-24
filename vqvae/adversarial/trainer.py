@@ -80,14 +80,14 @@ class AdversarialTrainer(nn.Module):
             metrics[f"{prefix}_loss/lvl_{level + 1}"] = torch.mean(lvl_loss) if optimize_generator else \
                 (torch.mean(lvl_loss) + torch.mean(loss_real))/2
 
-        metrics[f"discriminator_acc/balanced"] = acc
+        metrics[f"{name}_discriminator_acc/balanced"] = acc
         correct = (y == cls).reshape(-1, bs).float()
         if not optimize_generator:
             real_acc = torch.mean(correct[-1])  # accuracy on real input
-            metrics[f"discriminator_acc/on_real"] = real_acc
+            metrics[f"{name}_discriminator_acc/on_real"] = real_acc
         for i in range(self.levels):
             fake_acc = torch.mean(correct[i])  # accuracy on fake input on given level
             metrics[f"discriminator_acc/on_fake_lvl_{i + 1}"] = fake_acc
             if not optimize_generator:
-                metrics[f"discriminator_acc/lvl_{i + 1}"] = (real_acc + fake_acc) / 2  # average with real to balance
+                metrics[f"{name}_discriminator_acc/lvl_{i + 1}"] = (real_acc + fake_acc) / 2  # average with real to balance
         return metrics
