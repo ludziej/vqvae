@@ -74,10 +74,8 @@ class SynchronousGenerator(nn.Module):
             sound = sound[0:1] * 0.5 + sound[1:2] * 0.5
         elif sound.shape[0] != 1:
             Exception(f"Loaded wave with unexpected shape {sound.shape}")
-        # TODO
-        print("SKIPPING NORMALIZATION")
-        sound = rms_normalize(sound, rms_level=self.vqvae.rms_normalize_level)
-        return sound
+        sound = rms_normalize(sound.squeeze(0), rms_level=self.vqvae.rms_normalize_level)
+        return sound.unsqueeze(0)
 
     def save_file(self, data, filenames):
         filenames = [f"{filenames}{i}.wav" for i in range(data.shape[0])]\

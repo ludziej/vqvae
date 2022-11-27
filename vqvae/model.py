@@ -58,7 +58,7 @@ class VQVAE(LightningModule):
             this_block_kwargs = dict(params)
             if multiply:
                 this_block_kwargs["width"] *= self.multipliers[level]
-                this_block_kwargs["depth"] *= self.multipliers[level]
+            this_block_kwargs["depth"] *= self.multipliers[level]
             return this_block_kwargs
 
         self.generator: VQVAEGenerator = VQVAEGenerator(_block_kwargs, downs_t, emb_width, fixed_commit, input_channels,
