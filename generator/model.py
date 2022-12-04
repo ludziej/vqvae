@@ -110,6 +110,7 @@ class LevelGenerator(LightningModule):
         loss = F.cross_entropy(out.reshape(-1, self.bins), x_tok.reshape(-1))
         return loss
 
+    @torch.no_grad()
     def get_tokens(self, sound):
         endlevel = self.level + 1 if not self.context_on_level else self.level + 2
         tokens = [x.detach() for x in self.preprocessing.encode(sound, start_level=self.level, end_level=endlevel)]
