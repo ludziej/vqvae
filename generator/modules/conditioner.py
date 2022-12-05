@@ -25,7 +25,6 @@ class Conditioner(nn.Module):
         self.context_on_level = context_on_level
         self.pos_enc_type = pos_enc_type
         self.level = level
-        self.preprocessing = preprocessing
         self.bins_init_scale = bins_init_scale
         self.token_dim = token_dim
         self.bins = bins
@@ -38,14 +37,14 @@ class Conditioner(nn.Module):
         self.init_emb(self.x_emb)
         if self.context_on_level:
             u_level = self.level + 1
-            bins_init = None if not self.init_bins_from_vqvae else self.get_vqvae_bins(u_level)
-            self.conditioner = UpTokenConditioner(input_shape=z_shapes[u_level], bins=self.preprocessing.l_bins,
-                                                  out_width=self.token_dim, down_t=self.preprocessing.downs_t[u_level],
-                                                  bins_init=bins_init, stride_t=self.preprocessing.strides_t[u_level],
+            bins_init = None if not self.init_bins_from_vqvae else self.get_vqvae_bins(preprocessing, u_level)
+            self.conditioner = UpTokenConditioner(input_shape=z_shapes[u_level], bins=preprocessing.l_bins,
+                                                  out_width=self.token_dim, down_t=preprocessing.downs_t[u_level],
+                                                  bins_init=bins_init, stride_t=preprocessing.strides_t[u_level],
                                                   **conds_kwargs)
 
-    def get_vqvae_bins(self, level):
-        return self.preprocessing.generator.bottleneck.level_blocks[level].k.detach()
+    def get_vqvae_bins(self, preprocessing, level):
+        return preprocessing.generator.bottleneck.level_blocks[level].k.detach()
 
     def create_pos_emb(self):
         if self.pos_enc_type == "trainable":

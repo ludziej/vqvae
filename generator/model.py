@@ -17,7 +17,7 @@ from typing import Dict
 
 
 class LevelGenerator(LightningModule):
-    def __init__(self, vqvae: VQVAE, level: int, log_sample_size: int, context_on_level: int,
+    def __init__(self, preprocessing: VQVAE, level: int, log_sample_size: int, context_on_level: int,
                  dim: int, depth: int, heads: int,  lr: float, start_gen_sample_len: int,
                  log_starting_context_perc: int, log_context_time: float, n_ctx: int, feature_redraw_interval: int,
                  pos_init_scale: int, bins_init_scale: float, dim_head: int, norm_type: bool,
@@ -48,25 +48,25 @@ class LevelGenerator(LightningModule):
         self.prep_on_cpu = prep_on_cpu
         self.opt_params = opt_params
         self.use_start_token_layer = use_start_token_layer
-        self.sr = vqvae.sr
+        self.sr = preprocessing.sr
         self.log_sample_bs, self.log_sample_size = log_sample_size
-        self.preprocessing: VQVAE = vqvae
-        self.preprocessing.freeze()
-        self.bins = self.preprocessing.l_bins
+        preprocessing.freeze()
+        self.preprocessing = [preprocessing] if self.prep_on_cpu else nn.ModuleList([preprocessing])
+        self.bins = preprocessing.l_bins
         self.is_first_batch = True
         self.eos_token = None
-        self.my_logger = self.preprocessing.my_logger
+        self.my_logger = preprocessing.my_logger
         self.log_nr = {"val_": 0, "": 0, "test_": 0}
 
         self.transformer = Performer(causal=True, dim=dim, depth=depth, heads=heads, dim_head=dim_head,
                                      feature_redraw_interval=feature_redraw_interval)
 
-        self.sample_len = self.preprocessing.tokens_to_samples_num(self.n_ctx, self.level)
-        assert not init_bins_from_vqvae or self.token_dim == self.preprocessing.emb_width
+        self.sample_len = preprocessing.tokens_to_samples_num(self.n_ctx, self.level)
+        assert not init_bins_from_vqvae or self.token_dim == preprocessing.emb_width
         assert not self.use_start_token_layer or self.token_dim != self.dim
         self.start_layer = nn.Sequential(nn.Linear(self.token_dim, self.dim), nn.ReLU()) \
             if self.use_start_token_layer else nn.Sequential()
-        z_shapes = self.preprocessing.samples_num_to_tokens(self.sample_len)
+        z_shapes = preprocessing.samples_num_to_tokens(self.sample_len)
         z_shapes = [(z_shape[0] * self.n_ctx // z_shapes[self.level][0],) for z_shape in z_shapes]
 
         self.token_distr = np.zeros(self.bins)
@@ -81,7 +81,7 @@ class LevelGenerator(LightningModule):
         self.conditioner = Conditioner(conds_kwargs=conds_kwargs, z_shapes=z_shapes, bins=self.bins,
                                        pos_enc_type=self.pos_enc_type, pos_enc_lvl_over_bit=pos_enc_lvl_over_bit,
                                        bins_init_scale=self.bins_init_scale, level=self.level, token_dim=self.token_dim,
-                                       conditioning_dropout=conditioning_dropout, preprocessing=self.preprocessing,
+                                       conditioning_dropout=conditioning_dropout, preprocessing=preprocessing,
                                        init_bins_from_vqvae=init_bins_from_vqvae, context_on_level=context_on_level,
                                        conditioning_concat=conditioning_concat)
 
@@ -103,8 +103,9 @@ class LevelGenerator(LightningModule):
     def forward(self, sound: torch.Tensor, gen_params: GenerationParams = None) -> (torch.Tensor, Dict):
         prep_time, (tokens, up_tokens) = time_run(lambda: self.get_tokens(sound))
         embedding = self.conditioner.get_conditioned_emb(tokens, up_tokens, gen_params)
-        loss = self.autoregressive_forward_loss(embedding, tokens)
-        return loss, {'prepr_time': prep_time}
+        loss, metrics = self.autoregressive_forward_loss(embedding, tokens)
+        metrics["prep_time"] = prep_time
+        return loss, metrics
 
     def autoregressive_forward_loss(self, embedding, tokens) -> torch.Tensor:
         x_in = embedding[:, :-1]
@@ -114,17 +115,18 @@ class LevelGenerator(LightningModule):
 
         assert out.shape[:2] == x_in.shape[:2] and out.shape[2] == self.bins
         loss = F.cross_entropy(out.reshape(-1, self.bins), x_tok.reshape(-1))
-        return loss
+        metrics = dict()  # TODO add top 1,5,10,100 acc
+        return loss, metrics
 
     @torch.no_grad()
     def get_tokens(self, sound):
         if self.prep_on_cpu:
-            if self.preprocessing.device.type != "cpu":
+            if self.preprocessing[0].device.type != "cpu":
                 self.my_logger.info("Moving preprocessing to CPU")
-                self.preprocessing = self.preprocessing.to("cpu")
+                self.preprocessing[0] = self.preprocessing[0].to("cpu")
             sound = sound.to("cpu")
         endlevel = self.level + 1 if not self.context_on_level else self.level + 2
-        tokens = [x.detach() for x in self.preprocessing.encode(sound, start_level=self.level, end_level=endlevel)]
+        tokens = [x.detach() for x in self.preprocessing[0].encode(sound, start_level=self.level, end_level=endlevel)]
         tokens = [t.to(self.device) for t in tokens] if self.prep_on_cpu else tokens
         tokens, up_tokens = tokens if self.context_on_level else (tokens[0], None)
         if not self.prep_on_cpu:
@@ -173,7 +175,7 @@ class LevelGenerator(LightningModule):
         return tokens
 
     def decode_sound(self, tokens):
-        return self.preprocessing.decode([tokens], start_level=self.level, end_level=self.level + 1).squeeze(2)
+        return self.preprocessing[0].decode([tokens], start_level=self.level, end_level=self.level + 1).squeeze(2)
 
     def recreate_beginning(self, size, bs=1):
         return torch.randint(size, (bs, self.start_gen_sample_len), device=self.device)
@@ -207,7 +209,7 @@ class LevelGenerator(LightningModule):
                                                                      **sampling_kwargs)
 
         generated_part = 1 - beginning.shape[-1] / out_tokens.shape[-1]
-        generated_time = sound.shape[-1] / self.preprocessing.sr * generated_part
+        generated_time = sound.shape[-1] / self.sr * generated_part
         speed = runtime / generated_time
         return sound, speed if return_speed else sound
 

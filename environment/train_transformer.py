@@ -25,7 +25,7 @@ def train_generator(hparams, model_params, level):
                                                           level, model_params.n_ctx)
     vqvae, train_dataloader, test_dataloader = \
         get_model_with_data(**hparams.vqvae, train_path=hparams.train_path, test_path=hparams.test_path, logger=logger)
-    prior = get_model(vqvae=vqvae, level=level, **model_params, logger=logger)
+    prior = get_model(preprocessing=vqvae, level=level, **model_params, logger=logger)
     generic_train(prior, hparams, train_dataloader, test_dataloader, model_params, root_dir)
 
 
