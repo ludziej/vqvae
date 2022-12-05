@@ -34,6 +34,7 @@ class VQVAE(LightningModule):
         self.prenorm_loss_weight = prenorm_loss_weight
         self.skip_valid_logs = skip_valid_logs
         self.rms_normalize_level = rms_normalize_level
+        self.emb_width = emb_width
 
         self.downs_t = downs_t
         self.strides_t = strides_t

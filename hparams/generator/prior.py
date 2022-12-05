@@ -12,7 +12,7 @@ default_prior_params = Hparams(
 )
 
 big_prior_params = big_transformer_params.update(
-    n_ctx=1540,
+    n_ctx=8192,
     main_dir="generated/big_prior/",
     context_on_level=False,
     log_starting_context_len=390,

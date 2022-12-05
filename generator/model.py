@@ -23,7 +23,7 @@ class LevelGenerator(LightningModule):
                  conds_kwargs: dict, init_bins_from_vqvae: bool, layer_for_logits: bool, conditioning_dropout: float,
                  warmup_time: int, sch_patience: int, sch_factor: int, log_interval, token_dim: int,
                  scheduler_type: str, pos_enc_type: str, pos_enc_lvl_over_bit: int, opt_params,
-                 conditioning_concat, **params):
+                 conditioning_concat, prep_on_cpu, use_start_token_layer, **params):
         super().__init__()
         self.n_ctx = n_ctx
         self.level = level
@@ -44,7 +44,9 @@ class LevelGenerator(LightningModule):
         self.sch_patience = sch_patience
         self.sch_factor = sch_factor
         self.log_interval = log_interval
+        self.prep_on_cpu = prep_on_cpu
         self.opt_params = opt_params
+        self.use_start_token_layer = use_start_token_layer
         self.sr = vqvae.sr
         self.log_sample_bs, self.log_sample_size = log_sample_size
         self.preprocessing: VQVAE = vqvae
@@ -59,7 +61,10 @@ class LevelGenerator(LightningModule):
                                      feature_redraw_interval=feature_redraw_interval)
 
         self.sample_len = self.preprocessing.tokens_to_samples_num(self.n_ctx, self.level)
-        self.start_layer = nn.ModuleList([nn.Linear(self.token_dim, self.dim), nn.ReLU()])
+        assert not init_bins_from_vqvae or self.token_dim == self.preprocessing.emb_width
+        assert not self.use_start_token_layer or self.token_dim != self.dim
+        self.start_layer = nn.Sequential(nn.Linear(self.token_dim, self.dim), nn.ReLU()) \
+            if self.use_start_token_layer else nn.Sequential()
         z_shapes = self.preprocessing.samples_num_to_tokens(self.sample_len)
         z_shapes = [(z_shape[0] * self.n_ctx // z_shapes[self.level][0],) for z_shape in z_shapes]
 
@@ -80,11 +85,11 @@ class LevelGenerator(LightningModule):
                                        conditioning_concat=conditioning_concat)
 
     def __str__(self):
-        return f"Upsampler level {self.level} with n_ctx={self.n_ctx} and tokens={self.sample_len}"\
+        return f"Generator level {self.level} with n_ctx={self.n_ctx} and sample len={self.sample_len}"\
                f" that last {self.sample_len/self.sr:.3} s.)"
 
     def get_transformer_logits(self, x_emb):
-        x = self.start_layer[1](self.start_layer[0](x_emb))
+        x = self.start_layer(x_emb)
         x = self.transformer(x)
         if self.layer_for_logits:
             x = self.final_layer_norm(x)
@@ -112,8 +117,12 @@ class LevelGenerator(LightningModule):
 
     @torch.no_grad()
     def get_tokens(self, sound):
+        if self.prep_on_cpu and self.preprocessing.device.type != "cpu":
+            self.my_logger.info("Moving preprocessing to CPU")
+            self.preprocessing = self.preprocessing.to("cpu")
         endlevel = self.level + 1 if not self.context_on_level else self.level + 2
         tokens = [x.detach() for x in self.preprocessing.encode(sound, start_level=self.level, end_level=endlevel)]
+        tokens = [t.to(self.device) for t in tokens] if self.prep_on_cpu else tokens
         tokens, up_tokens = tokens if self.context_on_level else (tokens[0], None)
         return tokens, up_tokens
 
@@ -228,8 +237,8 @@ class LevelGenerator(LightningModule):
         quantiles = [np.min(distr)] + statistics.quantiles(distr, n=self.token_log_quantiles) + [np.max(distr)]
 
         self.log("dead_tokens_perc", num_zeros, logger=True, prog_bar=True, sync_dist=True)
-        q_dict = {f"{(i / self.token_log_quantiles * 100):.0f}%": q for i, q in enumerate(quantiles)}
-        self.logger.experiment.add_scalars('tok_discr_quant', q_dict)
+        for i, q in enumerate(quantiles):
+            self.log(f"tok_discr_quant/{(i / self.token_log_quantiles * 100):.0f}%", q, logger=True, sync_dist=True)
 
     def is_sampling_time(self, prefix, batch_idx):
         """ log samples once per log_interval and once per valid """
