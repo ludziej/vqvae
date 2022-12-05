@@ -13,6 +13,7 @@ from utils.misc import time_run
 import tqdm
 from generator.modules.conditioner import Conditioner, GenerationParams
 from optimization.opt_maker import get_lr_scheduler
+from typing import Dict
 
 
 class LevelGenerator(LightningModule):
@@ -99,11 +100,11 @@ class LevelGenerator(LightningModule):
             # TODO implement some version using embedding location for classification task, instead of just linear layer
             raise NotImplementedError("currently no method of token classification other then plain layer")
 
-    def forward(self, sound: torch.Tensor, gen_params: GenerationParams = None) -> torch.Tensor:
-        tokens, up_tokens = self.get_tokens(sound)
+    def forward(self, sound: torch.Tensor, gen_params: GenerationParams = None) -> (torch.Tensor, Dict):
+        prep_time, (tokens, up_tokens) = time_run(lambda: self.get_tokens(sound))
         embedding = self.conditioner.get_conditioned_emb(tokens, up_tokens, gen_params)
         loss = self.autoregressive_forward_loss(embedding, tokens)
-        return loss
+        return loss, {'prepr_time': prep_time}
 
     def autoregressive_forward_loss(self, embedding, tokens) -> torch.Tensor:
         x_in = embedding[:, :-1]
@@ -126,9 +127,9 @@ class LevelGenerator(LightningModule):
         tokens = [x.detach() for x in self.preprocessing.encode(sound, start_level=self.level, end_level=endlevel)]
         tokens = [t.to(self.device) for t in tokens] if self.prep_on_cpu else tokens
         tokens, up_tokens = tokens if self.context_on_level else (tokens[0], None)
+        if not self.prep_on_cpu:
+            torch.cuda.empty_cache()
         return tokens, up_tokens
-
-    # conditionals
 
     # generation
 
@@ -248,11 +249,11 @@ class LevelGenerator(LightningModule):
              (batch_idx == 0 and not self.trainer.sanity_checking) if prefix != "" else
              (self.trainer.current_epoch * self.trainer.num_training_batches + batch_idx) % self.log_interval == 0)
 
-    def log_metrics_and_samples(self, loss, batch, batch_idx, gen_params: GenerationParams, prefix=""):
+    def log_metrics_and_samples(self, loss, batch, batch_idx, metrics, gen_params: GenerationParams, prefix=""):
         nr = self.log_nr.get(prefix, 0)
         self.log_nr[prefix] = nr + 1
-        for i, pg in enumerate(self.optimizers().param_groups):
-            self.log(f"lr_{i}", pg["lr"], logger=True, prog_bar=True, sync_dist=True)
+        for k, v in metrics.items():
+            self.log(k, v, on_step=True, prog_bar=True, logger=True, sync_dist=True)
         self.log(prefix + "loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
         if self.is_sampling_time(prefix, batch_idx):
             self.log_samples(batch, nr, prefix, gen_params=gen_params)
@@ -288,8 +289,8 @@ class LevelGenerator(LightningModule):
             self.my_logger.info(f"{(phase or 'train')} loop started - first batch arrived")
         batch, = batch
         assert batch.shape[1] == self.sample_len
-        loss = self(batch, gen_params)
-        self.log_metrics_and_samples(loss, batch, batch_idx, prefix=phase, gen_params=gen_params)
+        loss, metrics = self(batch, gen_params)
+        self.log_metrics_and_samples(loss, batch, batch_idx, metrics, prefix=phase, gen_params=gen_params)
         return loss
 
     def training_step(self, batch, batch_idx, gen_params: GenerationParams = None):
