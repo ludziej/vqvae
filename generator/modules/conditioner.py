@@ -116,7 +116,7 @@ class Conditioner(nn.Module):
             return self.conditioning_concat_projection(x, conds)
         else:
             assert all(c.shape == x.shape for c in conds)  # each conditioning has to have same size as x
-            return x + sum(conds)
+            return x + sum([c.to(x.device) for c in conds])
 
     def apply_cond_relative_absolute(self, lvl_cond, context_cond, pos_cond, time_cond, size, token_interv):
         conds = [lvl_cond, context_cond, pos_cond, time_cond]
