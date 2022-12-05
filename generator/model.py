@@ -117,9 +117,11 @@ class LevelGenerator(LightningModule):
 
     @torch.no_grad()
     def get_tokens(self, sound):
-        if self.prep_on_cpu and self.preprocessing.device.type != "cpu":
-            self.my_logger.info("Moving preprocessing to CPU")
-            self.preprocessing = self.preprocessing.to("cpu")
+        if self.prep_on_cpu:
+            if self.preprocessing.device.type != "cpu":
+                self.my_logger.info("Moving preprocessing to CPU")
+                self.preprocessing = self.preprocessing.to("cpu")
+            sound = sound.to("cpu")
         endlevel = self.level + 1 if not self.context_on_level else self.level + 2
         tokens = [x.detach() for x in self.preprocessing.encode(sound, start_level=self.level, end_level=endlevel)]
         tokens = [t.to(self.device) for t in tokens] if self.prep_on_cpu else tokens
