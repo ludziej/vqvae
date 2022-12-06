@@ -316,9 +316,9 @@ class LevelGenerator(LightningModule):
         if self.scheduler_type == "none":
             return opt
         elif self.scheduler_type == "plateau":
-            scheduler = ReduceLROnPlateauWarmup(opt, starting_lr=self.lr, warmup_time=self.warmup_time,
-                                                logger=self.my_logger, patience=self.sch_patience,
-                                                factor=self.sch_factor)
+            scheduler = ReduceLROnPlateauWarmup(opt, starting_lr=self.lr, warmup_time=self.opt_params["lr_warmup"],
+                                                logger=self.my_logger, patience=self.opt_params["sch_patience"],
+                                                factor=self.opt_params["sch_factor"])
             return ([opt], [{
                         'scheduler': scheduler,
                         'interval': 'step',
