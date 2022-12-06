@@ -24,10 +24,9 @@ class LevelGenerator(LightningModule):
                  log_starting_context_perc: int, log_context_time: float, n_ctx: int, feature_redraw_interval: int,
                  pos_init_scale: int, bins_init_scale: float, dim_head: int, norm_type: bool,
                  conds_kwargs: dict, init_bins_from_vqvae: bool, layer_for_logits: bool, conditioning_dropout: float,
-                 warmup_time: int, sch_patience: int, sch_factor: int, log_interval, token_dim: int,
-                 scheduler_type: str, pos_enc_type: str, pos_enc_lvl_over_bit: int, opt_params,
-                 conditioning_concat, prep_on_cpu, use_start_token_layer, use_fasttransformer, feature_map_dims,
-                 ff_mult, **params):
+                 log_interval, token_dim: int, scheduler_type: str, pos_enc_type: str, pos_enc_lvl_over_bit: int,
+                 opt_params, conditioning_concat, prep_on_cpu, use_start_token_layer, use_fasttransformer,
+                 feature_map_dims, ff_mult, **params):
         super().__init__()
         self.n_ctx = n_ctx
         self.level = level
@@ -44,9 +43,6 @@ class LevelGenerator(LightningModule):
         self.scheduler_type = scheduler_type
         self.pos_enc_type = pos_enc_type
         self.layer_for_logits = layer_for_logits
-        self.warmup_time = warmup_time
-        self.sch_patience = sch_patience
-        self.sch_factor = sch_factor
         self.log_interval = log_interval
         self.prep_on_cpu = prep_on_cpu
         self.opt_params = opt_params
