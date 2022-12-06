@@ -23,13 +23,13 @@ class SynchronousTokenGenerator(nn.Module):
 
     def continue_prior(self, previous, length, params: GenerationParams, with_tqdm=True, with_begin=True):
         return self.prior.continue_tokens(tokens=previous, prefix_token_perc=1, with_tqdm=with_tqdm,
-                                          length=previous.shape[-1] + length, params=params, with_begin=with_begin)
+                                          length=previous.shape[-1] + length, params=params, with_begin=with_begin)[0]
 
     def continue_upsampler(self, previous, length, up_tokens, level, params: GenerationParams, with_tqdm=True,
                            with_begin=True):
         return self.upsamplers[level].continue_tokens(tokens=previous, prefix_token_perc=1, with_tqdm=with_tqdm,
                                                       length=previous.shape[-1] + length, params=params,
-                                                      up_tokens=up_tokens, with_begin=with_begin)
+                                                      up_tokens=up_tokens, with_begin=with_begin)[0]
 
     # synchronous token operations
 

@@ -13,7 +13,9 @@ from utils.misc import time_run
 import tqdm
 from generator.modules.conditioner import Conditioner, GenerationParams
 from optimization.opt_maker import get_lr_scheduler
+from generator.modules.fast_transformer import FastTransformer
 from typing import Dict
+from functools import partial
 
 
 class LevelGenerator(LightningModule):
@@ -24,7 +26,8 @@ class LevelGenerator(LightningModule):
                  conds_kwargs: dict, init_bins_from_vqvae: bool, layer_for_logits: bool, conditioning_dropout: float,
                  warmup_time: int, sch_patience: int, sch_factor: int, log_interval, token_dim: int,
                  scheduler_type: str, pos_enc_type: str, pos_enc_lvl_over_bit: int, opt_params,
-                 conditioning_concat, prep_on_cpu, use_start_token_layer, **params):
+                 conditioning_concat, prep_on_cpu, use_start_token_layer, use_fasttransformer, feature_map_dims,
+                 ff_mult, **params):
         super().__init__()
         self.n_ctx = n_ctx
         self.level = level
@@ -58,12 +61,14 @@ class LevelGenerator(LightningModule):
         self.my_logger = preprocessing.my_logger
         self.log_nr = {"val_": 0, "": 0, "test_": 0}
 
-        self.transformer = Performer(causal=True, dim=dim, depth=depth, heads=heads, dim_head=dim_head,
-                                     feature_redraw_interval=feature_redraw_interval)
+        trans_args = dict(dim=dim, depth=depth, heads=heads, dim_head=dim_head, ff_mult=ff_mult,
+                          feature_redraw_interval=feature_redraw_interval)
+        self.transformer = FastTransformer(feature_map_dims=feature_map_dims, **trans_args) if use_fasttransformer \
+            else Performer(causal=True, nb_features=feature_map_dims, **trans_args)
 
         self.sample_len = preprocessing.tokens_to_samples_num(self.n_ctx, self.level)
         assert not init_bins_from_vqvae or self.token_dim == preprocessing.emb_width
-        assert not self.use_start_token_layer or self.token_dim != self.dim
+        assert self.use_start_token_layer or self.token_dim == self.dim
         self.start_layer = nn.Sequential(nn.Linear(self.token_dim, self.dim), nn.ReLU()) \
             if self.use_start_token_layer else nn.Sequential()
         z_shapes = preprocessing.samples_num_to_tokens(self.sample_len)
@@ -175,7 +180,10 @@ class LevelGenerator(LightningModule):
         return tokens
 
     def decode_sound(self, tokens):
-        return self.preprocessing[0].decode([tokens], start_level=self.level, end_level=self.level + 1).squeeze(2)
+        wrong_device = self.preprocessing[0].device != self.device
+        tokens = tokens.to(self.preprocessing[0].device) if wrong_device else tokens
+        sound = self.preprocessing[0].decode([tokens], start_level=self.level, end_level=self.level + 1).squeeze(2)
+        return sound.to(self.device) if wrong_device else sound
 
     def recreate_beginning(self, size, bs=1):
         return torch.randint(size, (bs, self.start_gen_sample_len), device=self.device)
@@ -204,9 +212,9 @@ class LevelGenerator(LightningModule):
     def continue_sound(self, sound: torch.Tensor, prefix_token_perc: float, params: GenerationParams, seq_len=None,
                        with_begin=True, return_speed=False, with_tqdm=False, **sampling_kwargs):
         tokens, up_tokens = self.get_tokens(sound)
-        beginning, out_tokens, runtime, sound = self.continue_tokens(tokens, params, prefix_token_perc, up_tokens,
-                                                                     seq_len, with_begin, with_tqdm,
-                                                                     **sampling_kwargs)
+        out_tokens, beginning, runtime = self.continue_tokens(tokens, params, prefix_token_perc, up_tokens,
+                                                              seq_len, with_begin, with_tqdm, **sampling_kwargs)
+        sound = self.decode_sound(out_tokens)
 
         generated_part = 1 - beginning.shape[-1] / out_tokens.shape[-1]
         generated_time = sound.shape[-1] / self.sr * generated_part
@@ -224,8 +232,7 @@ class LevelGenerator(LightningModule):
             lambda: self.autoregressive_generate_prior(beginning, seq_len, conditioning,
                                                        with_tqdm=with_tqdm, **sampling_kwargs))
         out_tokens = torch.cat([beginning, out_tokens], dim=1) if with_begin else out_tokens
-        sound = self.decode_sound(out_tokens)
-        return beginning, out_tokens, runtime, sound
+        return out_tokens, beginning, runtime
 
     # logging
 
