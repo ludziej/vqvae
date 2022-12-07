@@ -30,12 +30,14 @@ default_transformer_params = Hparams(
     init_bins_from_vqvae=False,
     layer_for_logits=True,
     norm_type="none",
-    feature_redraw_interval=100,
+    feature_redraw_interval=20,
     pos_enc_type="fourier",  # [trainable, fourier, bpm]
     scheduler_type="step",  # ["plateau", "step", "none"]
     pos_enc_lvl_over_bit=4,
     feature_map_dims=128,
     conditioning_dropout=0.,
+    label_smoothing=0.1,
+    rezero=False,
     log_interval=5000,
     #ckpt_name="model-{epoch}-{val_loss:.2f}-{loss:.2f}",
     ckpt_name='last_model',
@@ -44,6 +46,7 @@ default_transformer_params = Hparams(
     use_start_token_layer=False,
     use_fasttransformer=True,
     conditioning_concat=False,
+    acc_levels=(1, 10, 100, 1024),
     opt_params=opt_params,
     **dirs_config.__dict__,
 )

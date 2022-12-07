@@ -26,7 +26,7 @@ class LevelGenerator(LightningModule):
                  conds_kwargs: dict, init_bins_from_vqvae: bool, layer_for_logits: bool, conditioning_dropout: float,
                  log_interval, token_dim: int, scheduler_type: str, pos_enc_type: str, pos_enc_lvl_over_bit: int,
                  opt_params, conditioning_concat, prep_on_cpu, use_start_token_layer, use_fasttransformer,
-                 feature_map_dims, ff_mult, **params):
+                 feature_map_dims, ff_mult, acc_levels, rezero, label_smoothing, **params):
         super().__init__()
         self.n_ctx = n_ctx
         self.level = level
@@ -41,12 +41,14 @@ class LevelGenerator(LightningModule):
         self.pos_init_scale = pos_init_scale
         self.bins_init_scale = bins_init_scale
         self.scheduler_type = scheduler_type
+        self.label_smoothing = label_smoothing
         self.pos_enc_type = pos_enc_type
         self.layer_for_logits = layer_for_logits
         self.log_interval = log_interval
         self.prep_on_cpu = prep_on_cpu
         self.opt_params = opt_params
         self.use_start_token_layer = use_start_token_layer
+        self.acc_levels = acc_levels
         self.sr = preprocessing.sr
         self.log_sample_bs, self.log_sample_size = log_sample_size
         preprocessing.freeze()
@@ -60,7 +62,7 @@ class LevelGenerator(LightningModule):
         trans_args = dict(dim=dim, depth=depth, heads=heads, dim_head=dim_head, ff_mult=ff_mult,
                           feature_redraw_interval=feature_redraw_interval)
         self.transformer = FastTransformer(feature_map_dims=feature_map_dims, **trans_args) if use_fasttransformer \
-            else Performer(causal=True, nb_features=feature_map_dims, **trans_args)
+            else Performer(causal=True, use_rezero=rezero, nb_features=feature_map_dims, **trans_args)
 
         self.sample_len = preprocessing.tokens_to_samples_num(self.n_ctx, self.level)
         assert not init_bins_from_vqvae or self.token_dim == preprocessing.emb_width
@@ -70,7 +72,8 @@ class LevelGenerator(LightningModule):
         z_shapes = preprocessing.samples_num_to_tokens(self.sample_len)
         z_shapes = [(z_shape[0] * self.n_ctx // z_shapes[self.level][0],) for z_shape in z_shapes]
 
-        self.token_distr = np.zeros(self.bins)
+        self.out_token_distr = np.zeros(self.bins)
+        self.in_token_distr = np.zeros(self.bins)
         self.token_log_quantiles = 10
         self.training_started = set()
         self.my_logger.info(str(self))
@@ -110,18 +113,23 @@ class LevelGenerator(LightningModule):
 
     @torch.no_grad()
     def get_accs(self, y, y_true):
-        # TODO add top 1,5,10,100 acc
-        return dict()
+        probs = torch.softmax(y, dim=-1)
+        indicies = probs.sort(dim=-1, descending=True)[1]
+        y_broad = y_true.reshape(-1, 1).repeat(1, y.shape[1])
+        real_ranks = torch.where(indicies == y_broad)[1]
+        accs = {f"token_acc/top_{l}": torch.mean((real_ranks < l).float()) for l in self.acc_levels}
+        return accs
 
     def autoregressive_forward_loss(self, embedding, tokens) -> torch.Tensor:
         x_in = embedding[:, :-1]
         x_tok = tokens[:, 1:]
         out = self.get_transformer_logits(x_in)
-        self.append_token_distr(out)
+        self.in_token_distr += self.calc_token_distr(x_tok)
+        self.out_token_distr += self.calc_token_distr(out)
 
         assert out.shape[:2] == x_in.shape[:2] and out.shape[2] == self.bins
         y, y_true = out.reshape(-1, self.bins), x_tok.reshape(-1)
-        loss = F.cross_entropy(y, y_true)
+        loss = F.cross_entropy(y, y_true, label_smoothing=self.label_smoothing)
         metrics = self.get_accs(y, y_true)
         return loss, metrics
 
@@ -241,21 +249,29 @@ class LevelGenerator(LightningModule):
 
     # logging
 
-    def append_token_distr(self, logits):
+    def calc_token_distr(self, logits):
         tokens = torch.argmax(logits, dim=-1).reshape(-1)
         distr = torch.bincount(tokens, minlength=self.bins).detach()
         distr = distr.cpu() if distr.is_cuda else distr
-        self.token_distr += distr.numpy()
+        return distr.numpy()
 
-    def log_token_distr_and_reset(self):
-        distr = self.token_distr / sum(self.token_distr)
-        self.token_distr = np.zeros(self.bins)
+    def summarize_and_reset_tok_distr(self, token_distr):
+        distr = token_distr / sum(token_distr)
+        token_distr[:] = np.zeros(self.bins)
         num_zeros = sum(distr == 0) / self.bins
         quantiles = [np.min(distr)] + statistics.quantiles(distr, n=self.token_log_quantiles) + [np.max(distr)]
+        return quantiles, num_zeros
 
-        self.log("dead_tokens_perc", num_zeros, logger=True, prog_bar=True, sync_dist=True)
-        for i, q in enumerate(quantiles):
-            self.log(f"tok_discr_quant/{(i / self.token_log_quantiles * 100):.0f}%", q, logger=True, sync_dist=True)
+    def log_token_distr(self):
+        in_quant, in_zeros = self.summarize_and_reset_tok_distr(self.in_token_distr)
+        out_quant, out_zeros = self.summarize_and_reset_tok_distr(self.out_token_distr)
+
+        self.log("dead_tokens_perc/in", in_zeros, logger=True, prog_bar=True, sync_dist=True)
+        self.log("dead_tokens_perc/out", out_zeros, logger=True, prog_bar=True, sync_dist=True)
+        for i, (in_q, out_q) in enumerate(zip(in_quant, out_quant)):
+            perc = (i / self.token_log_quantiles * 100)
+            self.log(f"tok_discr_quant_in/{perc:.0f}%", in_q, logger=True, sync_dist=True)
+            self.log(f"tok_discr_quant_out/{perc:.0f}%", out_q, logger=True, sync_dist=True)
 
     def log_metrics(self, loss, metrics, prefix=""):
         self.log_nr[prefix] = self.log_nr.get(prefix, 0) + 1
@@ -287,7 +303,7 @@ class LevelGenerator(LightningModule):
 
         if prefix != "":  # skip these for valid
             return
-        self.log_token_distr_and_reset()
+        self.log_token_distr()
         if self.context_on_level:  # skip these for upsampler
             return
         if not self.prep_on_cpu:
