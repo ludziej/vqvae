@@ -108,6 +108,11 @@ class LevelGenerator(LightningModule):
         metrics["prep_time"] = prep_time
         return loss, metrics
 
+    @torch.no_grad()
+    def get_accs(self, y, y_true):
+        # TODO add top 1,5,10,100 acc
+        return dict()
+
     def autoregressive_forward_loss(self, embedding, tokens) -> torch.Tensor:
         x_in = embedding[:, :-1]
         x_tok = tokens[:, 1:]
@@ -115,8 +120,9 @@ class LevelGenerator(LightningModule):
         self.append_token_distr(out)
 
         assert out.shape[:2] == x_in.shape[:2] and out.shape[2] == self.bins
-        loss = F.cross_entropy(out.reshape(-1, self.bins), x_tok.reshape(-1))
-        metrics = dict()  # TODO add top 1,5,10,100 acc
+        y, y_true = out.reshape(-1, self.bins), x_tok.reshape(-1)
+        loss = F.cross_entropy(y, y_true)
+        metrics = self.get_accs(y, y_true)
         return loss, metrics
 
     @torch.no_grad()
@@ -210,6 +216,9 @@ class LevelGenerator(LightningModule):
         tokens, up_tokens = self.get_tokens(sound)
         out_tokens, beginning, runtime = self.continue_tokens(tokens, params, prefix_token_perc, up_tokens,
                                                               seq_len, with_begin, with_tqdm, **sampling_kwargs)
+        if not self.prep_on_cpu:
+            torch.cuda.empty_cache()
+
         sound = self.decode_sound(out_tokens)
 
         generated_part = 1 - beginning.shape[-1] / out_tokens.shape[-1]
@@ -248,22 +257,24 @@ class LevelGenerator(LightningModule):
         for i, q in enumerate(quantiles):
             self.log(f"tok_discr_quant/{(i / self.token_log_quantiles * 100):.0f}%", q, logger=True, sync_dist=True)
 
+    def log_metrics(self, loss, metrics, prefix=""):
+        self.log_nr[prefix] = self.log_nr.get(prefix, 0) + 1
+        for k, v in metrics.items():
+            self.log(k, v, on_step=True, prog_bar=True, logger=True, sync_dist=True)
+        self.log(prefix + "loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
+        self.is_first_batch = False if not self.trainer.sanity_checking else self.is_first_batch
+
+    def check_log_samples(self, batch, batch_idx, gen_params: GenerationParams, prefix=""):
+        if self.is_sampling_time(prefix, batch_idx):
+            self.log_samples(batch, self.log_nr.get(prefix, 0), prefix, gen_params=gen_params)
+
     def is_sampling_time(self, prefix, batch_idx):
         """ log samples once per log_interval and once per valid """
         return not self.is_first_batch and (
              (batch_idx == 0 and not self.trainer.sanity_checking) if prefix != "" else
              (self.trainer.current_epoch * self.trainer.num_training_batches + batch_idx) % self.log_interval == 0)
 
-    def log_metrics_and_samples(self, loss, batch, batch_idx, metrics, gen_params: GenerationParams, prefix=""):
-        nr = self.log_nr.get(prefix, 0)
-        self.log_nr[prefix] = nr + 1
-        for k, v in metrics.items():
-            self.log(k, v, on_step=True, prog_bar=True, logger=True, sync_dist=True)
-        self.log(prefix + "loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
-        if self.is_sampling_time(prefix, batch_idx):
-            self.log_samples(batch, nr, prefix, gen_params=gen_params)
-        self.is_first_batch = False if not self.trainer.sanity_checking else self.is_first_batch
-
+    @torch.no_grad()
     def log_samples(self, batch, nr, prefix, gen_params: GenerationParams, with_tqdm=True):
         # generate continuation audio
         tlogger = self.logger.experiment
@@ -279,6 +290,8 @@ class LevelGenerator(LightningModule):
         self.log_token_distr_and_reset()
         if self.context_on_level:  # skip these for upsampler
             return
+        if not self.prep_on_cpu:
+            torch.cuda.empty_cache()
 
         # raw generation logging only for train on prior, because it does not depend on input data
         samples = self.generate(self.log_sample_size, bs=self.log_sample_bs, with_tqdm=with_tqdm)
@@ -294,8 +307,10 @@ class LevelGenerator(LightningModule):
             self.my_logger.info(f"{(phase or 'train')} loop started - first batch arrived")
         batch, = batch
         assert batch.shape[1] == self.sample_len
+        self.check_log_samples(batch, batch_idx, gen_params=gen_params, prefix=phase)
+
         loss, metrics = self(batch, gen_params)
-        self.log_metrics_and_samples(loss, batch, batch_idx, metrics, prefix=phase, gen_params=gen_params)
+        self.log_metrics(loss, metrics, prefix=phase)
         return loss
 
     def training_step(self, batch, batch_idx, gen_params: GenerationParams = None):
