@@ -125,7 +125,7 @@ class LevelGenerator(LightningModule):
         x_tok = tokens[:, 1:]
         out = self.get_transformer_logits(x_in)
         self.in_token_distr += self.calc_token_distr(x_tok)
-        self.out_token_distr += self.calc_token_distr(out)
+        self.out_token_distr += self.calc_token_distr(torch.argmax(out, dim=-1))
 
         assert out.shape[:2] == x_in.shape[:2] and out.shape[2] == self.bins
         y, y_true = out.reshape(-1, self.bins), x_tok.reshape(-1)
@@ -249,9 +249,8 @@ class LevelGenerator(LightningModule):
 
     # logging
 
-    def calc_token_distr(self, logits):
-        tokens = torch.argmax(logits, dim=-1).reshape(-1)
-        distr = torch.bincount(tokens, minlength=self.bins).detach()
+    def calc_token_distr(self, tokens):
+        distr = torch.bincount(tokens.reshape(-1), minlength=self.bins).detach()
         distr = distr.cpu() if distr.is_cuda else distr
         return distr.numpy()
 
