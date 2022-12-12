@@ -64,29 +64,29 @@ class Conditioner(nn.Module):
             nn.init.normal_(bins.weight, std=0.02 * self.bins_init_scale)
 
     # TODO implement
-    def get_context_conditioning(self, context, bs, length):
+    def get_context_conditioning(self, context, bs, length, device=None):
         raise NotImplementedError("currently no context conditioning")
 
     # TODO implement
-    def get_time_conditioning(self, time, bs, length):
+    def get_time_conditioning(self, time, bs, length, device=None):
         raise NotImplementedError("currently no time conditioning")
 
     # TODO implement batched version for different lengths (like jukebox)
-    def get_lvl_conditioning(self, up_level, bs, length):
+    def get_lvl_conditioning(self, up_level, bs, length, device=None):
         from_up_lvl = self.conditioner(up_level)
         assert from_up_lvl.shape == (bs, length, self.token_dim)
         return from_up_lvl
 
-    def get_pos_emb(self, bs, length=None, bpm=None, bpm_offset=None):
-        pos_emb = self.pos_emb(length=length, bpm=bpm, bpm_offset=bpm_offset)
+    def get_pos_emb(self, bs, device, length=None, bpm=None, bpm_offset=None,):
+        pos_emb = self.pos_emb(length=length, bpm=bpm, bpm_offset=bpm_offset, device=device)
         pos_emb = pos_emb.unsqueeze(0).repeat(bs, 1, 1)
 #        if start_at != 0:  # this does the same as applying relative conditioning, and both exclude each other
 #            pad = torch.zeros((bs, start_at, self.token_dim), dtype=pos_emb.dtype, device=pos_emb.device)
 #            pos_emb = torch.cat([pad, pos_emb], dim=1)
         return pos_emb
 
-    def get_all_conditioning(self, bs, length, params: GenerationParams, up_tokens=None):
-        args = dict(bs=bs, length=length)
+    def get_all_conditioning(self, bs, length, device, params: GenerationParams, up_tokens=None):
+        args = dict(bs=bs, length=length, device=device)
         conditionings = dict(
             pos_cond=(True, lambda: self.get_pos_emb(bpm=params.bpm, bpm_offset=params.bpm_offset, **args)),
             lvl_cond=(up_tokens, lambda: self.get_lvl_conditioning(up_tokens, **args)),
@@ -98,7 +98,7 @@ class Conditioner(nn.Module):
     def get_conditioned_emb(self, tokens, up_tokens=None, gen_params=None):
         b, t = tokens.shape[:2]
         embeddings = self.x_emb(tokens)
-        conditioning = self.get_all_conditioning(b, t, params=gen_params, up_tokens=up_tokens)
+        conditioning = self.get_all_conditioning(b, t, params=gen_params, up_tokens=up_tokens, device=tokens.device)
         embeddings = self.join_conditioning(embeddings, **conditioning)
         return embeddings
 
@@ -112,11 +112,12 @@ class Conditioner(nn.Module):
         bs, size = x.shape[:2]
         conds = self.apply_cond_relative_absolute(lvl_cond, context_cond, pos_cond, time_cond, size, token_interv)
         conds = [self.cond_dropout(c) for c in conds]
+        x = self.cond_dropout(x)
         if self.conditioning_concat:
             return self.conditioning_concat_projection(x, conds)
         else:
             assert all(c.shape == x.shape for c in conds)  # each conditioning has to have same size as x
-            return x + sum([c.to(x.device) for c in conds])
+            return x + sum(conds)
 
     def apply_cond_relative_absolute(self, lvl_cond, context_cond, pos_cond, time_cond, size, token_interv):
         conds = [lvl_cond, context_cond, pos_cond, time_cond]

@@ -23,10 +23,11 @@ class LevelGenerator(LightningModule):
                  dim: int, depth: int, heads: int,  lr: float, start_gen_sample_len: int,
                  log_starting_context_perc: int, log_context_time: float, n_ctx: int, feature_redraw_interval: int,
                  pos_init_scale: int, bins_init_scale: float, dim_head: int, norm_type: bool,
-                 conds_kwargs: dict, init_bins_from_vqvae: bool, layer_for_logits: bool, conditioning_dropout: float,
-                 log_interval, token_dim: int, scheduler_type: str, pos_enc_type: str, pos_enc_lvl_over_bit: int,
-                 opt_params, conditioning_concat, prep_on_cpu, use_start_token_layer, use_fasttransformer,
-                 feature_map_dims, ff_mult, acc_levels, rezero, label_smoothing, **params):
+                 conds_kwargs: dict, init_bins_from_vqvae: bool, share_in_out_embedding: bool,
+                 conditioning_dropout: float, log_interval, token_dim: int, scheduler_type: str, pos_enc_type: str,
+                 pos_enc_lvl_over_bit: int, opt_params, conditioning_concat, prep_on_cpu, use_start_token_layer,
+                 use_fasttransformer, feature_map_dims, ff_mult, acc_levels, rezero, label_smoothing,
+                 attn_dropout, **params):
         super().__init__()
         self.n_ctx = n_ctx
         self.level = level
@@ -43,12 +44,13 @@ class LevelGenerator(LightningModule):
         self.scheduler_type = scheduler_type
         self.label_smoothing = label_smoothing
         self.pos_enc_type = pos_enc_type
-        self.layer_for_logits = layer_for_logits
+        self.share_in_out_embedding = share_in_out_embedding
         self.log_interval = log_interval
         self.prep_on_cpu = prep_on_cpu
         self.opt_params = opt_params
         self.use_start_token_layer = use_start_token_layer
         self.acc_levels = acc_levels
+        self.attn_dropout = attn_dropout
         self.sr = preprocessing.sr
         self.log_sample_bs, self.log_sample_size = log_sample_size
         preprocessing.freeze()
@@ -78,9 +80,8 @@ class LevelGenerator(LightningModule):
         self.training_started = set()
         self.my_logger.info(str(self))
 
-        if self.layer_for_logits:
-            self.final_layer_norm = CustomNormalization(dim, norm_type=norm_type)
-            self.to_out = nn.Linear(dim, self.bins)
+        self.final_layer_norm = CustomNormalization(dim, norm_type=norm_type)
+        self.to_out = nn.Linear(dim, self.bins, bias=False)
 
         self.conditioner = Conditioner(conds_kwargs=conds_kwargs, z_shapes=z_shapes, bins=self.bins,
                                        pos_enc_type=self.pos_enc_type, pos_enc_lvl_over_bit=pos_enc_lvl_over_bit,
@@ -88,6 +89,9 @@ class LevelGenerator(LightningModule):
                                        conditioning_dropout=conditioning_dropout, preprocessing=preprocessing,
                                        init_bins_from_vqvae=init_bins_from_vqvae, context_on_level=context_on_level,
                                        conditioning_concat=conditioning_concat)
+        if self.share_in_out_embedding:
+            self.to_out.weight = self.conditioner.x_emb.weight
+
 
     def __str__(self):
         return f"Generator level {self.level} with n_ctx={self.n_ctx} and sample len={self.sample_len}"\
@@ -96,13 +100,9 @@ class LevelGenerator(LightningModule):
     def get_transformer_logits(self, x_emb):
         x = self.start_layer(x_emb)
         x = self.transformer(x)
-        if self.layer_for_logits:
-            x = self.final_layer_norm(x)
-            x = self.to_out(x)
-            return x
-        else:
-            # TODO implement some version using embedding location for classification task, instead of just linear layer
-            raise NotImplementedError("currently no method of token classification other then plain layer")
+        x = self.final_layer_norm(x)
+        x = self.to_out(x)
+        return x
 
     def forward(self, sound: torch.Tensor, gen_params: GenerationParams = None) -> (torch.Tensor, Dict):
         prep_time, (tokens, up_tokens) = time_run(lambda: self.get_tokens(sound))
@@ -156,7 +156,7 @@ class LevelGenerator(LightningModule):
             logits = repetition_penalty_fn(logits, prev_out[:, -repetition_penalty_ctx:], theta=repetition_penalty)
         filtered_logits = filter_logits_fn(logits, thres=filter_thres)
         probs = F.softmax(filtered_logits / temperature, dim=-1)
-        sample = torch.multinomial(probs, 1)
+        sample = torch.multinomial(probs, 1, replacement=True)
         return sample
 
     @torch.no_grad()
@@ -213,7 +213,7 @@ class LevelGenerator(LightningModule):
     def generate_tokens(self, seq_len, params: GenerationParams, sampling_kwargs, up_tokens=None,
                         bs=1, start_random_size=10, with_tqdm=False):
         beginning = self.recreate_beginning(start_random_size, bs)
-        conditioning = self.conditioner.get_all_conditioning(bs, seq_len, params, up_tokens=up_tokens)
+        conditioning = self.conditioner.get_all_conditioning(bs, seq_len, self.device, params, up_tokens=up_tokens)
         out_tokens = self.autoregressive_generate_prior(beginning, seq_len, conditioning, with_tqdm=with_tqdm,
                                                         **sampling_kwargs)
         return out_tokens
@@ -240,7 +240,7 @@ class LevelGenerator(LightningModule):
         bs, t_len = tokens.shape[:2]
         seq_len = seq_len if seq_len is not None else t_len
         beginning = tokens[:, :int(t_len * prefix_token_perc)]
-        conditioning = self.conditioner.get_all_conditioning(bs, seq_len, params, up_tokens=up_tokens, )
+        conditioning = self.conditioner.get_all_conditioning(bs, seq_len, self.device, params, up_tokens=up_tokens)
         runtime, out_tokens = time_run(
             lambda: self.autoregressive_generate_prior(beginning, seq_len, conditioning,
                                                        with_tqdm=with_tqdm, **sampling_kwargs))
@@ -338,7 +338,8 @@ class LevelGenerator(LightningModule):
         return self.step(batch, batch_idx, phase="val_", gen_params=gen_params)
 
     def configure_optimizers(self):
-        opt = torch.optim.Adam(self.parameters(), lr=self.lr)
+        opt = torch.optim.AdamW(self.parameters(), lr=self.lr, betas=self.opt_params["adam_betas"],
+                                weight_decay=self.opt_params["adam_weight_decay"])
         if self.scheduler_type == "none":
             return opt
         elif self.scheduler_type == "plateau":
