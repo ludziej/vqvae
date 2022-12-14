@@ -21,16 +21,16 @@ def train_generator(hparams, model_params, level):
     logger = create_logger(root_dir, hparams)
 
     # calculate correct sample_len for chosen n_ctx inside tokens
-    hparams.vqvae.sample_len = get_sample_len_from_tokens(hparams.vqvae.strides_t, hparams.vqvae.downs_t,
+    hparams.compressor.sample_len = get_sample_len_from_tokens(hparams.compressor.strides_t, hparams.compressor.downs_t,
                                                           level, model_params.n_ctx)
-    vqvae, train_dataloader, test_dataloader = \
-        get_model_with_data(**hparams.vqvae, train_path=hparams.train_path, test_path=hparams.test_path, logger=logger)
-    prior = get_model(preprocessing=vqvae, level=level, **model_params, logger=logger)
+    compressor, train_dataloader, test_dataloader = \
+        get_model_with_data(**hparams.compressor, train_path=hparams.train_path, test_path=hparams.test_path, logger=logger)
+    prior = get_model(preprocessing=compressor, level=level, **model_params, logger=logger)
     generic_train(prior, hparams, train_dataloader, test_dataloader, model_params, root_dir)
 
 
 def train_prior(hparams):
-    train_generator(hparams, hparams.prior, hparams.vqvae.levels - 1)
+    train_generator(hparams, hparams.prior, hparams.compressor.levels - 1)
 
 
 def train_upsampler(hparams):
