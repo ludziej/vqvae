@@ -4,7 +4,7 @@ import numpy as np
 import statistics
 from pytorch_lightning import LightningModule
 from generator.modules.performer import Performer
-from vqvae.model import VQVAE
+from vqvae.model import WavAutoEncoder
 import torch.nn.functional as F
 from performer_pytorch.autoregressive_wrapper import top_k, repetition_penalty_fn
 from optimization.scheduler import ReduceLROnPlateauWarmup
@@ -19,8 +19,8 @@ from functools import partial
 
 
 class LevelGenerator(LightningModule):
-    def __init__(self, preprocessing: VQVAE, level: int, log_sample_size: int, context_on_level: int,
-                 dim: int, depth: int, heads: int,  lr: float, start_gen_sample_len: int,
+    def __init__(self, preprocessing: WavAutoEncoder, level: int, log_sample_size: int, context_on_level: int,
+                 dim: int, depth: int, heads: int, lr: float, start_gen_sample_len: int,
                  log_starting_context_perc: int, log_context_time: float, n_ctx: int, feature_redraw_interval: int,
                  pos_init_scale: int, bins_init_scale: float, dim_head: int, norm_type: bool,
                  conds_kwargs: dict, init_bins_from_vqvae: bool, share_in_out_embedding: bool,
@@ -81,7 +81,6 @@ class LevelGenerator(LightningModule):
         self.my_logger.info(str(self))
 
         self.final_layer_norm = CustomNormalization(dim, norm_type=norm_type)
-        self.to_out = nn.Linear(dim, self.bins, bias=False)
 
         self.conditioner = Conditioner(conds_kwargs=conds_kwargs, z_shapes=z_shapes, bins=self.bins,
                                        pos_enc_type=self.pos_enc_type, pos_enc_lvl_over_bit=pos_enc_lvl_over_bit,
@@ -89,9 +88,10 @@ class LevelGenerator(LightningModule):
                                        conditioning_dropout=conditioning_dropout, preprocessing=preprocessing,
                                        init_bins_from_vqvae=init_bins_from_vqvae, context_on_level=context_on_level,
                                        conditioning_concat=conditioning_concat)
+        to_out = nn.Linear(dim, self.bins, bias=False)
         if self.share_in_out_embedding:
-            self.to_out.weight = self.conditioner.x_emb.weight
-
+            to_out.weight = self.conditioner.x_emb.weight
+        self.to_out = to_out
 
     def __str__(self):
         return f"Generator level {self.level} with n_ctx={self.n_ctx} and sample len={self.sample_len}"\

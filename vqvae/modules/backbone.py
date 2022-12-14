@@ -1,12 +1,13 @@
 from torch import nn as nn
 
-from vqvae.modules.bottleneck import Bottleneck, NoBottleneck
+from vqvae.modules.quant_bottleneck import Bottleneck, NoBottleneck
+from vqvae.modules.vae import VAEBottleneck
 from vqvae.modules.encdec import Encoder, Decoder
 
 
 class VQVAEGenerator(nn.Module):
     def __init__(self, _block_kwargs, downs_t, emb_width, fixed_commit, input_channels, l_bins, levels, mu,
-                 norm_before_vqvae, strides_t, use_bottleneck):
+                 norm_before_vqvae, strides_t, bottleneck_type):
         super().__init__()
         self.levels = levels
 
@@ -16,11 +17,21 @@ class VQVAEGenerator(nn.Module):
         decoders = nn.ModuleList([Decoder(input_channels, emb_width, level + 1,
                                           downs_t[:level + 1], strides_t[:level + 1], **_block_kwargs(level))
                                   for level in range(levels)])
-        bottleneck = Bottleneck(l_bins, emb_width, mu, levels, norm_before_vqvae, fixed_commit) \
-            if use_bottleneck else NoBottleneck(levels)
+        bottleneck = self.get_bottleneck(bottleneck_type, l_bins, emb_width, mu,
+                                         levels, norm_before_vqvae, fixed_commit)
         self.encoders = encoders
         self.decoders = decoders
         self.bottleneck = bottleneck
+
+    def get_bottleneck(self, bottleneck_type, l_bins, emb_width, mu, levels, norm_before_vqvae, fixed_commit):
+        if bottleneck_type == "vqvae":
+            return Bottleneck(l_bins, emb_width, mu, levels, norm_before_vqvae, fixed_commit)
+        elif bottleneck_type == "none":
+            return NoBottleneck(levels)
+        elif bottleneck_type == "vae":
+            return VAEBottleneck(emb_width, levels)
+        else:
+            raise Exception(f"Unknown bottleneck type {bottleneck_type}")
 
     def preprocess(self, x):
         # x: NTC [-1,1] -> NCT [-1,1]

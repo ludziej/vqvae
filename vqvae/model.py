@@ -16,9 +16,9 @@ import numpy as np
 from nnAudio.Spectrogram import CQT2010v2, STFT
 
 
-class VQVAE(LightningModule):
+class WavAutoEncoder(LightningModule):
     def __init__(self, input_channels, levels, downs_t, strides_t, loss_fn, norm_before_vqvae, fixed_commit, logger,
-                 emb_width, l_bins, mu, commit, spectral, multispectral, forward_params, multipliers, use_bottleneck,
+                 emb_width, l_bins, mu, bottleneck_lw, spectral, multispectral, forward_params, multipliers, bottleneck_type,
                  adv_params, log_interval, prenorm_normalisation, prenorm_loss_weight, skip_valid_logs,
                  rms_normalize_level, **params):
         super().__init__()
@@ -39,7 +39,7 @@ class VQVAE(LightningModule):
         self.downs_t = downs_t
         self.strides_t = strides_t
         self.l_bins = l_bins
-        self.commit = commit
+        self.bottleneck_lw = bottleneck_lw
         self.spectral = spectral
         self.multispectral = multispectral
         self.opt_params = params
@@ -63,7 +63,7 @@ class VQVAE(LightningModule):
             return this_block_kwargs
 
         self.generator: VQVAEGenerator = VQVAEGenerator(_block_kwargs, downs_t, emb_width, fixed_commit, input_channels,
-                                                        l_bins, levels, mu, norm_before_vqvae, strides_t, use_bottleneck)
+                                                        l_bins, levels, mu, norm_before_vqvae, strides_t, bottleneck_type)
         adv_block = _block_kwargs(self.discriminator_level, multiply=adv_params["multiply_level"])
         self.discriminator = AdversarialTrainer(**adv_params, **adv_block,
                                                 input_channels=input_channels, level=self.discriminator_level,
@@ -114,13 +114,13 @@ class VQVAE(LightningModule):
 
     def forward(self, x_in):
         x_encoded = [encoder(x_in)[-1] for encoder in self.generator.encoders]
-        zs, xs_quantised, commit_losses, prenorms, quantiser_metrics = self.generator.bottleneck(x_encoded)
+        zs, xs_quantised, bottleneck_losses, prenorms, quantiser_metrics = self.generator.bottleneck(x_encoded)
 
         x_outs = [decoder(xs_quantised[level:level+1], all_levels=False)
                   for level, decoder in enumerate(self.generator.decoders)]
         [assert_shape(x_out, x_in.shape) for x_out in x_outs]
 
-        loss, metrics = self.calc_metrics_and_loss(commit_losses, quantiser_metrics, prenorms, x_in, x_outs)
+        loss, metrics = self.calc_metrics_and_loss(bottleneck_losses, quantiser_metrics, prenorms, x_in, x_outs)
         return loss, metrics, x_outs
 
     @torch.no_grad()
@@ -162,7 +162,7 @@ class VQVAE(LightningModule):
 
     # metrics & logging
 
-    def calc_metrics_and_loss(self, commit_losses, quantiser_metrics, prenorms, x_in, x_outs):
+    def calc_metrics_and_loss(self, bottleneck_losses, quantiser_metrics, prenorms, x_in, x_outs):
         metrics = {}
         hps = self.forward_params
         x_target = audio_postprocess(self.generator.postprocess(x_in).float(), hps)
@@ -172,9 +172,7 @@ class VQVAE(LightningModule):
             metrics[f"x_norm/out_lvl_{i + 1}"] = torch.mean(norm(xo))
 
         x_outs = [self.generator.postprocess(x_out) for x_out in x_outs]
-        recons_loss = t.zeros(()).to(x_in.device)
-        spec_loss = t.zeros(()).to(x_in.device)
-        multispec_loss = t.zeros(()).to(x_in.device)
+        recons_loss, spec_loss, multispec_loss = [t.zeros(()).to(x_in.device) for _ in range(3)]
         for level in reversed(range(self.levels)):
             x_out = audio_postprocess(x_outs[level], hps)
             this_recons_loss = _loss_fn(self.loss_fn, x_target, x_out, hps)
@@ -183,16 +181,16 @@ class VQVAE(LightningModule):
             metrics[f'recons_loss/lvl_{level + 1}'] = this_recons_loss
             metrics[f'spectral_loss/lvl_{level + 1}'] = this_spec_loss
             metrics[f'multispectral_loss/lvl_{level + 1}'] = this_multispec_loss
-            metrics[f'commit_loss/lvl_{level + 1}'] = commit_losses[level]
+            metrics[f'bottleneck_loss/lvl_{level + 1}'] = bottleneck_losses[level]
             recons_loss += this_recons_loss
             spec_loss += this_spec_loss
             multispec_loss += this_multispec_loss
-        commit_loss = sum(commit_losses)
+        bottleneck_loss = sum(bottleneck_losses)
         prenorm_loss = torch.sqrt(torch.mean((torch.stack(prenorms) - self.prenorm_normalisation)**2)) \
             if self.prenorm_normalisation else 0
 
-        loss = recons_loss + self.spectral * spec_loss + self.multispectral * multispec_loss +\
-               self.commit * commit_loss + prenorm_loss * self.prenorm_loss_weight
+        loss = recons_loss + self.spectral * spec_loss + self.multispectral * multispec_loss + \
+               self.bottleneck_lw * bottleneck_loss + prenorm_loss * self.prenorm_loss_weight
 
         with t.no_grad():
             for level, x_out in enumerate(x_outs):
@@ -208,7 +206,7 @@ class VQVAE(LightningModule):
             metrics.update(average_metrics(quantiser_metrics, suffix="/total"))
             metrics.update({  # add level-aggregated stats
                 "recons_loss/total": recons_loss, "spectral_loss/total": spec_loss,
-                "multispectral_loss/total": multispec_loss, "commit_loss/total": commit_loss})
+                "multispectral_loss/total": multispec_loss, "bottleneck_loss/total": bottleneck_loss})
             for key, val in metrics.items():
                 metrics[key] = val.detach()
         return loss, metrics

@@ -11,7 +11,7 @@ default_vqvae_model_params = Hparams(
     emb_width=64,
     l_bins=1024,
     l_mu=0.99,
-    commit=0.02,
+    bottleneck_lw=0.02,
     spectral=0.0,
     multispectral=1.0,
     multipliers=(1, 1),
@@ -35,7 +35,7 @@ default_vqvae_model_params = Hparams(
     skip_valid_logs=True,
     from_last_checkpot=True,
     leaky_param=1e-2,
-    use_bottleneck=True,
+    bottleneck_type="vqvae",  # ["none", "vqvae", "vae"]
     main_dir="generated/models/small_vqvae/",
 )
 default_vqvae_params = Hparams(**default_vqvae_opt_hparams.__dict__, **default_vqvae_model_params.__dict__)

@@ -32,6 +32,7 @@ big_forward_params = default_forward_params.update(
     lmix_l1=0.02,
     lmix_l2=1.0,
     lmix_linf=0,
+    sr=44100,
 )
 small_forward_params = default_forward_params.update(
     lmix_l1=0.0,

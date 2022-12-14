@@ -5,7 +5,7 @@ from hparams.config import hparams_registry
 
 
 def run_trainer(hparams):
-    train_fun = {"vqvae": e_train, "prior": p_train, "upsampler": u_train}
+    train_fun = {"compressor": e_train, "prior": p_train, "upsampler": u_train}
     return train_fun[hparams.model](hparams)
 
 
