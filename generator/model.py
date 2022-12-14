@@ -273,6 +273,7 @@ class LevelGenerator(LightningModule):
             self.log(f"tok_discr_quant_out/{perc:.0f}%", out_q, logger=True, sync_dist=True)
 
     def log_metrics(self, loss, metrics, prefix=""):
+        self.log_token_distr()
         self.log_nr[prefix] = self.log_nr.get(prefix, 0) + 1
         for k, v in metrics.items():
             self.log(k, v, on_step=True, prog_bar=True, logger=True, sync_dist=True)
@@ -302,7 +303,6 @@ class LevelGenerator(LightningModule):
 
         if prefix != "":  # skip these for valid
             return
-        self.log_token_distr()
         if self.context_on_level:  # skip these for upsampler
             return
         if not self.prep_on_cpu:
