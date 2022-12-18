@@ -2,14 +2,14 @@ import logging
 
 import torch
 
-from environment.train_embeddings import get_model, WavAutoEncoder
+from environment.train_embeddings import get_model, WavCompressor
 from hparams import hparams
 import torchaudio
 import numpy as np
 from tqdm import tqdm
 
 
-def ready_model() -> WavAutoEncoder:
+def ready_model() -> WavCompressor:
     return get_model(**hparams, train_path="resources/full_dataset", data_depth=2).to("cuda").eval()
 
 

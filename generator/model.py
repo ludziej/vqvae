@@ -4,7 +4,7 @@ import numpy as np
 import statistics
 from pytorch_lightning import LightningModule
 from generator.modules.performer import Performer
-from vqvae.model import WavAutoEncoder
+from vqvae.model import WavCompressor
 import torch.nn.functional as F
 from performer_pytorch.autoregressive_wrapper import top_k, repetition_penalty_fn
 from optimization.scheduler import ReduceLROnPlateauWarmup
@@ -19,7 +19,7 @@ from functools import partial
 
 
 class LevelGenerator(LightningModule):
-    def __init__(self, preprocessing: WavAutoEncoder, level: int, log_sample_size: int, context_on_level: int,
+    def __init__(self, preprocessing: WavCompressor, level: int, log_sample_size: int, context_on_level: int,
                  dim: int, depth: int, heads: int, lr: float, start_gen_sample_len: int,
                  log_starting_context_perc: int, log_context_time: float, n_ctx: int, feature_redraw_interval: int,
                  pos_init_scale: int, bins_init_scale: float, dim_head: int, norm_type: bool,
@@ -39,7 +39,6 @@ class LevelGenerator(LightningModule):
         self.context_on_level = context_on_level
         self.log_starting_context_perc = log_starting_context_perc
         self.log_context_time = log_context_time
-        self.pos_init_scale = pos_init_scale
         self.bins_init_scale = bins_init_scale
         self.scheduler_type = scheduler_type
         self.label_smoothing = label_smoothing
@@ -87,7 +86,8 @@ class LevelGenerator(LightningModule):
                                        bins_init_scale=self.bins_init_scale, level=self.level, token_dim=self.token_dim,
                                        conditioning_dropout=conditioning_dropout, preprocessing=preprocessing,
                                        init_bins_from_vqvae=init_bins_from_vqvae, context_on_level=context_on_level,
-                                       conditioning_concat=conditioning_concat)
+                                       conditioning_concat=conditioning_concat, n_ctx=n_ctx,
+                                       pos_init_scale=pos_init_scale)
         to_out = nn.Linear(dim, self.bins, bias=False)
         if self.share_in_out_embedding:
             to_out.weight = self.conditioner.x_emb.weight

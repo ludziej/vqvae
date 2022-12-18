@@ -52,9 +52,10 @@ class DecoderConvBock(nn.Module):
 
 
 class Encoder(nn.Module):
-    def __init__(self, input_emb_width, output_emb_width, levels, downs_t,
-                 strides_t, **block_kwargs):
+    def __init__(self, input_emb_width, output_emb_width, levels, downs_t, strides_t, skip_connections,
+                 **block_kwargs):
         super().__init__()
+        self.skip_connections = skip_connections
         self.input_emb_width = input_emb_width
         self.output_emb_width = output_emb_width
         self.levels = levels
@@ -89,9 +90,10 @@ class Encoder(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self, input_emb_width, output_emb_width, levels, downs_t,
-                 strides_t, **block_kwargs):
+    def __init__(self, input_emb_width, output_emb_width, levels, downs_t, strides_t, skip_connections,
+                 **block_kwargs):
         super().__init__()
+        self.skip_connections = skip_connections
         self.input_emb_width = input_emb_width
         self.output_emb_width = output_emb_width
         self.levels = levels

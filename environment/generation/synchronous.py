@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 from environment.generation.token_generator import SynchronousTokenGenerator
-from vqvae.model import WavAutoEncoder
+from vqvae.model import WavCompressor
 from generator.model import LevelGenerator
 from generator.modules.conditioner import GenerationParams
 from data_processing.tools import load_file, save_file
@@ -11,7 +11,7 @@ from data_processing.normalization import rms_normalize
 
 class SynchronousGenerator(nn.Module):
     """Class for sound generation, when all models are properly trained"""
-    def __init__(self, vqvae: WavAutoEncoder, prior: LevelGenerator, upsamplers: [LevelGenerator]):
+    def __init__(self, vqvae: WavCompressor, prior: LevelGenerator, upsamplers: [LevelGenerator]):
         super().__init__()
         self.vqvae = vqvae
         self.prior = prior
@@ -25,7 +25,7 @@ class SynchronousGenerator(nn.Module):
 
     def encode_sound(self, sound, start_level=0, end_level=None):
         return [x.detach() for x in self.vqvae.encode(sound, start_level=start_level,
-                                                      end_level=end_level or self.prior.level + 1)]
+                                                                end_level=end_level or self.prior.level + 1)]
 
     # assumes sound is with correct sr = self.vqvae.sr
     def get_sound_through_vqvae(self, sound: torch.Tensor, level=0):

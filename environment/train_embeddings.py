@@ -1,7 +1,7 @@
 from torch.utils.data import DataLoader
 from pathlib import Path
 from data_processing.dataset import MusicDataset
-from vqvae.model import WavAutoEncoder
+from vqvae.model import WavCompressor
 from utils.misc import lazy_compute_pickle
 from utils.old_ml_utils.audio_utils import calculate_bandwidth
 from environment.train_utils import generic_train, get_last_path, create_logger
@@ -11,7 +11,7 @@ def create_vqvae(l_mu, from_last_checkpot, ckpt_dir, restore_ckpt, main_dir, log
     all_params = dict(input_channels=1, mu=l_mu, logger=logger, **params)
     last_path = get_last_path(main_dir, ckpt_dir, restore_ckpt) if from_last_checkpot else None
     logger.info(f"Restoring VQVAE from {last_path}" if last_path else f"Starting VQVAE training from scratch")
-    model = WavAutoEncoder.load_from_checkpoint(last_path, **all_params, strict=False) if last_path is not None else WavAutoEncoder(**all_params)
+    model = WavCompressor.load_from_checkpoint(last_path, **all_params, strict=False) if last_path is not None else WavCompressor(**all_params)
     logger.debug(f"Model loaded")
     return model
 

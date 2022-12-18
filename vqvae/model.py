@@ -1,22 +1,17 @@
-import numpy as np
 import torch
 import torch as t
 from pytorch_lightning import LightningModule
 
-from vqvae.modules.backbone import VQVAEGenerator
-from utils.old_ml_utils.misc import average_metrics, assert_shape
+from vqvae.modules.backbone import WavAutoEncoder
+from utils.old_ml_utils.misc import average_metrics
 from utils.old_ml_utils.audio_utils import spectral_convergence, audio_postprocess, norm
 from optimization.opt_maker import get_optimizer
 from vqvae.modules.helpers import calculate_strides, _loss_fn, multispectral_loss_util, spectral_loss_util
 from vqvae.adversarial.trainer import AdversarialTrainer
-import librosa
-import librosa.display
-import matplotlib.pyplot as plt
 import numpy as np
-from nnAudio.Spectrogram import CQT2010v2, STFT
 
 
-class WavAutoEncoder(LightningModule):
+class WavCompressor(LightningModule):
     def __init__(self, input_channels, levels, downs_t, strides_t, loss_fn, norm_before_vqvae, fixed_commit, logger,
                  emb_width, l_bins, mu, bottleneck_lw, spectral, multispectral, forward_params, multipliers, bottleneck_type,
                  adv_params, log_interval, prenorm_normalisation, prenorm_loss_weight, skip_valid_logs,
@@ -35,6 +30,7 @@ class WavAutoEncoder(LightningModule):
         self.skip_valid_logs = skip_valid_logs
         self.rms_normalize_level = rms_normalize_level
         self.emb_width = emb_width
+        self.bottleneck_type = bottleneck_type
 
         self.downs_t = downs_t
         self.strides_t = strides_t
@@ -50,8 +46,6 @@ class WavAutoEncoder(LightningModule):
         self.downsamples = calculate_strides(strides_t, downs_t)
         self.hop_lengths = np.cumprod(self.downsamples)
         self.log_nr = {"val_": 0, "": 0, "test_": 0}
-        self.my_logger.info(str(self))
-        self.spec = STFT(n_fft=512, center=True, hop_length=128, sr=self.sr, verbose=False)
 
         assert len(multipliers) == levels, "Invalid number of multipliers"
 
@@ -62,18 +56,21 @@ class WavAutoEncoder(LightningModule):
             this_block_kwargs["depth"] *= self.multipliers[level]
             return this_block_kwargs
 
-        self.generator: VQVAEGenerator = VQVAEGenerator(_block_kwargs, downs_t, emb_width, fixed_commit, input_channels,
-                                                        l_bins, levels, mu, norm_before_vqvae, strides_t, bottleneck_type)
+        self.generator = WavAutoEncoder(self.sr, _block_kwargs, downs_t, emb_width, fixed_commit, input_channels,
+                                        l_bins, levels, mu, norm_before_vqvae, strides_t, bottleneck_type,
+                                        skip_connections=False)
         adv_block = _block_kwargs(self.discriminator_level, multiply=adv_params["multiply_level"])
         self.discriminator = AdversarialTrainer(**adv_params, **adv_block,
                                                 input_channels=input_channels, level=self.discriminator_level,
                                                 downs_t=downs_t[:self.discriminator_level + 1], emb_width=emb_width,
                                                 strides_t=strides_t[:self.discriminator_level + 1], levels=self.levels)
+        self.my_logger.info(str(self))
 
     # helpers & api
 
     def __str__(self):
-        return f"VQ-VAE with sr={self.sr} and tokens for one second: {self.samples_num_to_tokens(1 * self.sr)}"
+        return f"{self.generator.name} with sr={self.sr} " \
+               f"and tokens for one second: {self.samples_num_to_tokens(1 * self.sr)}"
 
     def samples_num_to_tokens(self, sample_len):
         return [(sample_len // self.hop_lengths[level],) for level in range(self.levels)]
@@ -93,34 +90,16 @@ class WavAutoEncoder(LightningModule):
     # encoding & decoding
 
     def decode(self, zs, start_level=0, end_level=None, bs_chunks=1):
-        z_chunks = [t.chunk(z, bs_chunks, dim=0) for z in zs]
-        x_outs = []
-        for i in range(bs_chunks):
-            zs_i = [z_chunk[i] for z_chunk in z_chunks]
-            x_out = self.generator.decode_one_chunk(zs_i, start_level=start_level, end_level=end_level)
-            x_outs.append(x_out)
-        return t.cat(x_outs, dim=0)
+        return self.generator.decode(zs, start_level, end_level, bs_chunks)
 
     def encode(self, x, start_level=0, end_level=None, bs_chunks=1):
-        x_chunks = t.chunk(x, bs_chunks, dim=0)
-        zs_list = []
-        for x_i in x_chunks:
-            zs_i = self.generator.encode_one_chunk(x_i, start_level=start_level, end_level=end_level)
-            zs_list.append(zs_i)
-        zs = [t.cat(zs_level_list, dim=0) for zs_level_list in zip(*zs_list)]
-        return zs
+        return self.generator.encode(x, start_level, end_level, bs_chunks)
 
     # training & forward
 
     def forward(self, x_in):
-        x_encoded = [encoder(x_in)[-1] for encoder in self.generator.encoders]
-        zs, xs_quantised, bottleneck_losses, prenorms, quantiser_metrics = self.generator.bottleneck(x_encoded)
-
-        x_outs = [decoder(xs_quantised[level:level+1], all_levels=False)
-                  for level, decoder in enumerate(self.generator.decoders)]
-        [assert_shape(x_out, x_in.shape) for x_out in x_outs]
-
-        loss, metrics = self.calc_metrics_and_loss(bottleneck_losses, quantiser_metrics, prenorms, x_in, x_outs)
+        x_outs, bottleneck_losses, prenorms, metrics = self.generator(x_in)
+        loss, metrics = self.calc_metrics_and_loss(bottleneck_losses, metrics, prenorms, x_in, x_outs)
         return loss, metrics, x_outs
 
     @torch.no_grad()
@@ -211,36 +190,6 @@ class WavAutoEncoder(LightningModule):
                 metrics[key] = val.detach()
         return loss, metrics
 
-    def get_fft(self, sound):
-        return self.spec(sound).permute(0, 3, 1, 2)
-
-    def get_plot(self, fft):
-        ampl = (fft[0]**2 + fft[1]**2)**(1/2)
-
-        fig, ax = plt.subplots()
-        data = ampl.detach().cpu().numpy()
-        dbb = librosa.amplitude_to_db(data, ref=np.max)
-        img = librosa.display.specshow(dbb, x_axis='time', y_axis="linear", ax=ax,
-                                       hop_length=128,
-                                       sr=self.sr)
-        fig.colorbar(img, ax=ax)
-        fig.tight_layout()
-        fig.canvas.draw()
-        X = np.array(fig.canvas.renderer.buffer_rgba())
-        plt.close(fig)
-        return X
-
-    def plot_spec_as(self, sounds, name, nr):
-        ffts = self.get_fft(sounds)
-        for i, fft in enumerate(ffts):
-            image = self.get_plot(fft)
-            self.logger.experiment.add_image(f"spec_{i}/{name}", np.transpose(image, (2, 0, 1)), nr)
-
-    def plot_spectrorams(self, batch, batch_outs, nr):
-        self.plot_spec_as(batch, f"in", nr)
-        for level, lvl_outs in enumerate(batch_outs):
-            self.plot_spec_as(lvl_outs, f"out_lvl_{level}", nr)
-
     def log_metrics_and_samples(self, loss, metrics, batch, batch_outs, batch_idx, optimize_generator, phase):
         prefix = phase + "_" if phase != "train" else ""
         self.log(prefix + "loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
@@ -252,7 +201,7 @@ class WavAutoEncoder(LightningModule):
         nr = self.log_nr.get(prefix, 0)
         self.log_nr[prefix] = nr + 1
         tlogger = self.logger.experiment
-        self.plot_spectrorams(batch, batch_outs, nr)
+        self.generator.audio_logger.plot_spectrorams(batch, batch_outs, nr)
 
         for i, xin in enumerate(batch):
             tlogger.add_audio(prefix + f"sample_{i}/in", xin, nr, self.sr)

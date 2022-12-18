@@ -60,7 +60,8 @@ class WavDiscriminator(AbstractDiscriminator):
     def __init__(self, input_channels, emb_width, level, downs_t, strides_t, reduce_type, classify_each_level, levels, **block_kwargs):
         super().__init__(emb_width, classify_each_level, levels)
         self.reduce_type = reduce_type
-        self.encoder = Encoder(input_channels, emb_width, level + 1, downs_t, strides_t, **block_kwargs)
+        self.encoder = Encoder(input_channels, emb_width, level + 1, downs_t, strides_t, skip_connections=False,
+                               **block_kwargs)
         self.name = f"wav_l{level + 1}"
 
     def encode(self, x):

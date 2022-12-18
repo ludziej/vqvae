@@ -18,8 +18,10 @@ class GenerationParams(NamedTuple):
 class Conditioner(nn.Module):
     def __init__(self, preprocessing, conditioning_dropout, conds_kwargs, z_shapes, bins, token_dim, level,
                  bins_init_scale, pos_enc_type, init_bins_from_vqvae, pos_enc_lvl_over_bit, context_on_level,
-                 conditioning_concat):
+                 conditioning_concat, n_ctx, pos_init_scale):
         super().__init__()
+        self.n_ctx = n_ctx
+        self.pos_init_scale = pos_init_scale
         self.pos_enc_lvl_over_bit = pos_enc_lvl_over_bit
         self.init_bins_from_vqvae = init_bins_from_vqvae
         self.context_on_level = context_on_level
@@ -61,7 +63,7 @@ class Conditioner(nn.Module):
         if self.init_bins_from_vqvae:
             bins.weight = torch.nn.Parameter((self.get_vqvae_bins(self.level)))
         else:
-            nn.init.normal_(bins.weight, std=0.02 * self.bins_init_scale)
+            nn.init.normal_(bins.weight, std=self.bins_init_scale)
 
     # TODO implement
     def get_context_conditioning(self, context, bs, length, device=None):

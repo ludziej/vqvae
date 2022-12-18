@@ -60,7 +60,7 @@ class TrainablePositionalEncoding(nn.Module):
         super().__init__()
         self.input_shape = input_shape
         self.input_dims = np.prod(input_shape)
-        self.pos_emb = nn.Parameter(get_normal(self.input_dims, width, std=0.01 * init_scale))
+        self.pos_emb = nn.Parameter(get_normal(self.input_dims, width, std=init_scale))
 
     def forward(self, **params):
         return self.pos_emb
