@@ -26,9 +26,9 @@ def exists(val):
 
 
 class ReZero(nn.Module):
-    def __init__(self, fn):
+    def __init__(self, fn, init=0):  # originally init was 1e-3
         super().__init__()
-        self.g = nn.Parameter(torch.tensor(1e-3))
+        self.g = nn.Parameter(torch.tensor(init))
         self.fn = fn
 
     def forward(self, x, **kwargs):
