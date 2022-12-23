@@ -1,14 +1,16 @@
 import torch.nn as nn
 from vqvae.modules.resnet import Resnet1D
 from utils.old_ml_utils.misc import assert_shape
+from vqvae.modules.skip_connections import SkipConnectionsDecoder, SkipConnectionsEncoder
 
 
 class EncoderConvBlock(nn.Module):
     def __init__(self, input_emb_width, output_emb_width, down_t,
-                 stride_t, width, depth, m_conv, norm_type,
+                 stride_t, skip_connections, width, depth, m_conv, norm_type,
                  dilation_growth_rate=1, dilation_cycle=None,
                  res_scale=False, leaky_param=1e-2, use_weight_standard=True, **params):
         super().__init__()
+        self.skip_connections = skip_connections
         blocks = []
         filter_t, pad_t = stride_t * 2, stride_t // 2
         if down_t > 0:
@@ -16,22 +18,25 @@ class EncoderConvBlock(nn.Module):
                 block = nn.Sequential(
                     nn.Conv1d(input_emb_width if i == 0 else width, width, filter_t, stride_t, pad_t),
                     Resnet1D(width, depth, m_conv, dilation_growth_rate, dilation_cycle, res_scale,
-                             norm_type=norm_type, leaky_param=leaky_param, use_weight_standard=use_weight_standard),
+                             return_skip=skip_connections, norm_type=norm_type, leaky_param=leaky_param,
+                             use_weight_standard=use_weight_standard),
                 )
                 blocks.append(block)
             block = nn.Conv1d(width, output_emb_width, 3, 1, 1)
             blocks.append(block)
-        self.encode_block = nn.Sequential(*blocks)
+        self.encode_block = nn.Sequential(*blocks) if not self.skip_connections else \
+            SkipConnectionsEncoder(list(zip(blocks, [True] * down_t + [False])), pass_skips=True)
 
     def forward(self, x):
         return self.encode_block(x)
 
 
 class DecoderConvBock(nn.Module):
-    def __init__(self, input_emb_width, output_emb_width, down_t,
-                 stride_t, width, depth, m_conv, norm_type, dilation_growth_rate=1, dilation_cycle=None,
+    def __init__(self, input_emb_width, output_emb_width, down_t, stride_t,
+                 skip_connections, width, depth, m_conv, norm_type, dilation_growth_rate=1, dilation_cycle=None,
                  res_scale=False, reverse_decoder_dilation=False, leaky_param=1e-2, use_weight_standard=True, **params):
         super().__init__()
+        self.skip_connections = skip_connections
         blocks = []
         if down_t > 0:
             filter_t, pad_t = stride_t * 2, stride_t // 2
@@ -40,15 +45,17 @@ class DecoderConvBock(nn.Module):
             for i in range(down_t):
                 block = nn.Sequential(
                     Resnet1D(width, depth, m_conv, dilation_growth_rate, dilation_cycle, leaky_param=leaky_param,
-                             norm_type=norm_type, res_scale=res_scale, reverse_dilation=reverse_decoder_dilation,
-                             use_weight_standard=use_weight_standard),
+                             get_skip=skip_connections, norm_type=norm_type, res_scale=res_scale,
+                             reverse_dilation=reverse_decoder_dilation, use_weight_standard=use_weight_standard),
                     nn.ConvTranspose1d(width, input_emb_width if i == (down_t - 1) else width, filter_t, stride_t, pad_t),
                 )
                 blocks.append(block)
-        self.decoder_block = nn.Sequential(*blocks)
+        self.decoder_block = nn.Sequential(*blocks) if not self.skip_connections else \
+            SkipConnectionsDecoder(list(zip(blocks, [False] + [True] * down_t)))
 
-    def forward(self, x):
-        return self.decoder_block(x)
+    def forward(self, x, skips=None):
+        args = (x, skips) if skips is not None else (x,)
+        return self.decoder_block(*args)
 
 
 class Encoder(nn.Module):
@@ -68,10 +75,10 @@ class Encoder(nn.Module):
 
         self.level_blocks = nn.ModuleList([
             EncoderConvBlock(input_emb_width if level == 0 else output_emb_width,
-                             output_emb_width, down_t, stride_t, **block_kwargs_copy)
+                             output_emb_width, down_t, stride_t, self.skip_connections, **block_kwargs_copy)
             for level, down_t, stride_t in zip(range(self.levels), downs_t, strides_t)])
 
-    def forward(self, x):
+    def forward(self, x, last=False):
         N, T = x.shape[0], x.shape[-1]
         emb = self.input_emb_width
         assert_shape(x, (N, emb, T))
@@ -79,14 +86,16 @@ class Encoder(nn.Module):
 
         # 64, 32, ...
         iterator = zip(range(self.levels), self.downs_t, self.strides_t)
+        skips = []
         for level, down_t, stride_t in iterator:
             level_block = self.level_blocks[level]
-            x = level_block(x)
+            x, skip = (level_block(x), []) if not self.skip_connections else level_block(x)
+            skips.append(skip)
             emb, T = self.output_emb_width, T // (stride_t ** down_t)
             assert_shape(x, (N, emb, T))
             xs.append(x)
-
-        return xs
+        xs = xs[-1] if last else xs
+        return (xs, skips) if self.skip_connections else xs
 
 
 class Decoder(nn.Module):
@@ -101,12 +110,12 @@ class Decoder(nn.Module):
         self.strides_t = strides_t
 
         self.level_blocks = nn.ModuleList(
-            DecoderConvBock(output_emb_width, output_emb_width, down_t, stride_t, **block_kwargs)
+            DecoderConvBock(output_emb_width, output_emb_width, down_t, stride_t, self.skip_connections, **block_kwargs)
             for level, down_t, stride_t in zip(range(self.levels), downs_t, strides_t))
 
         self.out = nn.Conv1d(output_emb_width, input_emb_width, 3, 1, 1)
 
-    def forward(self, xs, all_levels=True):
+    def forward(self, xs, all_levels=True, skips=None):
         if all_levels:
             assert len(xs) == self.levels
         else:
@@ -117,10 +126,10 @@ class Decoder(nn.Module):
         assert_shape(x, (N, emb, T))
 
         # 32, 64 ...
-        iterator = reversed(list(zip(range(self.levels), self.downs_t, self.strides_t)))
-        for level, down_t, stride_t in iterator:
+        iterator = reversed(list(zip(range(self.levels), self.downs_t, self.strides_t, skips)))
+        for level, down_t, stride_t, skip in iterator:
             level_block = self.level_blocks[level]
-            x = level_block(x)
+            x = level_block(x, skips=skip)
             emb, T = self.output_emb_width, T * (stride_t ** down_t)
             assert_shape(x, (N, emb, T))
             if level != 0 and all_levels:

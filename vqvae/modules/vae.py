@@ -39,3 +39,11 @@ class VAEBottleneckBlock(nn.Module):
         kl_loss = self.get_kl_div(mu, var, logvar)
         metrics = {"vae_sigma": torch.mean(var), "vae_mu": torch.mean(mu)}
         return z, kl_loss, metrics
+
+    def encode(self, x):
+        z, _, _ = self(x)
+        return z
+
+    def decode(self, x):
+        return x
+

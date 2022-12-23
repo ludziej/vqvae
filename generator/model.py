@@ -3,10 +3,9 @@ import torch.nn as nn
 import numpy as np
 import statistics
 from pytorch_lightning import LightningModule
-from generator.modules.performer import Performer
+from generator.modules.performer import Performer, top_k, repetition_penalty_fn
 from vqvae.model import WavCompressor
 import torch.nn.functional as F
-from performer_pytorch.autoregressive_wrapper import top_k, repetition_penalty_fn
 from optimization.scheduler import ReduceLROnPlateauWarmup
 from optimization.normalization import CustomNormalization
 from utils.misc import time_run

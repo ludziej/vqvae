@@ -45,7 +45,7 @@ class FourierFeaturesPositionalEncoding(nn.Module):
 
 
 class BPMPositionalEncoding(nn.Module):
-    def __int__(self, depth: int, levels_over_bit=4):
+    def __init__(self, depth: int, levels_over_bit=4):
         super().__init__()
         self.depth = depth
         self.levels_over_bit = levels_over_bit

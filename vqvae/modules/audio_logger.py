@@ -15,6 +15,15 @@ class AudioLogger(nn.Module):
         super(AudioLogger, self).__init__()
         self.sr = sr
         self.spec = STFT(n_fft=512, center=True, hop_length=128, sr=self.sr, verbose=False)
+        self.log_nr = {"val_": 0, "": 0, "test_": 0}
+
+    def next_log_nr(self, prefix):
+        nr = self.log_nr.get(prefix, 0)
+        self.log_nr[prefix] = nr + 1
+
+    def log_sounds(self, batch, name, prefix):
+        for i, xin in enumerate(batch):
+            self.logger.experiment.add_audio(prefix + name(i), xin, self.log_nr.get(prefix, 0), self.sr)
 
     def get_fft(self, sound):
         return self.spec(sound).permute(0, 3, 1, 2)
@@ -35,13 +44,14 @@ class AudioLogger(nn.Module):
         plt.close(fig)
         return X
 
-    def plot_spec_as(self, sounds, name, nr):
+    def plot_spec_as(self, sounds, name, prefix):
+        nr = self.log_nr.get(prefix, 0)
         ffts = self.get_fft(sounds)
         for i, fft in enumerate(ffts):
             image = self.get_plot(fft)
             self.logger.experiment.add_image(f"spec_{i}/{name}", np.transpose(image, (2, 0, 1)), nr)
 
-    def plot_spectrorams(self, batch, batch_outs, nr):
-        self.plot_spec_as(batch, f"in", nr)
+    def plot_spectrorams(self, batch, batch_outs, prefix):
+        self.plot_spec_as(batch, f"in", prefix)
         for level, lvl_outs in enumerate(batch_outs):
-            self.plot_spec_as(lvl_outs, f"out_lvl_{level}", nr)
+            self.plot_spec_as(lvl_outs, f"out_lvl_{level}", prefix)

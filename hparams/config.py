@@ -26,8 +26,10 @@ config_big_hparams = Hparams(
     log_file="logs.txt",
     track_grad_norm=-1,
     log_every_n_steps=10,
+    restore_training=True,
     detect_anomaly=True,
     device_stats=False,
+    fp16=False,
 )
 
 config_small_hparams = Hparams(
@@ -47,8 +49,10 @@ config_small_hparams = Hparams(
     log_file="logs.txt",
     track_grad_norm=-1,
     log_every_n_steps=10,
+    restore_training=True,
     detect_anomaly=True,
     device_stats=False,
+    fp16=False,
 )
 
 config_gen_big_hparams = Hparams(

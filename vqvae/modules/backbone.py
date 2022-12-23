@@ -9,25 +9,35 @@ from vqvae.modules.audio_logger import AudioLogger
 
 
 class WavAutoEncoder(nn.Module):
-    def __init__(self, sr, _block_kwargs, downs_t, emb_width, fixed_commit, input_channels, l_bins, levels, mu,
-                 norm_before_vqvae, strides_t, bottleneck_type, skip_connections):
+    def __init__(self, sr, downs_t, emb_width, fixed_commit, input_channels, l_bins, levels, mu,
+                 norm_before_vqvae, strides_t, bottleneck_type, skip_connections, block_params, multipliers):
         super().__init__()
         self.sr = sr
+        self.multipliers = multipliers
         self.skip_connections = skip_connections
         self.levels = levels
-        self.audio_logger = AudioLogger(sr=self.sr)
+        self.block_params = block_params
+        assert len(multipliers) == levels, "Invalid number of multipliers"
 
+        self.audio_logger = AudioLogger(sr=self.sr)
         encoders = nn.ModuleList([Encoder(input_channels, emb_width, level + 1, downs_t[:level + 1],
-                                          strides_t[:level + 1], self.skip_connections, **_block_kwargs(level))
+                                          strides_t[:level + 1], self.skip_connections, **self.block_kwargs(level))
                                   for level in range(levels)])
         decoders = nn.ModuleList([Decoder(input_channels, emb_width, level + 1, downs_t[:level + 1],
-                                          strides_t[:level + 1], self.skip_connections, **_block_kwargs(level))
+                                          strides_t[:level + 1], self.skip_connections, **self.block_kwargs(level))
                                   for level in range(levels)])
         bottleneck, self.name = self.get_bottleneck(bottleneck_type, l_bins, emb_width, mu,
                                                     levels, norm_before_vqvae, fixed_commit)
         self.encoders = encoders
         self.decoders = decoders
         self.bottleneck = bottleneck
+
+    def block_kwargs(self, level, multiply=True):
+        this_block_kwargs = dict(self.block_params)
+        if multiply:
+            this_block_kwargs["width"] *= self.multipliers[level]
+        this_block_kwargs["depth"] *= self.multipliers[level]
+        return this_block_kwargs
 
     def get_bottleneck(self, bottleneck_type, l_bins, emb_width, mu, levels, norm_before_vqvae, fixed_commit):
         if bottleneck_type == "vqvae":
@@ -42,7 +52,7 @@ class WavAutoEncoder(nn.Module):
             raise Exception(f"Unknown bottleneck type {bottleneck_type}")
 
     def forward(self, x_in):
-        x_encoded, x_skips = zip(*[encoder(x_in)[-1] for encoder in self.generator.encoders])
+        x_encoded, x_skips = zip(*[encoder(x_in, last=True) for encoder in self.generator.encoders])
         zs, xs_quantised, bottleneck_losses, prenorms, metrics = self.generator.bottleneck(x_encoded)
 
         x_outs = [decoder(xs_quantised[level:level+1], all_levels=False, skip=skip)

@@ -3,8 +3,10 @@ import torch.nn.functional as F
 from torch import nn
 
 from functools import partial
-from performer_pytorch.reversible import ReversibleSequence, SequentialSequence
+
 from performer_pytorch import SelfAttention, CrossAttention, ProjectionUpdater
+from performer_pytorch.reversible import ReversibleSequence, SequentialSequence
+from performer_pytorch.autoregressive_wrapper import top_k, repetition_penalty_fn
 
 
 def cast_tuple(val):

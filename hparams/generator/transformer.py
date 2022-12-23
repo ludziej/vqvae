@@ -21,7 +21,7 @@ default_transformer_params = Hparams(
     heads=4,  # 8 orig
     ff_mult=1,
     dim_head=128,
-    ckpt_freq=100,
+    ckpt_freq=10,
     lr=0.0003,
     start_gen_sample_len=5,
     pos_init_scale=0.1,
@@ -43,7 +43,7 @@ default_transformer_params = Hparams(
     rezero=False,
     log_interval=5000,
     #ckpt_name="model-{epoch}-{val_loss:.2f}-{loss:.2f}",
-    ckpt_name='last_model',
+    distinct_ckpt_name='last_model',
     prep_on_cpu=True,
     prepr_encode_chunks=1,
     use_start_token_layer=False,
@@ -73,6 +73,6 @@ small_transformer_params = default_transformer_params.update(
     norm_type="none",
     conditioning_dropout=0.,
     log_interval=5000,
-    ckpt_name="model-{epoch}-{val_loss:.2f}-{loss:.2f}",
+    distinct_ckpt_name="model-{epoch}-{val_loss:.2f}-{loss:.2f}",
     **dirs_config.__dict__,
 )

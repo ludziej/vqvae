@@ -19,23 +19,28 @@ class NoSmoothingTQDM(TQDMProgressBar):
 
 def generic_train(model, hparams, train, test, model_hparams, root_dir):
     tb_logger = pl_loggers.TensorBoardLogger(root_dir / model_hparams.logs_dir)
-    checkpoint_callback = ModelCheckpoint(dirpath=root_dir / model_hparams.ckpt_dir, filename=model_hparams.ckpt_name,
-                                          every_n_train_steps=model_hparams.ckpt_freq)
+    checkpoint_callback = ModelCheckpoint(dirpath=root_dir / model_hparams.ckpt_dir,
+                                          filename=model_hparams.distinct_ckpt_name,
+                                          every_n_train_steps=model_hparams.ckpt_freq, save_last=True)
     tqdm_pb = NoSmoothingTQDM()
     lr_monitor = LearningRateMonitor(logging_interval='step')
     callbacks = [checkpoint_callback, tqdm_pb, lr_monitor]  # , device_stats]
     if hparams.device_stats:
         callbacks.append(DeviceStatsMonitor())
 
+    precision = 16 if hparams.fp16 else 32
     trainer = Trainer(gpus=hparams.gpus, profiler="simple", max_epochs=hparams.max_epochs,
                       max_steps=hparams.max_steps if hparams.max_steps != 0 else -1,
                       gradient_clip_val=hparams.gradient_clip_val, callbacks=callbacks,
                       log_every_n_steps=hparams.log_every_n_steps,
                       logger=tb_logger, strategy=hparams.accelerator,
-                      detect_anomaly=hparams.detect_anomaly,
+                      detect_anomaly=hparams.detect_anomaly, precision=precision,
                       default_root_dir=root_dir / model_hparams.default_ckpt_root,
                       track_grad_norm=hparams.track_grad_norm)
-    trainer.fit(model, train_dataloaders=train, val_dataloaders=test)
+    restore_path = root_dir / model_hparams.ckpt_dir / model_hparams.restore_ckpt \
+        if model_hparams.restore_ckpt is not None and hparams.restore_training else None
+    restore_path = restore_path if restore_path is not None and os.path.exists(restore_path) else None
+    trainer.fit(model, train_dataloaders=train, val_dataloaders=test, ckpt_path=restore_path)
 
 
 def get_last_path(main_dir, ckpt_dir, best_ckpt):

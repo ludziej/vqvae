@@ -13,8 +13,8 @@ import numpy as np
 
 class WavCompressor(LightningModule):
     def __init__(self, input_channels, levels, downs_t, strides_t, loss_fn, norm_before_vqvae, fixed_commit, logger,
-                 emb_width, l_bins, mu, bottleneck_lw, spectral, multispectral, forward_params, multipliers, bottleneck_type,
-                 adv_params, log_interval, prenorm_normalisation, prenorm_loss_weight, skip_valid_logs,
+                 emb_width, l_bins, mu, bottleneck_lw, spectral, multispectral, forward_params, multipliers,
+                 bottleneck_type, adv_params, log_interval, prenorm_normalisation, prenorm_loss_weight, skip_valid_logs,
                  rms_normalize_level, **params):
         super().__init__()
 
@@ -45,21 +45,11 @@ class WavCompressor(LightningModule):
         self.sr = self.forward_params["sr"] = params["sr"]
         self.downsamples = calculate_strides(strides_t, downs_t)
         self.hop_lengths = np.cumprod(self.downsamples)
-        self.log_nr = {"val_": 0, "": 0, "test_": 0}
 
-        assert len(multipliers) == levels, "Invalid number of multipliers"
-
-        def _block_kwargs(level, multiply=True):
-            this_block_kwargs = dict(params)
-            if multiply:
-                this_block_kwargs["width"] *= self.multipliers[level]
-            this_block_kwargs["depth"] *= self.multipliers[level]
-            return this_block_kwargs
-
-        self.generator = WavAutoEncoder(self.sr, _block_kwargs, downs_t, emb_width, fixed_commit, input_channels,
+        self.generator = WavAutoEncoder(self.sr, downs_t, emb_width, fixed_commit, input_channels,
                                         l_bins, levels, mu, norm_before_vqvae, strides_t, bottleneck_type,
-                                        skip_connections=False)
-        adv_block = _block_kwargs(self.discriminator_level, multiply=adv_params["multiply_level"])
+                                        multipliers=multipliers, block_params=params, skip_connections=False)
+        adv_block = self.generator.block_kwargs(self.discriminator_level, multiply=adv_params["multiply_level"])
         self.discriminator = AdversarialTrainer(**adv_params, **adv_block,
                                                 input_channels=input_channels, level=self.discriminator_level,
                                                 downs_t=downs_t[:self.discriminator_level + 1], emb_width=emb_width,
@@ -198,13 +188,8 @@ class WavCompressor(LightningModule):
         if not (batch_idx % self.log_interval == 0 and optimize_generator and self.local_rank == 0 and
                 (phase == "train" or not self.skip_valid_logs)):
             return  # log samples once per interval
-        nr = self.log_nr.get(prefix, 0)
-        self.log_nr[prefix] = nr + 1
-        tlogger = self.logger.experiment
-        self.generator.audio_logger.plot_spectrorams(batch, batch_outs, nr)
 
-        for i, xin in enumerate(batch):
-            tlogger.add_audio(prefix + f"sample_{i}/in", xin, nr, self.sr)
+        self.generator.audio_logger.plot_spectrorams(batch, batch_outs, prefix)
+        self.generator.audio_logger.log_sounds(batch, lambda i: f"sample_{i}/in", prefix)
         for level, xouts in enumerate(batch_outs):
-            for i, out in enumerate(xouts):
-                tlogger.add_audio(prefix + f"sample_{i}/out_lvl_{level + 1}", out, nr, self.sr)
+            self.generator.audio_logger.log_sounds(xouts, lambda i: f"sample_{i}/out_lvl_{level + 1}", prefix)

@@ -27,7 +27,7 @@ default_vqvae_opt_hparams = Hparams(
     ckpt_freq=10,
     band_est_dur=1000,
     #ckpt_name='model_{epoch}_{loss_step:.2f}',
-    ckpt_name='last_model',
+    distinct_ckpt_name='last_model',
     **dirs_config.__dict__,
 )
 big_vqvae_opt_hparams = default_vqvae_opt_hparams.update(
