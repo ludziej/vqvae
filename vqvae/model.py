@@ -48,7 +48,8 @@ class WavCompressor(LightningModule):
 
         self.generator = WavAutoEncoder(self.sr, downs_t, emb_width, fixed_commit, input_channels,
                                         l_bins, levels, mu, norm_before_vqvae, strides_t, bottleneck_type,
-                                        multipliers=multipliers, block_params=params, skip_connections=False)
+                                        base_model=self, multipliers=multipliers, block_params=params,
+                                        skip_connections=False)
         adv_block = self.generator.block_kwargs(self.discriminator_level, multiply=adv_params["multiply_level"])
         self.discriminator = AdversarialTrainer(**adv_params, **adv_block,
                                                 input_channels=input_channels, level=self.discriminator_level,
@@ -182,9 +183,7 @@ class WavCompressor(LightningModule):
 
     def log_metrics_and_samples(self, loss, metrics, batch, batch_outs, batch_idx, optimize_generator, phase):
         prefix = phase + "_" if phase != "train" else ""
-        self.log(prefix + "loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
-        for name, val in metrics.items():
-            self.log(prefix + name, val,  on_step=True, on_epoch=True, logger=True, sync_dist=True)
+        self.generator.audio_logger.log_metrics({**metrics, "loss": loss}, prefix)
         if not (batch_idx % self.log_interval == 0 and optimize_generator and self.local_rank == 0 and
                 (phase == "train" or not self.skip_valid_logs)):
             return  # log samples once per interval

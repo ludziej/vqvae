@@ -34,6 +34,7 @@ default_vqvae_model_params = Hparams(
     forward_params=default_forward_params,
     skip_valid_logs=True,
     from_last_checkpot=True,
+    log_weights_norm=True,
     leaky_param=1e-2,
     bottleneck_type="vqvae",  # ["none", "vqvae", "vae"]
     main_dir="generated/models/small_vqvae/",

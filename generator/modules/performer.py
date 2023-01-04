@@ -129,7 +129,7 @@ class Performer(nn.Module):
                  ff_mult=4, nb_features=None, feature_redraw_interval=1000, reversible=False, ff_chunks=1,
                  generalized_attention=False, kernel_fn=nn.ReLU(), use_scalenorm=False, use_rezero=False,
                  ff_glu=False, ff_dropout=0., attn_dropout=0., cross_attend=False, no_projection=False,
-                 auto_check_redraw=True, qkv_bias=True, attn_out_bias=True, shift_tokens=False):
+                 auto_check_redraw=True, qkv_bias=True, attn_out_bias=True, shift_tokens=False, rezero_init=1e-3):
         super().__init__()
         layers = nn.ModuleList([])
         local_attn_heads = cast_tuple(local_attn_heads)
@@ -142,7 +142,7 @@ class Performer(nn.Module):
         if use_scalenorm:
             wrapper_fn = partial(PreScaleNorm, dim)
         elif use_rezero:
-            wrapper_fn = ReZero
+            wrapper_fn = partial(ReZero, init=rezero_init)
         else:
             wrapper_fn = partial(PreLayerNorm, dim)
 

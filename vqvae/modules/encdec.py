@@ -1,3 +1,5 @@
+import itertools
+
 import torch.nn as nn
 from vqvae.modules.resnet import Resnet1D
 from utils.old_ml_utils.misc import assert_shape
@@ -116,10 +118,9 @@ class Decoder(nn.Module):
         self.out = nn.Conv1d(output_emb_width, input_emb_width, 3, 1, 1)
 
     def forward(self, xs, all_levels=True, skips=None):
-        if all_levels:
-            assert len(xs) == self.levels
-        else:
-            assert len(xs) == 1
+        assert len(xs) == (self.levels if all_levels else 1)
+        skips = itertools.repeat(None) if skips is None else skips
+
         x = xs[-1]
         N, T = x.shape[0], x.shape[-1]
         emb = self.output_emb_width

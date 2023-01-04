@@ -14,6 +14,7 @@ from generator.modules.conditioner import Conditioner, GenerationParams
 from optimization.opt_maker import get_lr_scheduler
 from generator.modules.fast_transformer import FastTransformer
 from typing import Dict
+from vqvae.modules.audio_logger import AudioLogger
 from functools import partial
 
 
@@ -26,7 +27,7 @@ class LevelGenerator(LightningModule):
                  conditioning_dropout: float, log_interval, token_dim: int, scheduler_type: str, pos_enc_type: str,
                  pos_enc_lvl_over_bit: int, opt_params, conditioning_concat, prep_on_cpu, use_start_token_layer,
                  use_fasttransformer, feature_map_dims, ff_mult, acc_levels, rezero, label_smoothing,
-                 attn_dropout, **params):
+                 attn_dropout, rezero_init, log_weights_norm, **params):
         super().__init__()
         self.n_ctx = n_ctx
         self.level = level
@@ -57,12 +58,12 @@ class LevelGenerator(LightningModule):
         self.is_first_batch = True
         self.eos_token = None
         self.my_logger = preprocessing.my_logger
-        self.log_nr = {"val_": 0, "": 0, "test_": 0}
+        self.audio_logger = AudioLogger(self.sr, model=self, use_weights_logging=log_weights_norm)
 
         trans_args = dict(dim=dim, depth=depth, heads=heads, dim_head=dim_head, ff_mult=ff_mult,
                           feature_redraw_interval=feature_redraw_interval)
         self.transformer = FastTransformer(feature_map_dims=feature_map_dims, **trans_args) if use_fasttransformer \
-            else Performer(causal=True, use_rezero=rezero, nb_features=feature_map_dims, **trans_args)
+            else Performer(causal=True, use_rezero=rezero, rezero_init=rezero_init, nb_features=feature_map_dims, **trans_args)
 
         self.sample_len = preprocessing.tokens_to_samples_num(self.n_ctx, self.level)
         assert not init_bins_from_vqvae or self.token_dim == preprocessing.emb_width
@@ -264,24 +265,22 @@ class LevelGenerator(LightningModule):
         in_quant, in_zeros = self.summarize_and_reset_tok_distr(self.in_token_distr)
         out_quant, out_zeros = self.summarize_and_reset_tok_distr(self.out_token_distr)
 
-        self.log("dead_tokens_perc/in", in_zeros, logger=True, prog_bar=True, sync_dist=True)
-        self.log("dead_tokens_perc/out", out_zeros, logger=True, prog_bar=True, sync_dist=True)
+        self.log("dead_tokens_perc/in", in_zeros, logger=True, sync_dist=True)
+        self.log("dead_tokens_perc/out", out_zeros, logger=True, sync_dist=True)
         for i, (in_q, out_q) in enumerate(zip(in_quant, out_quant)):
             perc = (i / self.token_log_quantiles * 100)
             self.log(f"tok_discr_quant_in/{perc:.0f}%", in_q, logger=True, sync_dist=True)
             self.log(f"tok_discr_quant_out/{perc:.0f}%", out_q, logger=True, sync_dist=True)
 
     def log_metrics(self, loss, metrics, prefix=""):
+        self.audio_logger.next_log_nr(prefix)
+        self.audio_logger.log_metrics({**metrics, "loss": loss}, prefix)
         self.log_token_distr()
-        self.log_nr[prefix] = self.log_nr.get(prefix, 0) + 1
-        for k, v in metrics.items():
-            self.log(k, v, on_step=True, prog_bar=True, logger=True, sync_dist=True)
-        self.log(prefix + "loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
         self.is_first_batch = False if not self.trainer.sanity_checking else self.is_first_batch
 
     def check_log_samples(self, batch, batch_idx, gen_params: GenerationParams, prefix=""):
         if self.is_sampling_time(prefix, batch_idx):
-            self.log_samples(batch, self.log_nr.get(prefix, 0), prefix, gen_params=gen_params)
+            self.log_samples(batch, prefix, gen_params=gen_params)
 
     def is_sampling_time(self, prefix, batch_idx):
         """ log samples once per log_interval and once per valid """
@@ -290,27 +289,22 @@ class LevelGenerator(LightningModule):
              (self.trainer.current_epoch * self.trainer.num_training_batches + batch_idx) % self.log_interval == 0)
 
     @torch.no_grad()
-    def log_samples(self, batch, nr, prefix, gen_params: GenerationParams, with_tqdm=True):
+    def log_samples(self, batch, prefix, gen_params: GenerationParams, with_tqdm=True):
         # generate continuation audio
-        tlogger = self.logger.experiment
         con_samples, speed = self.continue_sound(batch, prefix_token_perc=self.log_starting_context_perc,
                                                  params=gen_params, return_speed=True, with_begin=True,
                                                  with_tqdm=with_tqdm)
-        self.log("1s_gen_time", speed, sync_dist=True, logger=True, on_step=True)
-        for i, sample in enumerate(con_samples):
-            tlogger.add_audio(prefix + f"sample_con_{i}", sample, nr, self.sr)
+        self.log("1s_gen_time", speed, sync_dist=True, logger=True)
+        self.audio_logger.log_sounds(con_samples, lambda i: f"sample_con/{i}", prefix)
 
-        if prefix != "":  # skip these for valid
-            return
-        if self.context_on_level:  # skip these for upsampler
-            return
         if not self.prep_on_cpu:
             torch.cuda.empty_cache()
+        if prefix != "" or self.context_on_level:  # skip these for valid and for upsampler
+            return
 
         # raw generation logging only for train on prior, because it does not depend on input data
         samples = self.generate(self.log_sample_size, bs=self.log_sample_bs, with_tqdm=with_tqdm)
-        for i, sample in enumerate(samples):
-            tlogger.add_audio(prefix + f"sample_raw_{i}", sample, nr, self.sr)
+        self.audio_logger.log_sounds(samples, lambda i: f"sample_raw/{i}", prefix)
 
     # boilerplate
 

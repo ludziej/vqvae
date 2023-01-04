@@ -13,7 +13,7 @@ class DiffusionUnet(LightningModule):
         super().__init__()
         self.opt_params = opt_params
         self.diffusion = Diffusion(**diff_params)
-        self.autenc = WavAutoEncoder(**autenc_params)
+        self.autenc = WavAutoEncoder(**autenc_params, base_model=self)
         self.vae = vae
         self.log_sample_bs = log_sample_bs
         self.encode_chunks = encode_chunks
@@ -86,17 +86,15 @@ class DiffusionUnet(LightningModule):
 
     def log_metrics_and_samples(self, loss, metrics, sounds_dict, t, batch_idx, phase):
         prefix = phase + "_" if phase != "train" else ""
-        self.log(prefix + "loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
-        for name, val in metrics.items():
-            self.log(prefix + name, val, on_step=True, on_epoch=True, logger=True, sync_dist=True)
+        self.autenc.audio_logger.log_metrics({**metrics, "loss": loss}, prefix)
 
         if not (batch_idx % self.log_interval == 0 and self.local_rank == 0 and
                 (phase == "train" or not self.skip_valid_logs)):
             return  # log samples once per interval
 
         samples = self.sample(self.log_sample_bs)
-        self.autenc.plot_spec_as.plot_spec_as(samples, lambda i: f"generated_samples/{i}", prefix)
-        self.autenc.audio_logger.log_sounds(samples, lambda i: f"generated_specs/{i}", prefix)
+        self.autenc.plot_spec_as.plot_spec_as(samples, lambda i: f"generated_specs/{i}", prefix)
+        self.autenc.audio_logger.log_sounds(samples, lambda i: f"generated_samples/{i}", prefix)
         for name, latent_sound in sounds_dict.items():
             sound = self.postprocess(latent_sound)
             self.autenc.plot_spec_as.plot_spec_as(sound, lambda i: f"spec_{i}/{name}", prefix)

@@ -1,8 +1,6 @@
 import torch
 import torch.nn as nn
-import torch as t
-from nnAudio.Spectrogram import CQT2010v2, STFT
-import librosa
+from nnAudio.Spectrogram import STFT
 import librosa.display
 import numpy as np
 import librosa
@@ -11,9 +9,13 @@ import matplotlib.pyplot as plt
 
 
 class AudioLogger(nn.Module):
-    def __init__(self, sr):
+    def __init__(self, sr, model, use_weights_logging=False):
         super(AudioLogger, self).__init__()
+        self.model = [model]
         self.sr = sr
+        self.use_weights_logging = use_weights_logging
+        self.tlogger = lambda: self.model[0].logger.experiment
+        self.my_log = lambda *x, **xx: self.model[0].log(*x, **xx)
         self.spec = STFT(n_fft=512, center=True, hop_length=128, sr=self.sr, verbose=False)
         self.log_nr = {"val_": 0, "": 0, "test_": 0}
 
@@ -21,9 +23,20 @@ class AudioLogger(nn.Module):
         nr = self.log_nr.get(prefix, 0)
         self.log_nr[prefix] = nr + 1
 
+    def log_weights_norm(self):
+        for name, value in self.model[0].named_parameters():
+            norm = torch.linalg.norm(value)
+            self.my_log(f"weight_norm/{name}", norm, logger=True, sync_dist=True)
+
+    def log_metrics(self, metrics, prefix=""):
+        for k, v in metrics.items():
+            self.my_log(prefix + k, v, prog_bar=True, logger=True, sync_dist=True)
+        if self.use_weights_logging:
+            self.log_weights_norm()
+
     def log_sounds(self, batch, name, prefix):
         for i, xin in enumerate(batch):
-            self.logger.experiment.add_audio(prefix + name(i), xin, self.log_nr.get(prefix, 0), self.sr)
+            self.tlogger().add_audio(prefix + name(i), xin, self.log_nr.get(prefix, 0), self.sr)
 
     def get_fft(self, sound):
         return self.spec(sound).permute(0, 3, 1, 2)
@@ -34,9 +47,7 @@ class AudioLogger(nn.Module):
         fig, ax = plt.subplots()
         data = ampl.detach().cpu().numpy()
         dbb = librosa.amplitude_to_db(data, ref=np.max)
-        img = librosa.display.specshow(dbb, x_axis='time', y_axis="linear", ax=ax,
-                                       hop_length=128,
-                                       sr=self.sr)
+        img = librosa.display.specshow(dbb, x_axis='time', y_axis="linear", ax=ax, hop_length=128, sr=self.sr)
         fig.colorbar(img, ax=ax)
         fig.tight_layout()
         fig.canvas.draw()
@@ -49,7 +60,7 @@ class AudioLogger(nn.Module):
         ffts = self.get_fft(sounds)
         for i, fft in enumerate(ffts):
             image = self.get_plot(fft)
-            self.logger.experiment.add_image(f"spec_{i}/{name}", np.transpose(image, (2, 0, 1)), nr)
+            self.tlogger().add_image(f"spec_{i}/{name}", np.transpose(image, (2, 0, 1)), nr)
 
     def plot_spectrorams(self, batch, batch_outs, prefix):
         self.plot_spec_as(batch, f"in", prefix)

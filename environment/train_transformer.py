@@ -9,7 +9,7 @@ from vqvae.modules.helpers import get_sample_len_from_tokens
 def get_model(main_dir, ckpt_dir, restore_ckpt, **params):
     last_path = get_last_path(main_dir, ckpt_dir, restore_ckpt)
     params["logger"].info(f"Restoring performer from {last_path}" if last_path else f"Starting performer training from scratch")
-    model = LevelGenerator.load_from_checkpoint(last_path, **params) \
+    model = LevelGenerator.load_from_checkpoint(last_path, **params, strict=False) \
         if last_path is not None else LevelGenerator(**params)
     params["logger"].debug(f"Performer Model loaded")
     return model
