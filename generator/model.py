@@ -58,6 +58,10 @@ class LevelGenerator(LightningModule):
         self.is_first_batch = True
         self.eos_token = None
         self.my_logger = preprocessing.my_logger
+
+        for param in preprocessing.parameters():
+            param.requires_grad = False
+
         self.audio_logger = AudioLogger(self.sr, model=self, use_weights_logging=log_weights_norm)
 
         trans_args = dict(dim=dim, depth=depth, heads=heads, dim_head=dim_head, ff_mult=ff_mult,
