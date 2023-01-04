@@ -1,3 +1,5 @@
+import itertools
+
 from torch import nn as nn
 import torch as t
 
@@ -54,7 +56,8 @@ class WavAutoEncoder(nn.Module):
             raise Exception(f"Unknown bottleneck type {bottleneck_type}")
 
     def forward(self, x_in):
-        x_encoded, x_skips = zip(*[encoder(x_in, last=True) for encoder in self.generator.encoders])
+        encode_data = zip(*[encoder(x_in, last=True) for encoder in self.generator.encoders])
+        x_encoded, x_skips = encode_data if self.skip_connections else (encode_data, itertools.repeat(None))
         zs, xs_quantised, bottleneck_losses, prenorms, metrics = self.generator.bottleneck(x_encoded)
 
         x_outs = [decoder(xs_quantised[level:level+1], all_levels=False, skip=skip)
