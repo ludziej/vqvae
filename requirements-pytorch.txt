@@ -1,0 +1,8 @@
+torch
+torchvision
+torchaudio
+pytorch-lightning
+tqdm
+jsonargparse
+librosa
+matplotlib
