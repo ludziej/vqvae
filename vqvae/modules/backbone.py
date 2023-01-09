@@ -56,12 +56,12 @@ class WavAutoEncoder(nn.Module):
             raise Exception(f"Unknown bottleneck type {bottleneck_type}")
 
     def forward(self, x_in):
-        encode_data = zip(*[encoder(x_in, last=True) for encoder in self.generator.encoders])
-        x_encoded, x_skips = encode_data if self.skip_connections else (encode_data, itertools.repeat(None))
-        zs, xs_quantised, bottleneck_losses, prenorms, metrics = self.generator.bottleneck(x_encoded)
+        encode_data = [encoder(x_in, last=True) for encoder in self.encoders]
+        x_encoded, x_skips = zip(*encode_data) if self.skip_connections else (encode_data, itertools.repeat(None))
+        zs, xs_quantised, bottleneck_losses, prenorms, metrics = self.bottleneck(x_encoded)
 
-        x_outs = [decoder(xs_quantised[level:level+1], all_levels=False, skip=skip)
-                  for level, (decoder, skip) in enumerate(zip(self.generator.decoders, x_skips))]
+        x_outs = [decoder(xs_quantised[level:level+1], all_levels=False, skips=skip)
+                  for level, (decoder, skip) in enumerate(zip(self.decoders, x_skips))]
         [assert_shape(x_out, x_in.shape) for x_out in x_outs]
         return x_outs, bottleneck_losses, prenorms, metrics
 
