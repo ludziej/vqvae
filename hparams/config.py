@@ -41,6 +41,7 @@ config_small_hparams = Hparams(
     upsampler=[small_upsampler_params, small_upsampler_params],
     prior=small_prior_params,
     compressor=small_vqvae_params,
+    diffusion=big_diffusion_params,
     accelerator='ddp',
     gpus=[0],
     train_path="resources/music_data/",
