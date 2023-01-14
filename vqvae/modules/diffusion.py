@@ -2,16 +2,17 @@ import torch
 import torch.nn as nn
 from tqdm import tqdm
 import logging
+from utils.misc import default
 
 
 # code from https://github.com/dome272/Diffusion-Models-pytorch/blob/main/ddpm.py
 class Diffusion(nn.Module):
-    def __init__(self, noise_steps=1000, beta_start=1e-4, beta_end=0.02, img_size=256):
+    def __init__(self, emb_width, noise_steps=1000, beta_start=1e-4, beta_end=0.02):
         super(Diffusion, self).__init__()
+        self.emb_width = emb_width
         self.noise_steps = noise_steps
         self.beta_start = beta_start
         self.beta_end = beta_end
-        self.img_size = img_size
 
         self.register_buffer('beta', self.prepare_noise_schedule())
         self.register_buffer('alpha', 1. - self.beta)
@@ -21,32 +22,37 @@ class Diffusion(nn.Module):
         return torch.linspace(self.beta_start, self.beta_end, self.noise_steps)
 
     def noise_images(self, x, t):
-        sqrt_alpha_hat = torch.sqrt(self.alpha_hat[t])[:, None, None, None]
-        sqrt_one_minus_alpha_hat = torch.sqrt(1 - self.alpha_hat[t])[:, None, None, None]
-        Ɛ = torch.randn_like(x)
-        return sqrt_alpha_hat * x + sqrt_one_minus_alpha_hat * Ɛ, Ɛ
+        sqrt_alpha_hat = torch.sqrt(self.alpha_hat[t])[:, None, None]
+        sqrt_one_minus_alpha_hat = torch.sqrt(1 - self.alpha_hat[t])[:, None, None]
+        e = torch.randn_like(x)
+        return sqrt_alpha_hat * x + sqrt_one_minus_alpha_hat * e, e
 
     def sample_timesteps(self, n):
         return torch.randint(low=1, high=self.noise_steps, size=(n,))
 
-    def sample(self, model, n):
+    def denoise_step(self, x, predicted_noise, t, add_noise=False):
+        alpha = self.alpha[t][:, None, None]
+        alpha_hat = self.alpha_hat[t][:, None, None]
+        beta = self.beta[t][:, None, None]
+        noise = torch.randn_like(x) if add_noise else torch.zeros_like(x)
+        x = 1 / torch.sqrt(alpha) * (x - ((1 - alpha) / (torch.sqrt(1 - alpha_hat))) * predicted_noise) \
+            + torch.sqrt(beta) * noise
+        return x
+
+    def sample(self, model, n, length, steps=None):
         logging.info(f"Sampling {n} new images....")
+        x = torch.randn((n, self.emb_width, length)).to(model.device)
+        return self.denoise(x, model, steps=steps)
+
+    def denoise(self, x, model, steps=None, level=0):
+        was_training = self.training
+        steps = default(steps, self.noise_steps)
         model.eval()
         with torch.no_grad():
-            x = torch.randn((n, 3, self.img_size, self.img_size)).to(self.device)
-            for i in tqdm(reversed(range(1, self.noise_steps)), position=0):
-                t = (torch.ones(n) * i).long().to(self.device)
-                predicted_noise = model(x, t)
-                alpha = self.alpha[t][:, None, None, None]
-                alpha_hat = self.alpha_hat[t][:, None, None, None]
-                beta = self.beta[t][:, None, None, None]
-                if i > 1:
-                    noise = torch.randn_like(x)
-                else:
-                    noise = torch.zeros_like(x)
-                x = 1 / torch.sqrt(alpha) * (x - ((1 - alpha) / (torch.sqrt(1 - alpha_hat))) * predicted_noise) + torch.sqrt(beta) * noise
-        model.train()
-        x = (x.clamp(-1, 1) + 1) / 2
-        x = (x * 255).type(torch.uint8)
+            for i in tqdm(list(reversed(range(1, steps))), position=0, desc="Denoising"):
+                predicted_noise = model(x)
+                t = (torch.ones(len(x)) * i).long().to(model.device)
+                x = self.denoise_step(x, predicted_noise[level], t, add_noise=i > 1)
+        model.train(was_training)
         return x
 

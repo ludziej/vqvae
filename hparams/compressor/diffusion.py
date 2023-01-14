@@ -1,44 +1,64 @@
 from hparams.parser import Hparams
+from hparams.compressor.misc import dirs_config
 
 
 default_diffusion_autenc_params = Hparams(
     levels=1,
-    downs_t=(5, 3),
-    strides_t=(2, 2),
+    downs_t=(3,),
+    strides_t=(2,),
     emb_width=64,
-    multipliers=(1, 1),
-    width=32,
-    depth=4,
+    multipliers=(1,),
+    width=64,
+    depth=8,
     m_conv=1.0,
     dilation_growth_rate=3,
-    batch_size=4,
-    sample_len=262144,
-    num_workers=5,
-    prefetch_data=5,
-    sr=22050,
-    test_perc=0.1,
     norm_type="none",
     use_weight_standard=False,
-    log_interval=100,
     log_weights_norm=True,
     skip_valid_logs=True,
     from_last_checkpot=True,
+    skip_connections=True,
+    mu=0.99,
+    norm_before_vqvae=False,
+    l_bins=2000,
     leaky_param=1e-2,
     bottleneck_type="none",  # ["none", "vqvae", "vae"]
-    main_dir="generated/models/big_diffusion/",
 )
 
-diffusion_train_params = Hparams(
+default_diffusion_train_params = Hparams(
     noise_steps=1000,
     beta_start=1e-4,
     beta_end=0.02,
-    img_size=256,
 )
 
-default_diffusion_autenc_params = Hparams(
+default_diffusion_optim_params = Hparams(
+    lr=0.0003,
+    beta1=0.9,
+    beta2=0.999,
+    weight_decay=1e-6,
+    eps=1e-08,
+    lr_warmup=100.0,
+    lr_decay=3000,
+    lr_gamma=0.3,
+    lr_scale=1.0,
+    lr_use_linear_decay=False,
+    lr_start_linear_decay=0,
+)
+
+default_diffusion_params = Hparams(
     autenc_params=default_diffusion_autenc_params,
-    diff_params=diffusion_train_params,
+    diff_params=default_diffusion_train_params,
+    opt_params=default_diffusion_optim_params,
     log_sample_bs=5,
-    encode_chunks=3,
+    log_interval=100,
+    prep_chunks=2,
     prep_level=0,
+    n_ctx=4048,
+    main_dir="generated/models/big_diffusion/",
+    ckpt_freq=10,
+    **dirs_config,
+)
+
+big_diffusion_params = default_diffusion_params.update(
+
 )

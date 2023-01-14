@@ -43,7 +43,6 @@ default_transformer_params = Hparams(
     rezero=False,
     log_interval=5000,
     #ckpt_name="model-{epoch}-{val_loss:.2f}-{loss:.2f}",
-    distinct_ckpt_name='last_model',
     prep_on_cpu=True,
     prepr_encode_chunks=1,
     rezero_init=1e-3,
@@ -75,6 +74,5 @@ small_transformer_params = default_transformer_params.update(
     norm_type="none",
     conditioning_dropout=0.,
     log_interval=5000,
-    distinct_ckpt_name="model-{epoch}-{val_loss:.2f}-{loss:.2f}",
     **dirs_config.__dict__,
 )

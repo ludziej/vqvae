@@ -46,10 +46,10 @@ class WavCompressor(LightningModule):
         self.downsamples = calculate_strides(strides_t, downs_t)
         self.hop_lengths = np.cumprod(self.downsamples)
 
-        self.generator = WavAutoEncoder(self.sr, downs_t, emb_width, fixed_commit, input_channels,
+        self.generator = WavAutoEncoder(self.sr, downs_t, emb_width, input_channels,
                                         l_bins, levels, mu, norm_before_vqvae, strides_t, bottleneck_type,
                                         base_model=self, multipliers=multipliers, block_params=params,
-                                        skip_connections=False)
+                                        skip_connections=False, fixed_commit=fixed_commit)
         adv_block = self.generator.block_kwargs(self.discriminator_level, multiply=adv_params["multiply_level"])
         self.discriminator = AdversarialTrainer(**adv_params, **adv_block,
                                                 input_channels=input_channels, level=self.discriminator_level,

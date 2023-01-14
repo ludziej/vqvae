@@ -8,6 +8,8 @@ from hparams.generator.upsampler import small_upsampler_conditioner_params, smal
     big_upsampler_conditioner_params, big_upsampler_params
 from hparams.compressor.vae import big_vae_params, small_vae_params
 from hparams.compressor.misc import dirs_config
+from hparams.compressor.diffusion import big_diffusion_params
+
 
 config_big_hparams = Hparams(
     model="compressor",
@@ -15,6 +17,7 @@ config_big_hparams = Hparams(
     upsampler=[big_upsampler_params, big_upsampler_params],
     prior=big_prior_params,
     compressor=big_vqvae_params,
+    diffusion=big_diffusion_params,
     gpus=[0],
     train_path="resources/string_quartets/preprocessed",
     test_path=None,
@@ -88,6 +91,7 @@ hparams_registry = dict(
     big_vqvae=big_vqvae_params,
     big_vae=big_vae_params,
     small_vae=small_vae_params,
+    big_diffusion=big_diffusion_params,
 
     transformer=small_transformer_params,
     big_transformer=big_transformer_params,

@@ -17,7 +17,7 @@ action_mapping = {
 
 
 def create_generator(hparams) -> SynchronousGenerator:
-    logger = create_logger(Path(hparams.logger_dir), hparams)
+    logger, root_dir = create_logger(hparams.logger_dir, hparams)
     vqvae = get_vqvae(logger=logger, **hparams.vqvae, with_train_data=False, train_path=hparams.train_path)
     prior = get_transformer(vqvae=vqvae, logger=logger, level=len(hparams.upsampler), **hparams.prior)
     upsamplers = [get_transformer(vqvae=vqvae, logger=logger, level=level, **hp)

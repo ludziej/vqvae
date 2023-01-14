@@ -30,7 +30,8 @@ class ResConv1DBlock(nn.Module):
         self.resconv = nn.Sequential(*blocks)
         self.res_scale = res_scale
 
-    def forward(self, x, skip=None):
+    def forward(self, x):
+        x, skip = x if isinstance(x, tuple) else (x, None)
         if self.concat_skip:
             assert skip is not None
             x = torch.cat([x, skip], dim=1)
@@ -57,12 +58,12 @@ class Resnet1D(nn.Module):
                   for depth in range(n_depth)]
         if reverse_dilation:
             blocks = blocks[::-1]
-        self.resblocks = SkipConnectionsEncoder(list(zip(blocks, [True]*n_depth))) if return_skip else \
+        self.resblocks = SkipConnectionsEncoder(blocks) if return_skip else \
             SkipConnectionsDecoder(blocks) if get_skip else \
                 nn.Sequential(*blocks)
 
-    def forward(self, x, skips=()):
-        return self.resblocks(x, skips) if self.get_skip else self.resblocks(x)
+    def forward(self, x):
+        return self.resblocks(x)
 
 
 class ResBlock2d(nn.Module):

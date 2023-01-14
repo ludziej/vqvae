@@ -211,9 +211,11 @@ class Bottleneck(nn.Module):
                 metrics.append(metric)
         return zs, xs_quantised, commit_losses, prenorms, metrics
 
+
 class NoBottleneckBlock(nn.Module):
     def restore_k(self):
         pass
+
 
 class NoBottleneck(nn.Module):
     def __init__(self, levels):
@@ -227,18 +229,10 @@ class NoBottleneck(nn.Module):
         return xs
 
     def decode(self, zs, start_level=0, end_level=None):
-        if end_level is None:
-            end_level = self.levels
         return zs
 
     def forward(self, xs):
-        zero = t.zeros(()).cuda()
-        commit_losses = [zero for _ in range(self.levels)]
+        zero = t.zeros(()).to(xs[0].device)
+        zeros = [zero for _ in range(self.levels)]
         metrics = [dict(entropy=zero, usage=zero, used_curr=zero, pn=zero, dk=zero) for _ in range(self.levels)]
-        return xs, xs, commit_losses, metrics
-
-if __name__ == '__main__':
-    from jukebox.utils.dist_utils import setup_dist_from_mpi
-    rank, local_rank, device = setup_dist_from_mpi(port=29600)
-    bottleneck = Bottleneck(256, 64, 0.99, 2).to(device)
-    bottleneck.check()
+        return xs, xs, zeros, zeros, metrics

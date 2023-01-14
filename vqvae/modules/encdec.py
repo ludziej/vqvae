@@ -27,7 +27,7 @@ class EncoderConvBlock(nn.Module):
             block = nn.Conv1d(width, output_emb_width, 3, 1, 1)
             blocks.append(block)
         self.encode_block = nn.Sequential(*blocks) if not self.skip_connections else \
-            SkipConnectionsEncoder(list(zip(blocks, [True] * down_t + [False])), pass_skips=True)
+            SkipConnectionsEncoder(blocks, [True] * down_t + [False], pass_skips=True)
 
     def forward(self, x):
         return self.encode_block(x)
@@ -53,11 +53,11 @@ class DecoderConvBock(nn.Module):
                 )
                 blocks.append(block)
         self.decoder_block = nn.Sequential(*blocks) if not self.skip_connections else \
-            SkipConnectionsDecoder(list(zip(blocks, [False] + [True] * down_t)))
+            SkipConnectionsDecoder(blocks, [False] + [True] * down_t)
 
     def forward(self, x, skips=None):
-        args = (x, skips) if skips is not None else (x,)
-        return self.decoder_block(*args)
+        args = (x, skips) if skips is not None else x
+        return self.decoder_block(args)
 
 
 class Encoder(nn.Module):

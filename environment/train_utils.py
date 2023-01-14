@@ -17,6 +17,16 @@ class NoSmoothingTQDM(TQDMProgressBar):
         return bar
 
 
+def generic_get_model(name, model_class, main_dir, ckpt_dir, restore_ckpt, **params):
+    last_path = get_last_path(main_dir, ckpt_dir, restore_ckpt)
+    params["logger"].info(f"Restoring {name} from {last_path}" if last_path else
+                          f"Starting {name} training from scratch")
+    model = model_class.load_from_checkpoint(last_path, **params, strict=False) \
+        if last_path is not None else model_class(**params)
+    params["logger"].debug(f"Model {name} loaded")
+    return model
+
+
 def generic_train(model, hparams, train, test, model_hparams, root_dir):
     tb_logger = pl_loggers.TensorBoardLogger(root_dir / model_hparams.logs_dir)
     checkpoint_callback = ModelCheckpoint(dirpath=root_dir / model_hparams.ckpt_dir,
@@ -54,8 +64,11 @@ def save_hparams(root_path, hparams, filename):
         json.dump(whole_save, fp=f, default=lambda obj: obj.__dict__, indent=4)
 
 
-def create_logger(root_dir, hparams, hparams_file="hparams.json"):
+def create_logger(root_dir, hparams, level=None, hparams_file="hparams.json"):
+    root_dir = Path(root_dir)
+    root_dir = root_dir / str(level) if hparams.model == "upsampler" else root_dir
     root_dir.mkdir(parents=True, exist_ok=True)
+
     strtime = datetime.now().strftime("%d.%m.%Y, %H:%M:%S")
     save_hparams(root_dir, hparams, f"{strtime} {hparams_file}")
     logging.basicConfig(format="%(asctime)s [%(threadName)-1s] [%(thread)-1s] [%(levelname)-1s]  %(message)s")
@@ -66,4 +79,4 @@ def create_logger(root_dir, hparams, hparams_file="hparams.json"):
     logger = logging.getLogger(__name__)
     logger.setLevel(hparams.logging)
     logger.addHandler(logging.FileHandler(root_dir / f"{strtime} {hparams.log_file}"))
-    return logger
+    return logger, root_dir

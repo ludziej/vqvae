@@ -7,6 +7,7 @@ from functools import partial
 from performer_pytorch import SelfAttention, CrossAttention, ProjectionUpdater
 from performer_pytorch.reversible import ReversibleSequence, SequentialSequence
 from performer_pytorch.autoregressive_wrapper import top_k, repetition_penalty_fn
+from utils.misc import default, exists
 
 
 def cast_tuple(val):
@@ -15,14 +16,6 @@ def cast_tuple(val):
 
 def empty(tensor):
     return tensor.numel() == 0
-
-
-def default(val, d):
-    return val if exists(val) else d
-
-
-def exists(val):
-    return val is not None
 
 
 class ReZero(nn.Module):

@@ -9,6 +9,14 @@ import torch as t
 from torch import nn as nn
 
 
+def exists(val):
+    return val is not None
+
+
+def default(val, d):
+    return val if exists(val) else d
+
+
 def time_run(fun):
     t = time()
     val = fun()
