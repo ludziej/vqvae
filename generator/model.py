@@ -277,7 +277,6 @@ class LevelGenerator(LightningModule):
             self.log(f"tok_discr_quant_out/{perc:.0f}%", out_q, logger=True, sync_dist=True)
 
     def log_metrics(self, loss, metrics, prefix=""):
-        self.audio_logger.next_log_nr(prefix)
         self.audio_logger.log_metrics({**metrics, "loss": loss}, prefix)
         self.log_token_distr()
         self.is_first_batch = False if not self.trainer.sanity_checking else self.is_first_batch

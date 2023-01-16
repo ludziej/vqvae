@@ -30,6 +30,7 @@ class AudioLogger(nn.Module):
                 self.my_log(f"weight_norm/{name}", norm, logger=True, sync_dist=True)
 
     def log_metrics(self, metrics, prefix=""):
+        self.next_log_nr(prefix)
         for k, v in metrics.items():
             self.my_log(prefix + k, v, prog_bar=True, logger=True, sync_dist=True)
         if self.use_weights_logging:
@@ -61,7 +62,7 @@ class AudioLogger(nn.Module):
         ffts = self.get_fft(sounds)
         for i, fft in enumerate(ffts):
             image = self.get_plot(fft)
-            self.tlogger().add_image(f"spec_{i}/{name}", np.transpose(image, (2, 0, 1)), nr)
+            self.tlogger().add_image(prefix + name(i), np.transpose(image, (2, 0, 1)), nr)
 
     def plot_spectrorams(self, batch, batch_outs, prefix):
         self.plot_spec_as(batch, f"in", prefix)
