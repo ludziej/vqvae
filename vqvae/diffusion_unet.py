@@ -55,10 +55,12 @@ class DiffusionUnet(LightningModule):
         x_noised, noise_target = self.diffusion.noise_images(x, t)
         return x_noised, noise_target, t
 
+    @torch.no_grad()
     def sample(self, bs, length):
         latent_samples = self.diffusion.sample(self, bs, length=length)
+        sample_norm = torch.mean(latent_samples**2)
         samples = self.postprocess(latent_samples)
-        return samples
+        return samples, dict(sample_norm=sample_norm)
 
     def calc_loss(self, preds, target, metrics_l):
         mse = sum([torch.mean((pred - target)**2) for pred in preds])
@@ -103,6 +105,7 @@ class DiffusionUnet(LightningModule):
 
     # metrics & logging
 
+    @torch.no_grad()
     def log_metrics_and_samples(self, loss, metrics, sounds_dict, t, batch_idx, phase, sample_len):
         prefix = phase + "_" if phase != "train" else ""
         assert len(metrics) == 1  # currently no support for multiple levels
@@ -112,7 +115,9 @@ class DiffusionUnet(LightningModule):
                 (phase == "train" or not self.skip_valid_logs)):
             return  # log samples once per interval
 
-        samples = self.sample(self.log_sample_bs, length=sample_len)
+        samples, sample_metrics = self.sample(self.log_sample_bs, length=sample_len)
+        self.autenc.audio_logger.log_add_metrics(sample_metrics, prefix)
+
         self.autenc.audio_logger.plot_spec_as(samples, lambda i: f"generated_specs/{i}", prefix)
         self.autenc.audio_logger.log_sounds(samples, lambda i: f"generated_samples/{i}", prefix)
         for name, latent_sound in sounds_dict.items():
