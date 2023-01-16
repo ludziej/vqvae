@@ -234,5 +234,5 @@ class NoBottleneck(nn.Module):
     def forward(self, xs):
         zero = t.zeros(()).to(xs[0].device)
         zeros = [zero for _ in range(self.levels)]
-        metrics = [dict(entropy=zero, usage=zero, used_curr=zero, pn=zero, dk=zero) for _ in range(self.levels)]
+        metrics = [dict() for _ in range(self.levels)]
         return xs, xs, zeros, zeros, metrics

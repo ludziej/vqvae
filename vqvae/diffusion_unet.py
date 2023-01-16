@@ -24,6 +24,9 @@ class DiffusionUnet(LightningModule):
         self.autenc = WavAutoEncoder(sr=self.preprocessing.sr,
                                      **autenc_params, input_channels=self.preprocessing.emb_width, base_model=self)
 
+        for param in self.preprocessing.parameters():
+            param.requires_grad = False
+
     def __str__(self):
         return f"Diffusion model on {self.preprocessing}"
 
@@ -37,9 +40,11 @@ class DiffusionUnet(LightningModule):
             return x_predicted, metrics
         return x_predicted
 
+    @torch.no_grad()
     def preprocess(self, sound):
         return self.preprocessing.encode(sound, self.prep_level, self.prep_level + 1, bs_chunks=self.prep_chunks)[0]
 
+    @torch.no_grad()
     def postprocess(self, latent_sound):
         decoded = self.preprocessing.decode([latent_sound], self.prep_level,
                                             self.prep_level + 1, bs_chunks=self.prep_chunks)
@@ -55,9 +60,14 @@ class DiffusionUnet(LightningModule):
         samples = self.postprocess(latent_samples)
         return samples
 
-    def calc_loss(self, preds, target, metrics):
+    def calc_loss(self, preds, target, metrics_l):
         mse = sum([torch.mean((pred - target)**2) for pred in preds])
-        return mse, metrics
+        target_norm = torch.mean(target**2)
+        for metrics, pred in zip(metrics_l, preds):
+            pred_norm = torch.mean(pred**2)
+            r_squared = 1 - mse/target_norm
+            metrics.update(target_norm=target_norm, pred_norm=pred_norm, r_squared=r_squared)
+        return mse, metrics_l
 
     def evaluation_step(self, batch, batch_idx, phase="train"):
         x_in = self.preprocess(batch)
