@@ -51,6 +51,7 @@ default_diffusion_params = Hparams(
     opt_params=default_diffusion_optim_params,
     log_sample_bs=5,
     log_interval=100,
+    max_logged_sounds=5,
     prep_chunks=2,
     prep_level=0,
     n_ctx=4048,

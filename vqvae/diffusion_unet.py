@@ -10,10 +10,11 @@ from utils.misc import default
 
 class DiffusionUnet(LightningModule):
     def __init__(self, autenc_params, preprocessing: WavCompressor, diff_params, log_sample_bs, prep_chunks,
-                 prep_level, opt_params, logger, log_interval, **params):
+                 prep_level, opt_params, logger, log_interval, max_logged_sounds, **params):
         super().__init__()
         self.log_sample_bs = log_sample_bs
         self.prep_chunks = prep_chunks
+        self.max_logged_sounds = max_logged_sounds
         self.opt_params = opt_params
         self.prep_level = prep_level
         self.my_logger = logger
@@ -121,6 +122,6 @@ class DiffusionUnet(LightningModule):
         self.autenc.audio_logger.plot_spec_as(samples, lambda i: f"generated_specs/{i}", prefix)
         self.autenc.audio_logger.log_sounds(samples, lambda i: f"generated_samples/{i}", prefix)
         for name, latent_sound in sounds_dict.items():
-            sound = self.postprocess(latent_sound)
+            sound = self.postprocess(latent_sound[:self.max_logged_sounds])
             self.autenc.audio_logger.plot_spec_as(sound, lambda i: f"spec_{i}/{name}", prefix)
             self.autenc.audio_logger.log_sounds(sound, lambda i: f"sample_{i}/{name}", prefix)

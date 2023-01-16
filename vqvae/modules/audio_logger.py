@@ -27,7 +27,7 @@ class AudioLogger(nn.Module):
         for name, value in self.model[0].named_parameters():
             if value.requires_grad:
                 norm = torch.linalg.norm(value)
-                self.my_log(f"weight_norm/{name}", norm, logger=True, sync_dist=True)
+                self.my_log(f"weight_norm/{name}", norm, logger=True, rank_zero_only=True)
 
     def log_add_metrics(self, metrics, prefix=""):
         for k, v in metrics.items():
