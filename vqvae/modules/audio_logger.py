@@ -31,7 +31,7 @@ class AudioLogger(nn.Module):
 
     def log_add_metrics(self, metrics, prefix=""):
         for k, v in metrics.items():
-            self.my_log(prefix + k, v, prog_bar=True, logger=True, sync_dist=True)
+            self.my_log(prefix + k, v, prog_bar=True, logger=True, rank_zero_only=True)
 
     def log_metrics(self, metrics, prefix=""):
         self.next_log_nr(prefix)
