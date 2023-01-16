@@ -30,13 +30,15 @@ class Diffusion(nn.Module):
     def sample_timesteps(self, n):
         return torch.randint(low=1, high=self.noise_steps, size=(n,))
 
-    def denoise_step(self, x, predicted_noise, t, add_noise=False):
+    def denoise_step(self, x, predicted_noise, t, add_noise=False, fixed_post=True):
         alpha = self.alpha[t][:, None, None]
         alpha_hat = self.alpha_hat[t][:, None, None]
         beta = self.beta[t][:, None, None]
+
+        posterior = beta * (1. - alpha_hat/alpha) / (1. - alpha_hat) if fixed_post else beta
         noise = torch.randn_like(x) if add_noise else torch.zeros_like(x)
         x = 1 / torch.sqrt(alpha) * (x - ((1 - alpha) / (torch.sqrt(1 - alpha_hat))) * predicted_noise) \
-            + torch.sqrt(beta) * noise
+            + torch.sqrt(posterior) * noise
         return x
 
     def sample(self, model, n, length, steps=None):
