@@ -57,7 +57,8 @@ class AudioLogger(nn.Module):
         fig.tight_layout()
         fig.canvas.draw()
         X = np.array(fig.canvas.renderer.buffer_rgba())
-        plt.close(fig)
+        fig.clf()
+        plt.close()
         return X
 
     def plot_spec_as(self, sounds, name, prefix):
