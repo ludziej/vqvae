@@ -31,7 +31,7 @@ config_big_hparams = Hparams(
     log_every_n_steps=10,
     restore_training=True,
     detect_anomaly=True,
-    device_stats=False,
+    device_stats=True,
     fp16=False,
 )
 

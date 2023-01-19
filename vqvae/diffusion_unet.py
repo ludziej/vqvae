@@ -111,7 +111,7 @@ class DiffusionUnet(LightningModule):
     def log_metrics_and_samples(self, loss, metrics, sounds_dict, t, batch_idx, phase, sample_len):
         prefix = phase + "_" if phase != "train" else ""
         assert len(metrics) == 1  # currently no support for multiple levels
-        self.autenc.audio_logger.log_metrics({**metrics[0], "loss": loss}, prefix)
+        self.autenc.audio_logger.log_metrics(metrics[0], prefix)
 
         if not (batch_idx % self.log_interval == 0 and self.local_rank == 0 and
                 (phase == "train" or not self.skip_valid_logs)):

@@ -183,7 +183,7 @@ class WavCompressor(LightningModule):
 
     def log_metrics_and_samples(self, loss, metrics, batch, batch_outs, batch_idx, optimize_generator, phase):
         prefix = phase + "_" if phase != "train" else ""
-        self.generator.audio_logger.log_metrics({**metrics, "loss": loss}, prefix)
+        self.generator.audio_logger.log_metrics(metrics, prefix)
         if not (batch_idx % self.log_interval == 0 and optimize_generator and self.local_rank == 0 and
                 (phase == "train" or not self.skip_valid_logs)):
             return  # log samples once per interval

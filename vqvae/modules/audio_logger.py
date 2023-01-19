@@ -24,20 +24,22 @@ class AudioLogger(nn.Module):
         self.log_nr[prefix] = nr + 1
 
     def log_weights_norm(self):
+        metrics = {}
         for name, value in self.model[0].named_parameters():
             if value.requires_grad:
                 norm = torch.linalg.norm(value)
-                self.my_log(f"weight_norm/{name}", norm, logger=True, rank_zero_only=True)
+                metrics[f"weight_norm/{name}"] = norm
+        return metrics
 
     def log_add_metrics(self, metrics, prefix=""):
         for k, v in metrics.items():
-            self.my_log(prefix + k, v, prog_bar=True, logger=True, rank_zero_only=True)
+            self.my_log(prefix + k, v.item() if isinstance(v, torch.Tensor) else v, prog_bar=True, rank_zero_only=True)
 
     def log_metrics(self, metrics, prefix=""):
         self.next_log_nr(prefix)
-        self.log_add_metrics(metrics, prefix)
         if self.use_weights_logging:
-            self.log_weights_norm()
+            metrics.update(**self.log_weights_norm())
+        self.log_add_metrics(metrics, prefix)
 
     def log_sounds(self, batch, name, prefix):
         for i, xin in enumerate(batch):

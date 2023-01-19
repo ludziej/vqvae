@@ -36,7 +36,7 @@ def generic_train(model, hparams, train, test, model_hparams, root_dir):
     lr_monitor = LearningRateMonitor(logging_interval='step')
     callbacks = [checkpoint_callback, tqdm_pb, lr_monitor]  # , device_stats]
     if hparams.device_stats:
-        callbacks.append(DeviceStatsMonitor())
+        callbacks.append(DeviceStatsMonitor(cpu_stats=True))
 
     precision = 16 if hparams.fp16 else 32
     trainer = Trainer(gpus=hparams.gpus, profiler="simple", max_epochs=hparams.max_epochs,
