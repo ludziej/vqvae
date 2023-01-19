@@ -36,7 +36,7 @@ class DiffusionUnet(LightningModule):
     def no_grad_forward(self, x_in):
         return self(x_in)
 
-    def forward(self, x_in, with_metrics=False):
+    def forward(self, x_in, t, with_metrics=False):
         x_predicted, _, _, metrics = self.autenc.forward(x_in)
         if with_metrics:
             return x_predicted, metrics
@@ -77,18 +77,18 @@ class DiffusionUnet(LightningModule):
         x_in = self.preprocess(batch)
         x_noised, noise_target, t = self.noising(x_in)
 
-        noise_pred, metrics = self(x_noised, with_metrics=True)
+        noise_pred, metrics = self(x_noised, t, with_metrics=True)
         loss, metrics = self.calc_loss(noise_pred, noise_target, metrics)
 
-        sounds_dict = self.get_sounds_dict(x_in, x_noised, noise_target, noise_pred, t)
+        sounds_dict, metrics = self.get_sounds_and_metrics(x_in, x_noised, noise_target, noise_pred, t, metrics)
         self.log_metrics_and_samples(loss, metrics, sounds_dict, t, batch_idx, phase, sample_len=x_in.shape[-1])
         return loss
 
-    def get_sounds_dict(self, x_in, x_noised, noise_target, noise_pred, t):
+    def get_sounds_and_metrics(self, x_in, x_noised, noise_target, noise_pred, t, metrics):
         x_pred_denoised = self.diffusion.get_x0(x_noised, noise_pred[0], t)
-        x_target_denoised = self.diffusion.get_x0(x_noised, noise_target, t)
-        return dict(x_in=x_in, x_pred_denoised=x_pred_denoised,
-                    x_target_denoised=x_target_denoised, x_noised=x_noised)
+        x_rmse = torch.sqrt(torch.mean((x_in - x_pred_denoised)**2))
+        metrics[0].update(x_rmse=x_rmse)
+        return dict(x_in=x_in, x_pred_denoised=x_pred_denoised, x_noised=x_noised), metrics
 
     # lightning train boilerplate
 

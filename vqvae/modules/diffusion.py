@@ -7,12 +7,14 @@ from utils.misc import default
 
 # code from https://github.com/dome272/Diffusion-Models-pytorch/blob/main/ddpm.py
 class Diffusion(nn.Module):
-    def __init__(self, emb_width, noise_steps=1000, beta_start=1e-4, beta_end=0.02):
+    def __init__(self, emb_width, renormalize_sampling=False, noise_steps=1000, beta_start=1e-4, beta_end=0.02):
         super(Diffusion, self).__init__()
         self.emb_width = emb_width
         self.noise_steps = noise_steps
         self.beta_start = beta_start
         self.beta_end = beta_end
+        self.renormalize_sampling = renormalize_sampling
+        self.const_x0_post = False
 
         self.register_buffer('beta', self.prepare_noise_schedule())
         self.register_buffer('alpha', 1. - self.beta)
@@ -37,10 +39,10 @@ class Diffusion(nn.Module):
         alpha_hat = self.extract(self.alpha_hat, t)
         return 1/torch.sqrt(alpha_hat) * (x - torch.sqrt(1 - alpha_hat) * predicted_noise)
 
-    def denoise_step(self, x, predicted_noise, t, add_noise=False, fixed_post=False):
+    def denoise_step(self, x, predicted_noise, t, add_noise=False):
         alpha, alpha_hat, beta = [self.extract(d, t) for d in [self.alpha, self.alpha_hat, self.beta]]
 
-        posterior = beta * (1. - alpha_hat/alpha) / (1. - alpha_hat) if fixed_post else beta
+        posterior = beta * (1. - alpha_hat/alpha) / (1. - alpha_hat) if self.const_x0_post else beta
         noise = torch.randn_like(x) if add_noise else torch.zeros_like(x)
         x = 1 / torch.sqrt(alpha) * (x - ((1 - alpha) / (torch.sqrt(1 - alpha_hat))) * predicted_noise) \
             + torch.sqrt(posterior) * noise
@@ -57,9 +59,11 @@ class Diffusion(nn.Module):
         model.eval()
         with torch.no_grad():
             for i in tqdm(list(reversed(range(1, steps))), position=0, desc="Denoising"):
-                predicted_noise = model(x)
                 t = (torch.ones(len(x)) * i).long().to(model.device)
+                predicted_noise = model(x, t)
                 x = self.denoise_step(x, predicted_noise[level], t, add_noise=i > 1)
+                if self.renormalize_sampling:
+                    x *= 1 / torch.sqrt(torch.mean(x**2))
         model.train(was_training)
         return x
 
