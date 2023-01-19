@@ -6,6 +6,7 @@ from vqvae.model import WavCompressor
 from vqvae.modules.diffusion import Diffusion
 from optimization.opt_maker import get_optimizer
 from utils.misc import default
+import gc
 
 
 class DiffusionUnet(LightningModule):
@@ -84,8 +85,8 @@ class DiffusionUnet(LightningModule):
         return loss
 
     def get_sounds_dict(self, x_in, x_noised, noise_target, noise_pred, t):
-        x_pred_denoised = self.diffusion.denoise_step(x_noised, noise_pred[0], t)
-        x_target_denoised = self.diffusion.denoise_step(x_noised, noise_target, t)
+        x_pred_denoised = self.diffusion.get_x0(x_noised, noise_pred[0], t)
+        x_target_denoised = self.diffusion.get_x0(x_noised, noise_target, t)
         return dict(x_in=x_in, x_pred_denoised=x_pred_denoised,
                     x_target_denoised=x_target_denoised, x_noised=x_noised)
 
@@ -125,3 +126,5 @@ class DiffusionUnet(LightningModule):
             sound = self.postprocess(latent_sound[:self.max_logged_sounds])
             self.autenc.audio_logger.plot_spec_as(sound, lambda i: f"spec_{i}/{name}", prefix)
             self.autenc.audio_logger.log_sounds(sound, lambda i: f"sample_{i}/{name}", prefix)
+
+        gc.collect()
