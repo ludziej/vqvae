@@ -19,6 +19,7 @@ class WavAutoEncoder(nn.Module):
         super().__init__()
         block_params = default(block_params, params)
         self.sr = sr
+        self.emb_width = emb_width
         self.multipliers = multipliers
         self.skip_connections = skip_connections
         self.input_channels = input_channels
@@ -59,10 +60,12 @@ class WavAutoEncoder(nn.Module):
         else:
             raise Exception(f"Unknown bottleneck type {bottleneck_type}")
 
-    def forward(self, x_in):
+    def forward(self, x_in, cond=None):
         encode_data = [encoder(x_in, last=True) for encoder in self.encoders]
         x_encoded, x_skips = zip(*encode_data) if self.skip_connections else (encode_data, itertools.repeat(None))
-        zs, xs_quantised, bottleneck_losses, prenorms, metrics = self.bottleneck(x_encoded)
+
+        bottleneck_data = self.bottleneck(x_encoded) if cond is None else self.bottleneck(x_encoded, cond)
+        zs, xs_quantised, bottleneck_losses, prenorms, metrics = bottleneck_data
 
         x_outs = [decoder(xs_quantised[level:level+1], all_levels=False, skips=skip)
                   for level, (decoder, skip) in enumerate(zip(self.decoders, x_skips))]

@@ -216,6 +216,9 @@ class NoBottleneckBlock(nn.Module):
     def restore_k(self):
         pass
 
+    def encode(self, xs, cond=None):
+        return xs + cond if cond is not None else xs
+
 
 class NoBottleneck(nn.Module):
     def __init__(self, levels):
@@ -225,13 +228,15 @@ class NoBottleneck(nn.Module):
         for level in range(levels):
             self.level_blocks.append(NoBottleneckBlock())
 
-    def encode(self, xs):
-        return xs
+    def encode(self, xs, cond=None, start_level=0, end_level=None):
+        return [layer.encode(x, cond=cond) for x, layer in zip(xs, self.level_blocks[start_level:end_level])]
 
     def decode(self, zs, start_level=0, end_level=None):
         return zs
 
-    def forward(self, xs):
+    def forward(self, xs, cond):
+        xs = self.encode(xs, cond)
+        xs = self.decode(xs)
         zero = t.zeros(()).to(xs[0].device)
         zeros = [zero for _ in range(self.levels)]
         metrics = [dict() for _ in range(self.levels)]

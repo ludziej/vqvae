@@ -22,6 +22,7 @@ default_diffusion_autenc_params = Hparams(
     norm_before_vqvae=False,
     l_bins=2000,
     leaky_param=1e-2,
+    num_groups=32,
     bottleneck_type="none",  # ["none", "vqvae", "vae"]
 )
 
@@ -56,6 +57,7 @@ default_diffusion_params = Hparams(
     prep_chunks=2,
     prep_level=0,
     n_ctx=4048,
+    bottleneck_t_weight=0.1,
     main_dir="generated/models/big_diffusion/",
     ckpt_freq=10,
     **dirs_config,

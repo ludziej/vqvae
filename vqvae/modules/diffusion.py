@@ -30,10 +30,10 @@ class Diffusion(nn.Module):
         return data[t][:, None, None]
 
     def noise_images(self, x, t):
-        sqrt_alpha_hat = torch.sqrt(self.extract(self.alpha_hat, t))
-        sqrt_one_minus_alpha_hat = torch.sqrt(1 - self.extract(self.alpha_hat, t))
+        alpha_hat = self.extract(self.alpha_hat, t)
         e = torch.randn_like(x)
-        return sqrt_alpha_hat * x + sqrt_one_minus_alpha_hat * e, e
+        xt = torch.sqrt(alpha_hat) * x + torch.sqrt(1 - alpha_hat) * e
+        return xt, e
 
     def get_x0(self, x, predicted_noise, t):
         alpha_hat = self.extract(self.alpha_hat, t)

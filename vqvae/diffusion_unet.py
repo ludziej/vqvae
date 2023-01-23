@@ -6,12 +6,13 @@ from vqvae.model import WavCompressor
 from vqvae.modules.diffusion import Diffusion
 from optimization.opt_maker import get_optimizer
 from utils.misc import default
+from optimization.positional_encoding import FourierFeaturesPositionalEncoding
 import gc
 
 
 class DiffusionUnet(LightningModule):
     def __init__(self, autenc_params, preprocessing: WavCompressor, diff_params, log_sample_bs, prep_chunks,
-                 prep_level, opt_params, logger, log_interval, max_logged_sounds, **params):
+                 prep_level, opt_params, logger, log_interval, max_logged_sounds, bottleneck_t_weight, **params):
         super().__init__()
         self.log_sample_bs = log_sample_bs
         self.prep_chunks = prep_chunks
@@ -22,9 +23,12 @@ class DiffusionUnet(LightningModule):
         self.preprocessing = preprocessing
         self.log_interval = log_interval
         self.skip_valid_logs = True
+        self.bottleneck_t_weight = bottleneck_t_weight
         self.diffusion = Diffusion(emb_width=self.preprocessing.emb_width, **diff_params)
-        self.autenc = WavAutoEncoder(sr=self.preprocessing.sr,
-                                     **autenc_params, input_channels=self.preprocessing.emb_width, base_model=self)
+        self.autenc = WavAutoEncoder(sr=self.preprocessing.sr, **autenc_params,
+                                     input_channels=self.preprocessing.emb_width, base_model=self)
+        self.t_encoding = FourierFeaturesPositionalEncoding(depth=self.autenc.emb_width,
+                                                            max_len=self.diffusion.noise_steps + 1)
 
         for param in self.preprocessing.parameters():
             param.requires_grad = False
@@ -36,8 +40,12 @@ class DiffusionUnet(LightningModule):
     def no_grad_forward(self, x_in):
         return self(x_in)
 
+    def get_t_conditioning(self, t):
+        return self.t_encoding.forward(length=1, offset=t).unsqueeze(-1) * self.bottleneck_t_weight
+
     def forward(self, x_in, t, with_metrics=False):
-        x_predicted, _, _, metrics = self.autenc.forward(x_in)
+        conditioning = self.get_t_conditioning(t)
+        x_predicted, _, _, metrics = self.autenc.forward(x_in, cond=conditioning)
         if with_metrics:
             return x_predicted, metrics
         return x_predicted
@@ -60,16 +68,20 @@ class DiffusionUnet(LightningModule):
     @torch.no_grad()
     def sample(self, bs, length):
         latent_samples = self.diffusion.sample(self, bs, length=length)
-        sample_norm = torch.mean(latent_samples**2)
+        sample_norm = self.bnorm(latent_samples)
         samples = self.postprocess(latent_samples)
         return samples, dict(sample_norm=sample_norm)
 
+    def bnorm(self, x):
+        return torch.mean(torch.sqrt(torch.mean(torch.mean(x**2, dim=-1), dim=-1)))
+
     def calc_loss(self, preds, target, metrics_l):
         mse = sum([torch.mean((pred - target)**2) for pred in preds])
-        target_norm = torch.mean(target**2)
+        target_norm = self.bnorm(target)
+        target_variance = torch.mean(target**2)
         for metrics, pred in zip(metrics_l, preds):
-            pred_norm = torch.mean(pred**2)
-            r_squared = 1 - mse/target_norm
+            pred_norm = self.bnorm(pred)
+            r_squared = 1 - mse/target_variance
             metrics.update(target_norm=target_norm, pred_norm=pred_norm, r_squared=r_squared)
         return mse, metrics_l
 
@@ -86,9 +98,11 @@ class DiffusionUnet(LightningModule):
 
     def get_sounds_and_metrics(self, x_in, x_noised, noise_target, noise_pred, t, metrics):
         x_pred_denoised = self.diffusion.get_x0(x_noised, noise_pred[0], t)
-        x_rmse = torch.sqrt(torch.mean((x_in - x_pred_denoised)**2))
+        x_pred_denoised_norm = self.bnorm(x_pred_denoised)
+        x_rmse = self.bnorm(x_in - x_pred_denoised)
         metrics[0].update(x_rmse=x_rmse)
-        return dict(x_in=x_in, x_pred_denoised=x_pred_denoised, x_noised=x_noised), metrics
+        return dict(x_in=x_in, x_pred_denoised=x_pred_denoised,
+                    x_pred_denoised_norm=x_pred_denoised_norm, x_noised=x_noised), metrics
 
     # lightning train boilerplate
 

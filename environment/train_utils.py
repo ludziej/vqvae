@@ -29,7 +29,7 @@ def generic_get_model(name, model_class, main_dir, ckpt_dir, restore_ckpt, **par
 
 def generic_train(model, hparams, train, test, model_hparams, root_dir):
     tb_logger = pl_loggers.TensorBoardLogger(root_dir / model_hparams.logs_dir)
-    checkpoint_callback = ModelCheckpoint(dirpath=root_dir / model_hparams.ckpt_dir,
+    checkpoint_callback = ModelCheckpoint(dirpath=root_dir / model_hparams.ckpt_dir, save_top_k=0,
                                           filename=model_hparams.distinct_ckpt_name,
                                           every_n_train_steps=model_hparams.ckpt_freq, save_last=True)
     tqdm_pb = NoSmoothingTQDM()

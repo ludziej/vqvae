@@ -3,7 +3,7 @@ from typing import NamedTuple, Optional
 import torch.nn as nn
 import torch
 from generator.modules.uptokenconditioner import UpTokenConditioner
-from generator.modules.positional_encoding import TrainablePositionalEncoding, FourierFeaturesPositionalEncoding,\
+from optimization.positional_encoding import TrainablePositionalEncoding, FourierFeaturesPositionalEncoding,\
     BPMPositionalEncoding
 
 
