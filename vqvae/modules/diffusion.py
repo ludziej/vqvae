@@ -63,7 +63,7 @@ class Diffusion(nn.Module):
                 predicted_noise = model(x, t)
                 x = self.denoise_step(x, predicted_noise[level], t, add_noise=i > 1)
                 norm = torch.sqrt(torch.mean(x**2))
-                if self.renormalize_sampling or norm >= 10:
+                if self.renormalize_sampling or norm >= 100:
                     x *= 1 / norm
         model.train(was_training)
         return x
