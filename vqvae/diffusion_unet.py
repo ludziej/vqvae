@@ -100,9 +100,8 @@ class DiffusionUnet(LightningModule):
         x_pred_denoised = self.diffusion.get_x0(x_noised, noise_pred[0], t)
         x_pred_denoised_norm = self.bnorm(x_pred_denoised)
         x_rmse = self.bnorm(x_in - x_pred_denoised)
-        metrics[0].update(x_rmse=x_rmse)
-        return dict(x_in=x_in, x_pred_denoised=x_pred_denoised,
-                    x_pred_denoised_norm=x_pred_denoised_norm, x_noised=x_noised), metrics
+        metrics[0].update(x_rmse=x_rmse, x_pred_denoised_norm=x_pred_denoised_norm,)
+        return dict(x_in=x_in, x_pred_denoised=x_pred_denoised, x_noised=x_noised), metrics
 
     # lightning train boilerplate
 
