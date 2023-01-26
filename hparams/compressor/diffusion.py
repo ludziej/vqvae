@@ -23,6 +23,7 @@ default_diffusion_autenc_params = Hparams(
     norm_before_vqvae=False,
     l_bins=2000,
     use_bias=False,
+    rezero=True,
     concat_skip=True,
     leaky_param=0,
     num_groups=32,

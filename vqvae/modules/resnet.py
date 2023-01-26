@@ -31,19 +31,20 @@ class ResConv1DBlock(nn.Module):
 
     def forward(self, x):
         x, skip = x if isinstance(x, tuple) else (x, None)
+        x_scaled = x if self.res_scale == 1 else x * self.res_scale
         if self.concat_skip:
             assert skip is not None
             x_in = torch.cat([x, skip], dim=1)
-            return x * self.res_scale + self.resconv(x_in)
+            return x_scaled + self.resconv(x_in)
         else:
             skip = skip if skip is not None else 0
-            return skip + x * self.res_scale + self.resconv(x)
+            return skip + x_scaled + self.resconv(x)
 
 
 class Resnet1D(nn.Module):
     def __init__(self, n_in, n_depth, m_conv=1.0, dilation_growth_rate=1, dilation_cycle=None, res_scale=False,
                  reverse_dilation=False, norm_type="none", leaky_param=1e-2, use_weight_standard=True, get_skip=False,
-                 return_skip=False, concat_skip=False, use_bias=False, num_groups=32):
+                 return_skip=False, concat_skip=False, use_bias=False, rezero=False, num_groups=32):
         super().__init__()
         assert not (get_skip and return_skip)
         concat_skip = concat_skip and get_skip
@@ -53,7 +54,7 @@ class Resnet1D(nn.Module):
         self.dilation_growth_rate = dilation_growth_rate
         blocks = [ResConv1DBlock(n_in, int(m_conv * n_in), leaky_param=leaky_param,
                                  use_weight_standard=use_weight_standard, concat_skip=concat_skip, use_bias=use_bias,
-                                 dilation=self.get_dilation(depth), norm_type=norm_type,
+                                 dilation=self.get_dilation(depth), norm_type=norm_type, rezero=rezero,
                                  res_scale=1.0 if not res_scale else 1.0 / math.sqrt(n_depth), num_groups=num_groups)
                   for depth in range(n_depth)]
         if reverse_dilation:
