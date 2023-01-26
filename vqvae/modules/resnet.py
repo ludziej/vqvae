@@ -7,14 +7,15 @@ import torch
 
 class ResConv1DBlock(nn.Module):
     def __init__(self, n_in, n_state, norm_type, leaky_param, use_weight_standard, dilation=1, concat_skip=False,
-                 res_scale=1.0, num_groups=32):
+                 use_bias=False, res_scale=1.0, num_groups=32):
         super().__init__()
         self.concat_skip = concat_skip
         padding = dilation
-        bias = norm_type == "none"
+        bias = norm_type == "none" or use_bias
         use_standard = norm_type != "none" and use_weight_standard
+        first_in = 2 * n_in if self.concat_skip else n_in
         blocks = [
-            Conv1dWeightStandardized(n_in, n_state, 3, 1, padding, dilation,
+            Conv1dWeightStandardized(first_in, n_state, 3, 1, padding, dilation,
                                      bias=bias, use_standardization=use_standard),
             CustomNormalization(n_in, norm_type, num_groups=num_groups),
             nn.LeakyReLU(negative_slope=leaky_param),
@@ -22,11 +23,11 @@ class ResConv1DBlock(nn.Module):
             CustomNormalization(n_in, norm_type, num_groups=num_groups),
             nn.LeakyReLU(negative_slope=leaky_param),
         ]
-        if self.concat_skip:
-            blocks = [
-                Conv1dWeightStandardized(n_in*2, n_in, 1, 1, 0, bias=bias, use_standardization=use_standard),
-                nn.LeakyReLU(negative_slope=leaky_param),
-            ] + blocks
+#        if self.concat_skip:
+#            blocks = [
+#                Conv1dWeightStandardized(n_in*2, n_in, 1, 1, 0, bias=True, use_standardization=False),
+#                nn.LeakyReLU(negative_slope=leaky_param),
+#            ] + blocks
         self.resconv = nn.Sequential(*blocks)
         self.res_scale = res_scale
 
@@ -34,8 +35,8 @@ class ResConv1DBlock(nn.Module):
         x, skip = x if isinstance(x, tuple) else (x, None)
         if self.concat_skip:
             assert skip is not None
-            x = torch.cat([x, skip], dim=1)
-            return x * self.res_scale + self.resconv(x)
+            x_in = torch.cat([x, skip], dim=1)
+            return x * self.res_scale + self.resconv(x_in)
         else:
             skip = skip if skip is not None else 0
             return skip + x * self.res_scale + self.resconv(x)
@@ -43,24 +44,31 @@ class ResConv1DBlock(nn.Module):
 
 class Resnet1D(nn.Module):
     def __init__(self, n_in, n_depth, m_conv=1.0, dilation_growth_rate=1, dilation_cycle=None, res_scale=False,
-                 reverse_dilation=False, norm_type="none", leaky_param=1e-2, use_weight_standard=True,
-                 get_skip=False, return_skip=False, concat_skip=False, num_groups=32):
+                 reverse_dilation=False, norm_type="none", leaky_param=1e-2, use_weight_standard=True, get_skip=False,
+                 return_skip=False, concat_skip=False, use_bias=False, num_groups=32):
         super().__init__()
         assert not (get_skip and return_skip)
-        assert not (concat_skip and not get_skip)
+        concat_skip = concat_skip and get_skip
         self.get_skip = get_skip
         self.return_skip = return_skip
-        get_depth = lambda depth: depth if dilation_cycle is None else depth % dilation_cycle
+        self.dilation_cycle = dilation_cycle
+        self.dilation_growth_rate = dilation_growth_rate
         blocks = [ResConv1DBlock(n_in, int(m_conv * n_in), leaky_param=leaky_param,
-                                 use_weight_standard=use_weight_standard, concat_skip=concat_skip,
-                                 dilation=dilation_growth_rate ** get_depth(depth), norm_type=norm_type,
+                                 use_weight_standard=use_weight_standard, concat_skip=concat_skip, use_bias=use_bias,
+                                 dilation=self.get_dilation(depth), norm_type=norm_type,
                                  res_scale=1.0 if not res_scale else 1.0 / math.sqrt(n_depth), num_groups=num_groups)
                   for depth in range(n_depth)]
         if reverse_dilation:
             blocks = blocks[::-1]
-        self.resblocks = SkipConnectionsEncoder(blocks) if return_skip else \
+        self.resblocks = \
+            SkipConnectionsEncoder(blocks) if return_skip else \
             SkipConnectionsDecoder(blocks) if get_skip else \
-                nn.Sequential(*blocks)
+            nn.Sequential(*blocks)
+
+    def get_dilation(self, depth):
+        depth = depth if self.dilation_cycle is None else depth % self.dilation_cycle
+        dilation = self.dilation_growth_rate ** depth
+        return dilation
 
     def forward(self, x):
         return self.resblocks(x)

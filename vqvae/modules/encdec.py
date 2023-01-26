@@ -9,8 +9,8 @@ from vqvae.modules.skip_connections import SkipConnectionsDecoder, SkipConnectio
 class EncoderConvBlock(nn.Module):
     def __init__(self, input_emb_width, output_emb_width, down_t,
                  stride_t, skip_connections, width, depth, m_conv, norm_type,
-                 dilation_growth_rate=1, dilation_cycle=None, num_groups=32,
-                 res_scale=False, leaky_param=1e-2, use_weight_standard=True, **params):
+                 dilation_growth_rate=1, dilation_cycle=None, res_scale=False, leaky_param=1e-2,
+                 use_weight_standard=True, num_groups=32, use_bias=False, concat_skip=False, **params):
         super().__init__()
         self.skip_connections = skip_connections
         blocks = []
@@ -21,7 +21,8 @@ class EncoderConvBlock(nn.Module):
                     nn.Conv1d(input_emb_width if i == 0 else width, width, filter_t, stride_t, pad_t),
                     Resnet1D(width, depth, m_conv, dilation_growth_rate, dilation_cycle, res_scale,
                              return_skip=skip_connections, norm_type=norm_type, leaky_param=leaky_param,
-                             use_weight_standard=use_weight_standard, num_groups=num_groups),
+                             use_weight_standard=use_weight_standard, num_groups=num_groups, use_bias=use_bias,
+                             concat_skip=concat_skip),
                 )
                 blocks.append(block)
             block = nn.Conv1d(width, output_emb_width, 3, 1, 1)
@@ -37,7 +38,7 @@ class DecoderConvBock(nn.Module):
     def __init__(self, input_emb_width, output_emb_width, down_t, stride_t,
                  skip_connections, width, depth, m_conv, norm_type, dilation_growth_rate=1, dilation_cycle=None,
                  res_scale=False, reverse_decoder_dilation=False, leaky_param=1e-2, use_weight_standard=True,
-                 num_groups=32, **params):
+                 num_groups=32, use_bias=False, concat_skip=False, **params):
         super().__init__()
         self.skip_connections = skip_connections
         blocks = []
@@ -49,7 +50,8 @@ class DecoderConvBock(nn.Module):
                 block = nn.Sequential(
                     Resnet1D(width, depth, m_conv, dilation_growth_rate, dilation_cycle, leaky_param=leaky_param,
                              get_skip=skip_connections, norm_type=norm_type, res_scale=res_scale, num_groups=num_groups,
-                             reverse_dilation=reverse_decoder_dilation, use_weight_standard=use_weight_standard),
+                             reverse_dilation=reverse_decoder_dilation, use_weight_standard=use_weight_standard,
+                             use_bias=use_bias, concat_skip=concat_skip),
                     nn.ConvTranspose1d(width, input_emb_width if i == (down_t - 1) else width, filter_t, stride_t, pad_t),
                 )
                 blocks.append(block)

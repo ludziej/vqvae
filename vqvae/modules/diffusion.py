@@ -67,4 +67,3 @@ class Diffusion(nn.Module):
                     x *= 1 / norm
         model.train(was_training)
         return x
-
