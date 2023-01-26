@@ -22,9 +22,9 @@ default_diffusion_autenc_params = Hparams(
     dilation_cycle=9,
     norm_before_vqvae=False,
     l_bins=2000,
-    use_bias=True,
+    use_bias=False,
     concat_skip=True,
-    leaky_param=1e-2,
+    leaky_param=0,
     num_groups=32,
     bottleneck_type="none",  # ["none", "vqvae", "vae"]
 )

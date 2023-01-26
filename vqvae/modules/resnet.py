@@ -1,35 +1,33 @@
 import math
 import torch.nn as nn
-from optimization.normalization import CustomNormalization, Conv1dWeightStandardized
+from optimization.normalization import CustomNormalization, Conv1dWeightStandardized, ReZero
 from vqvae.modules.skip_connections import SkipConnectionsDecoder, SkipConnectionsEncoder
 import torch
 
 
 class ResConv1DBlock(nn.Module):
     def __init__(self, n_in, n_state, norm_type, leaky_param, use_weight_standard, dilation=1, concat_skip=False,
-                 use_bias=False, res_scale=1.0, num_groups=32):
+                 use_bias=False, res_scale=1.0, num_groups=32, rezero=False, alt_order=False):
         super().__init__()
         self.concat_skip = concat_skip
+        self.rezero = rezero
+        self.res_scale = res_scale
         padding = dilation
         bias = norm_type == "none" or use_bias
         use_standard = norm_type != "none" and use_weight_standard
         first_in = 2 * n_in if self.concat_skip else n_in
+        c_params = dict(bias=bias, use_standardization=use_standard)
+        conv1 = Conv1dWeightStandardized(first_in, n_state, 3, 1, padding, dilation, **c_params)
+        conv2 = Conv1dWeightStandardized(n_state, n_in, 1, 1, 0, **c_params)
+        norm1 = CustomNormalization(first_in if alt_order else n_in, norm_type, num_groups=num_groups)
+        norm2 = CustomNormalization(n_in, norm_type, num_groups=num_groups)
+        activation = nn.LeakyReLU(negative_slope=leaky_param) if leaky_param != 0 else nn.ReLU()
         blocks = [
-            Conv1dWeightStandardized(first_in, n_state, 3, 1, padding, dilation,
-                                     bias=bias, use_standardization=use_standard),
-            CustomNormalization(n_in, norm_type, num_groups=num_groups),
-            nn.LeakyReLU(negative_slope=leaky_param),
-            Conv1dWeightStandardized(n_state, n_in, 1, 1, 0, bias=bias, use_standardization=use_standard),
-            CustomNormalization(n_in, norm_type, num_groups=num_groups),
-            nn.LeakyReLU(negative_slope=leaky_param),
+            conv1, norm1, activation, conv2, norm2, activation
+        ] if not alt_order else [
+            norm1, conv1, activation, norm2, conv2, activation
         ]
-#        if self.concat_skip:
-#            blocks = [
-#                Conv1dWeightStandardized(n_in*2, n_in, 1, 1, 0, bias=True, use_standardization=False),
-#                nn.LeakyReLU(negative_slope=leaky_param),
-#            ] + blocks
-        self.resconv = nn.Sequential(*blocks)
-        self.res_scale = res_scale
+        self.resconv = ReZero(nn.Sequential(*blocks)) if self.rezero else nn.Sequential(*blocks)
 
     def forward(self, x):
         x, skip = x if isinstance(x, tuple) else (x, None)

@@ -7,6 +7,7 @@ from functools import partial
 from performer_pytorch import SelfAttention, CrossAttention, ProjectionUpdater
 from performer_pytorch.reversible import ReversibleSequence, SequentialSequence
 from performer_pytorch.autoregressive_wrapper import top_k, repetition_penalty_fn
+from optimization.normalization import ReZero
 from utils.misc import default, exists
 
 
@@ -16,16 +17,6 @@ def cast_tuple(val):
 
 def empty(tensor):
     return tensor.numel() == 0
-
-
-class ReZero(nn.Module):
-    def __init__(self, fn, init=0.):  # originally init was 1e-3
-        super().__init__()
-        self.g = nn.Parameter(torch.tensor(init))
-        self.fn = fn
-
-    def forward(self, x, **kwargs):
-        return self.fn(x, **kwargs) * self.g
 
 
 class PreScaleNorm(nn.Module):
