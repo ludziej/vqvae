@@ -10,23 +10,28 @@ class EncoderConvBlock(nn.Module):
     def __init__(self, input_emb_width, output_emb_width, down_t,
                  stride_t, skip_connections, width, depth, m_conv, norm_type,
                  dilation_growth_rate=1, dilation_cycle=None, res_scale=False, leaky_param=1e-2,
-                 use_weight_standard=True, num_groups=32, use_bias=False, concat_skip=False, rezero=False, **params):
+                 use_weight_standard=True, num_groups=32, use_bias=False, concat_skip=False, rezero=False,
+                 skip_connections_step=1, channel_increase=1, **params):
         super().__init__()
         self.skip_connections = skip_connections
-        blocks = []
         filter_t, pad_t = stride_t * 2, stride_t // 2
+        curr_width = width
+        blocks = []
         if down_t > 0:
             for i in range(down_t):
+                next_width = width * channel_increase ** i
                 block = nn.Sequential(
-                    nn.Conv1d(input_emb_width if i == 0 else width, width, filter_t, stride_t, pad_t),
-                    Resnet1D(width, depth, m_conv, dilation_growth_rate, dilation_cycle, res_scale,
+                    nn.Conv1d(input_emb_width if i == 0 else curr_width, next_width, filter_t, stride_t, pad_t),
+                    Resnet1D(next_width, depth, m_conv, dilation_growth_rate, dilation_cycle, res_scale,
                              return_skip=skip_connections, norm_type=norm_type, leaky_param=leaky_param,
                              use_weight_standard=use_weight_standard, num_groups=num_groups, use_bias=use_bias,
-                             concat_skip=concat_skip, rezero=rezero),
+                             concat_skip=concat_skip, skip_connections_step=skip_connections_step, rezero=rezero),
                 )
                 blocks.append(block)
-            block = nn.Conv1d(width, output_emb_width, 3, 1, 1)
+                curr_width = next_width
+            block = nn.Conv1d(curr_width, output_emb_width, 3, 1, 1)
             blocks.append(block)
+        self.last_emb_width = width
         self.encode_block = nn.Sequential(*blocks) if not self.skip_connections else \
             SkipConnectionsEncoder(blocks, [True] * down_t + [False], pass_skips=True)
 
@@ -38,21 +43,26 @@ class DecoderConvBock(nn.Module):
     def __init__(self, input_emb_width, output_emb_width, down_t, stride_t,
                  skip_connections, width, depth, m_conv, norm_type, dilation_growth_rate=1, dilation_cycle=None,
                  res_scale=False, reverse_decoder_dilation=False, leaky_param=1e-2, use_weight_standard=True,
-                 num_groups=32, use_bias=False, concat_skip=False, rezero=False, **params):
+                 num_groups=32, use_bias=False, concat_skip=False, rezero=False, skip_connections_step=1,
+                 channel_increase=1, **params):
         super().__init__()
         self.skip_connections = skip_connections
         blocks = []
         if down_t > 0:
             filter_t, pad_t = stride_t * 2, stride_t // 2
-            block = nn.Conv1d(output_emb_width, width, 3, 1, 1)
+            block = nn.Conv1d(output_emb_width, width * channel_increase ** (down_t - 1), 3, 1, 1)
             blocks.append(block)
             for i in range(down_t):
+                curr_width = width * channel_increase ** (down_t - i - 1)
+                next_width = input_emb_width if i == (down_t - 1) else width * channel_increase ** (down_t - i - 2)
+
                 block = nn.Sequential(
-                    Resnet1D(width, depth, m_conv, dilation_growth_rate, dilation_cycle, leaky_param=leaky_param,
+                    Resnet1D(curr_width, depth, m_conv, dilation_growth_rate, dilation_cycle, leaky_param=leaky_param,
                              get_skip=skip_connections, norm_type=norm_type, res_scale=res_scale, num_groups=num_groups,
                              reverse_dilation=reverse_decoder_dilation, use_weight_standard=use_weight_standard,
-                             use_bias=use_bias, concat_skip=concat_skip, rezero=rezero),
-                    nn.ConvTranspose1d(width, input_emb_width if i == (down_t - 1) else width, filter_t, stride_t, pad_t),
+                             use_bias=use_bias, concat_skip=concat_skip, rezero=rezero,
+                             skip_connections_step=skip_connections_step),
+                    nn.ConvTranspose1d(curr_width, next_width, filter_t, stride_t, pad_t),
                 )
                 blocks.append(block)
         self.decoder_block = nn.Sequential(*blocks) if not self.skip_connections else \

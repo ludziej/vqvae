@@ -223,10 +223,8 @@ class NoBottleneckBlock(nn.Module):
 class NoBottleneck(nn.Module):
     def __init__(self, levels):
         super().__init__()
-        self.level_blocks = nn.ModuleList()
         self.levels = levels
-        for level in range(levels):
-            self.level_blocks.append(NoBottleneckBlock())
+        self.level_blocks = nn.ModuleList([NoBottleneckBlock() for level in range(levels)])
 
     def encode(self, xs, cond=None, start_level=0, end_level=None):
         return [layer.encode(x, cond=cond) for x, layer in zip(xs, self.level_blocks[start_level:end_level])]
@@ -241,3 +239,28 @@ class NoBottleneck(nn.Module):
         zeros = [zero for _ in range(self.levels)]
         metrics = [dict() for _ in range(self.levels)]
         return xs, xs, zeros, zeros, metrics
+
+
+class TransformerBottleneckBlock(nn.Module):
+    def __init__(self, depth, heads, width, pos_enc_type):
+        self.depth = depth
+        self.heads = heads
+        self.pos_enc_type = pos_enc_type
+        raise Exception("Not Implemented")
+
+    def forward(self, xs, cond=None):
+        return self.encode(xs, cond)
+
+    def encode(self, xs, cond=None):
+        xs = xs + cond if cond is not None else xs
+        raise Exception("Not Implemented")
+
+    def restore_k(self):
+        pass
+
+
+class TransformerBottleneck(NoBottleneck):
+    def __init__(self, levels, btn_width, **t_params):
+        super().__init__(levels)
+        self.level_blocks = nn.ModuleList([TransformerBottleneckBlock(**t_params, width=width)
+                                           for level, width in zip(range(levels), btn_width)])

@@ -12,8 +12,11 @@ import gc
 
 class DiffusionUnet(LightningModule):
     def __init__(self, autenc_params, preprocessing: WavCompressor, diff_params, log_sample_bs, prep_chunks,
-                 prep_level, opt_params, logger, log_interval, max_logged_sounds, bottleneck_t_weight, **params):
+                 prep_level, opt_params, logger, log_interval, max_logged_sounds, bottleneck_t_weight,
+                 rmse_loss_weight, eps_loss_weight, **params):
         super().__init__()
+        self.rmse_loss_weight = rmse_loss_weight
+        self.eps_loss_weight = eps_loss_weight
         self.log_sample_bs = log_sample_bs
         self.prep_chunks = prep_chunks
         self.max_logged_sounds = max_logged_sounds
@@ -75,33 +78,36 @@ class DiffusionUnet(LightningModule):
     def bnorm(self, x):
         return torch.mean(torch.sqrt(torch.mean(torch.mean(x**2, dim=-1), dim=-1)))
 
-    def calc_loss(self, preds, target, metrics_l):
-        mse = sum([torch.mean((pred - target)**2) for pred in preds])
+    def calc_loss(self, preds, target, x_noised, x_in, t, metrics_l):
         target_norm = self.bnorm(target)
         target_variance = torch.mean(target**2)
+        loss = 0
+        sounds_dict = []
         for metrics, pred in zip(metrics_l, preds):
-            pred_norm = self.bnorm(pred)
+            mse = torch.mean((pred - target)**2)
             r_squared = 1 - mse/target_variance
-            metrics.update(target_norm=target_norm, pred_norm=pred_norm, r_squared=r_squared)
-        return mse, metrics_l
+
+            x_pred_denoised = self.diffusion.get_x0(x_noised, pred, t)
+            x_pred_denoised_norm = self.bnorm(x_pred_denoised)
+            x_mse = torch.mean((x_in - x_pred_denoised)**2)
+            x_rmse = self.bnorm(x_in - x_pred_denoised)
+            pred_norm = self.bnorm(pred)
+
+            loss += self.eps_loss_weight * mse + self.rmse_loss_weight * x_mse
+            metrics.update(target_norm=target_norm, pred_norm=pred_norm, r_squared=r_squared,
+                           x_rmse=x_rmse, x_mse=x_mse, x_pred_denoised_norm=x_pred_denoised_norm)
+            sounds_dict.append(dict(x_in=x_in, x_pred_denoised=x_pred_denoised, x_noised=x_noised))
+        return loss, sounds_dict, metrics_l
 
     def evaluation_step(self, batch, batch_idx, phase="train"):
         x_in = self.preprocess(batch)
         x_noised, noise_target, t = self.noising(x_in)
 
         noise_pred, metrics = self(x_noised, t, with_metrics=True)
-        loss, metrics = self.calc_loss(noise_pred, noise_target, metrics)
+        loss, sounds_dict, metrics = self.calc_loss(noise_pred, noise_target, x_noised, x_in, t, metrics)
 
-        sounds_dict, metrics = self.get_sounds_and_metrics(x_in, x_noised, noise_target, noise_pred, t, metrics)
         self.log_metrics_and_samples(loss, metrics, sounds_dict, t, batch_idx, phase, sample_len=x_in.shape[-1])
         return loss
-
-    def get_sounds_and_metrics(self, x_in, x_noised, noise_target, noise_pred, t, metrics):
-        x_pred_denoised = self.diffusion.get_x0(x_noised, noise_pred[0], t)
-        x_pred_denoised_norm = self.bnorm(x_pred_denoised)
-        x_rmse = self.bnorm(x_in - x_pred_denoised)
-        metrics[0].update(x_rmse=x_rmse, x_pred_denoised_norm=x_pred_denoised_norm,)
-        return dict(x_in=x_in, x_pred_denoised=x_pred_denoised, x_noised=x_noised), metrics
 
     # lightning train boilerplate
 
@@ -135,7 +141,7 @@ class DiffusionUnet(LightningModule):
 
         self.autenc.audio_logger.plot_spec_as(samples, lambda i: f"generated_specs/{i}", prefix)
         self.autenc.audio_logger.log_sounds(samples, lambda i: f"generated_samples/{i}", prefix)
-        for name, latent_sound in sounds_dict.items():
+        for name, latent_sound in sounds_dict[0].items():
             sound = self.postprocess(latent_sound[:self.max_logged_sounds])
             self.autenc.audio_logger.plot_spec_as(sound, lambda i: f"spec_{i}/{name}", prefix)
             self.autenc.audio_logger.log_sounds(sound, lambda i: f"sample_{i}/{name}", prefix)

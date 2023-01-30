@@ -2,6 +2,12 @@ from hparams.parser import Hparams
 from hparams.compressor.misc import dirs_config
 
 
+default_bottleneck_transformer_params = Hparams(
+    depth=4,
+    heads=4,
+    pos_enc_type="fourier",  # [trainable, fourier, bpm]
+)
+
 default_diffusion_autenc_params = Hparams(
     levels=1,
     downs_t=(3,),
@@ -18,6 +24,8 @@ default_diffusion_autenc_params = Hparams(
     skip_valid_logs=True,
     from_last_checkpot=True,
     skip_connections=True,
+    skip_connections_step=3,
+    channel_increase=2,
     mu=0.99,
     dilation_cycle=9,
     norm_before_vqvae=False,
@@ -27,7 +35,8 @@ default_diffusion_autenc_params = Hparams(
     concat_skip=True,
     leaky_param=0,
     num_groups=32,
-    bottleneck_type="none",  # ["none", "vqvae", "vae"]
+    bottleneck_type="none",  # ["none", "vqvae", "vae", "attention"]
+    bottleneck_params=default_bottleneck_transformer_params,
 )
 
 default_diffusion_train_params = Hparams(
@@ -61,6 +70,8 @@ default_diffusion_params = Hparams(
     prep_chunks=2,
     prep_level=0,
     n_ctx=4048,
+    rmse_loss_weight=0.5,
+    eps_loss_weight=1,
     bottleneck_t_weight=0.1,
     main_dir="generated/models/big_diffusion/",
     ckpt_freq=10,

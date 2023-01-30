@@ -22,12 +22,12 @@ class ResConv1DBlock(nn.Module):
         norm1 = CustomNormalization(first_in if alt_order else n_in, norm_type, num_groups=num_groups)
         norm2 = CustomNormalization(n_in, norm_type, num_groups=num_groups)
         activation = nn.LeakyReLU(negative_slope=leaky_param) if leaky_param != 0 else nn.ReLU()
-        blocks = [
+        blocks = nn.Sequential(*[
             conv1, norm1, activation, conv2, norm2, activation
         ] if not alt_order else [
             norm1, conv1, activation, norm2, conv2, activation
-        ]
-        self.resconv = ReZero(nn.Sequential(*blocks)) if self.rezero else nn.Sequential(*blocks)
+        ])
+        self.resconv = ReZero(blocks) if self.rezero else blocks
 
     def forward(self, x):
         x, skip = x if isinstance(x, tuple) else (x, None)
@@ -44,7 +44,8 @@ class ResConv1DBlock(nn.Module):
 class Resnet1D(nn.Module):
     def __init__(self, n_in, n_depth, m_conv=1.0, dilation_growth_rate=1, dilation_cycle=None, res_scale=False,
                  reverse_dilation=False, norm_type="none", leaky_param=1e-2, use_weight_standard=True, get_skip=False,
-                 return_skip=False, concat_skip=False, use_bias=False, rezero=False, num_groups=32):
+                 return_skip=False, concat_skip=False, use_bias=False, rezero=False, num_groups=32,
+                 skip_connections_step=1):
         super().__init__()
         assert not (get_skip and return_skip)
         concat_skip = concat_skip and get_skip
@@ -52,16 +53,19 @@ class Resnet1D(nn.Module):
         self.return_skip = return_skip
         self.dilation_cycle = dilation_cycle
         self.dilation_growth_rate = dilation_growth_rate
+        skips = [d % skip_connections_step == 0 for d in range(n_depth)]
+        skips = skips[::-1] if get_skip ^ reverse_dilation else skips
         blocks = [ResConv1DBlock(n_in, int(m_conv * n_in), leaky_param=leaky_param,
-                                 use_weight_standard=use_weight_standard, concat_skip=concat_skip, use_bias=use_bias,
+                                 use_weight_standard=use_weight_standard, use_bias=use_bias,
+                                 concat_skip=concat_skip and get_skip and skips[depth],
                                  dilation=self.get_dilation(depth), norm_type=norm_type, rezero=rezero,
                                  res_scale=1.0 if not res_scale else 1.0 / math.sqrt(n_depth), num_groups=num_groups)
                   for depth in range(n_depth)]
         if reverse_dilation:
             blocks = blocks[::-1]
         self.resblocks = \
-            SkipConnectionsEncoder(blocks) if return_skip else \
-            SkipConnectionsDecoder(blocks) if get_skip else \
+            SkipConnectionsEncoder(blocks, skips) if return_skip else \
+            SkipConnectionsDecoder(blocks, skips) if get_skip else \
             nn.Sequential(*blocks)
 
     def get_dilation(self, depth):
