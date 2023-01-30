@@ -3,9 +3,11 @@ from hparams.compressor.misc import dirs_config
 
 
 default_bottleneck_transformer_params = Hparams(
-    depth=4,
+    depth=8,
     heads=4,
-    pos_enc_type="fourier",  # [trainable, fourier, bpm]
+    ff_mul=2,
+    dropout=0.5,
+    pos_enc_type="fourier",  # [trainable, fourier]
 )
 
 default_diffusion_autenc_params = Hparams(
@@ -35,7 +37,7 @@ default_diffusion_autenc_params = Hparams(
     concat_skip=True,
     leaky_param=0,
     num_groups=32,
-    bottleneck_type="none",  # ["none", "vqvae", "vae", "attention"]
+    bottleneck_type="transformer",  # ["none", "vqvae", "vae", "transformer"]
     bottleneck_params=default_bottleneck_transformer_params,
 )
 

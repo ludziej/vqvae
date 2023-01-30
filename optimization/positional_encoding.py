@@ -38,12 +38,12 @@ class FourierFeaturesPositionalEncoding(nn.Module):
         self.omega = omega
         self.register_buffer('pe', generate_fourier_features(depth, size=max_len, omega=omega, device="cpu"))
 
-    def forward(self, length: int = None, offset=0, device=None, **params) -> Tensor:
+    def forward(self, length: int = None, offset=0, **params) -> Tensor:
         if length == 1:
             return self.pe[offset]
         if offset + length < self.max_len:
             return self.pe[offset:offset + length]
-        return generate_fourier_features(self.depth, size=length, omega=self.omega, offset=offset, device=device)
+        return generate_fourier_features(self.depth, size=length, omega=self.omega, offset=offset, device=self.pe.device)
 
 
 class BPMPositionalEncoding(nn.Module):

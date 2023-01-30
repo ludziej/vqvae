@@ -5,7 +5,7 @@ import torch as t
 
 from utils.misc import exists, default
 from utils.old_ml_utils.misc import assert_shape
-from vqvae.modules.quant_bottleneck import Bottleneck, NoBottleneck, TransformerBottleneck
+from vqvae.modules.bottleneck import Bottleneck, NoBottleneck, TransformerBottleneck
 from vqvae.modules.vae import VAEBottleneck
 from vqvae.modules.encdec import Encoder, Decoder
 from vqvae.modules.audio_logger import AudioLogger
@@ -35,7 +35,6 @@ class WavAutoEncoder(nn.Module):
         decoders = nn.ModuleList([Decoder(input_channels, emb_width, level + 1, downs_t[:level + 1],
                                           strides_t[:level + 1], self.skip_connections, **self.block_kwargs(level))
                                   for level in range(levels)])
-        self.btn_width = [enc.level_blocks[-1].last_emb_width for enc in encoders]
         bottleneck, self.name = self.get_bottleneck(bottleneck_type, l_bins, emb_width, mu,
                                                     levels, norm_before_vqvae, fixed_commit)
         self.encoders = encoders
@@ -55,7 +54,7 @@ class WavAutoEncoder(nn.Module):
         elif bottleneck_type == "none" and self.skip_connections:
             return NoBottleneck(levels), "U-Net"
         elif bottleneck_type == "transformer":
-            return TransformerBottleneck(levels, btn_width=self.btn_width, **self.bottleneck_params), "U-Net Transformer"
+            return TransformerBottleneck(levels, btn_width=emb_width, **self.bottleneck_params), "U-Net Transformer"
         elif bottleneck_type == "none":
             return NoBottleneck(levels), "Auto Encoder"
         elif bottleneck_type == "vae":

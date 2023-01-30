@@ -2,6 +2,7 @@ import numpy as np
 import torch as t
 import torch.nn as nn
 import torch.nn.functional as F
+from optimization.positional_encoding import FourierFeaturesPositionalEncoding
 
 
 class BottleneckBlock(nn.Module):
@@ -242,18 +243,25 @@ class NoBottleneck(nn.Module):
 
 
 class TransformerBottleneckBlock(nn.Module):
-    def __init__(self, depth, heads, width, pos_enc_type):
+    def __init__(self, depth, heads, width, pos_enc_type, dropout, ff_mul,):
+        super().__init__()
         self.depth = depth
         self.heads = heads
         self.pos_enc_type = pos_enc_type
-        raise Exception("Not Implemented")
+        encoder_layers = nn.TransformerEncoderLayer(width, heads, width * ff_mul, dropout, batch_first=True)
+        self.transformer = nn.TransformerEncoder(encoder_layers, depth)
+        assert pos_enc_type == "fourier"
+        self.pos_enc = FourierFeaturesPositionalEncoding(width)
 
     def forward(self, xs, cond=None):
         return self.encode(xs, cond)
 
     def encode(self, xs, cond=None):
         xs = xs + cond if cond is not None else xs
-        raise Exception("Not Implemented")
+        xs = xs.permute(0, 2, 1)
+        xs += self.pos_enc(xs.shape[1]).unsqueeze(0)
+        xs = self.transformer(xs)
+        return xs.permute(0, 2, 1)
 
     def restore_k(self):
         pass
@@ -262,5 +270,5 @@ class TransformerBottleneckBlock(nn.Module):
 class TransformerBottleneck(NoBottleneck):
     def __init__(self, levels, btn_width, **t_params):
         super().__init__(levels)
-        self.level_blocks = nn.ModuleList([TransformerBottleneckBlock(**t_params, width=width)
-                                           for level, width in zip(range(levels), btn_width)])
+        self.level_blocks = nn.ModuleList([TransformerBottleneckBlock(**t_params, width=btn_width)
+                                           for level in range(levels)])
