@@ -43,8 +43,8 @@ class DiffusionUnet(LightningModule):
     def no_grad_forward(self, x_in):
         return self(x_in)
 
-    def get_t_conditioning(self, t):
-        return self.t_encoding.forward(length=1, offset=t).unsqueeze(-1) * self.bottleneck_t_weight
+    def get_t_conditioning(self, t):  # flip to avoid confusion with transformer pos enc in bottleneck
+        return torch.flip(self.t_encoding.forward(length=1, offset=t), (1,)).unsqueeze(-1) * self.bottleneck_t_weight
 
     def forward(self, x_in, t, with_metrics=False):
         conditioning = self.get_t_conditioning(t)
