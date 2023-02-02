@@ -7,6 +7,21 @@ from torch import Tensor
 from utils.misc import get_normal
 
 
+# return pos emb and boolean information if it is absolute (needs to recalculate when we move windows by 1)
+def get_pos_emb(pos_enc_type, token_dim, n_ctx=None, pos_init_scale=None, pos_enc_lvl_over_bit=None, max_len=10000):
+    if pos_enc_type == "trainable":
+        assert n_ctx and pos_init_scale
+        return TrainablePositionalEncoding(input_shape=(n_ctx,), width=token_dim,
+                                           init_scale=pos_init_scale), False
+    elif pos_enc_type == "fourier":
+        return FourierFeaturesPositionalEncoding(depth=token_dim, max_len=max_len), False
+    elif pos_enc_type == "bpm":
+        assert pos_enc_lvl_over_bit
+        return BPMPositionalEncoding(depth=token_dim, levels_per_bit=pos_enc_lvl_over_bit), False
+    else:
+        raise Exception(f"Unknown pos_enc_type={pos_enc_type}")
+
+
 @torch.no_grad()
 def generate_fourier_features(depth, size, omega, device, offset=0):
     assert depth % 2 == 0

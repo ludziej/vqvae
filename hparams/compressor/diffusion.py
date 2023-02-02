@@ -6,8 +6,9 @@ default_bottleneck_transformer_params = Hparams(
     depth=8,
     heads=4,
     ff_mul=2,
-    dropout=0.5,
-    pos_enc_type="fourier",  # [trainable, fourier]
+    dropout=0.1,
+    prenorm=False,
+    rezero=True,
 )
 
 default_diffusion_autenc_params = Hparams(
@@ -74,7 +75,10 @@ default_diffusion_params = Hparams(
     n_ctx=4048,
     rmse_loss_weight=0.5,
     eps_loss_weight=1,
-    bottleneck_t_weight=0.1,
+    bottleneck_t_weight=0.1,  # None means trainable
+    pos_enc_weight=1,  # None means trainable
+    attn_pos_enc_type="fourier",  # [trainable, fourier]
+    t_pos_enc="fourier",
     main_dir="generated/models/big_diffusion/",
     ckpt_freq=10,
     **dirs_config,

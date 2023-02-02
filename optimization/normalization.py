@@ -1,5 +1,3 @@
-import torch
-import torch.nn as nn
 import torch.nn.functional as F
 from torch import nn
 
@@ -39,11 +37,3 @@ class Conv1dWeightStandardized(nn.Conv1d):
                         self.padding, self.dilation, self.groups)
 
 
-class ReZero(nn.Module):
-    def __init__(self, fn, init=0.):  # originally init was 1e-3
-        super().__init__()
-        self.g = nn.Parameter(torch.tensor(init))
-        self.fn = fn
-
-    def forward(self, x, **kwargs):
-        return self.fn(x, **kwargs) * self.g

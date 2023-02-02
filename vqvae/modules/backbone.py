@@ -18,6 +18,8 @@ class WavAutoEncoder(nn.Module):
         super().__init__()
         block_params = default(block_params, params)
         self.sr = sr
+        self.strides_t = strides_t
+        self.downs_t = downs_t
         self.bottleneck_params = bottleneck_params
         self.emb_width = emb_width
         self.multipliers = multipliers
@@ -47,6 +49,9 @@ class WavAutoEncoder(nn.Module):
             this_block_kwargs["width"] *= self.multipliers[level]
         this_block_kwargs["depth"] *= self.multipliers[level]
         return this_block_kwargs
+
+    def bottleneck_size(self, len):  # TODO  WARN works only for one-level eno
+        return int(len / self.strides_t[0] ** self.downs_t[0])
 
     def get_bottleneck(self, bottleneck_type, l_bins, emb_width, mu, levels, norm_before_vqvae, fixed_commit):
         if bottleneck_type == "vqvae":

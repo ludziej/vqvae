@@ -1,6 +1,7 @@
 import math
 import torch.nn as nn
-from optimization.normalization import CustomNormalization, Conv1dWeightStandardized, ReZero
+from optimization.normalization import CustomNormalization, Conv1dWeightStandardized
+from optimization.layers import ReZero
 from vqvae.modules.skip_connections import SkipConnectionsDecoder, SkipConnectionsEncoder
 import torch
 

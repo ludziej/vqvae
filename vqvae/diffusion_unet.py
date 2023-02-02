@@ -6,14 +6,14 @@ from vqvae.model import WavCompressor
 from vqvae.modules.diffusion import Diffusion
 from optimization.opt_maker import get_optimizer
 from utils.misc import default
-from optimization.positional_encoding import FourierFeaturesPositionalEncoding
+from optimization.positional_encoding import get_pos_emb
 import gc
 
 
 class DiffusionUnet(LightningModule):
     def __init__(self, autenc_params, preprocessing: WavCompressor, diff_params, log_sample_bs, prep_chunks,
                  prep_level, opt_params, logger, log_interval, max_logged_sounds, bottleneck_t_weight,
-                 rmse_loss_weight, eps_loss_weight, **params):
+                 rmse_loss_weight, eps_loss_weight, t_pos_enc, attn_pos_enc_type, pos_enc_weight, **params):
         super().__init__()
         self.rmse_loss_weight = rmse_loss_weight
         self.eps_loss_weight = eps_loss_weight
@@ -27,11 +27,13 @@ class DiffusionUnet(LightningModule):
         self.log_interval = log_interval
         self.skip_valid_logs = True
         self.bottleneck_t_weight = bottleneck_t_weight
+        self.pos_enc_weight = pos_enc_weight
         self.diffusion = Diffusion(emb_width=self.preprocessing.emb_width, **diff_params)
         self.autenc = WavAutoEncoder(sr=self.preprocessing.sr, **autenc_params,
                                      input_channels=self.preprocessing.emb_width, base_model=self)
-        self.t_encoding = FourierFeaturesPositionalEncoding(depth=self.autenc.emb_width,
-                                                            max_len=self.diffusion.noise_steps + 1)
+        self.t_encoding = get_pos_emb(t_pos_enc, token_dim=self.autenc.emb_width,
+                                      n_ctx=self.diffusion.noise_steps + 1, max_len=self.diffusion.noise_steps + 1)[0]
+        self.attn_pos_enc = get_pos_emb(attn_pos_enc_type, token_dim=self.autenc.emb_width)[0]
 
         for param in self.preprocessing.parameters():
             param.requires_grad = False
@@ -43,11 +45,16 @@ class DiffusionUnet(LightningModule):
     def no_grad_forward(self, x_in):
         return self(x_in)
 
-    def get_t_conditioning(self, t):  # flip to avoid confusion with transformer pos enc in bottleneck
-        return torch.flip(self.t_encoding.forward(length=1, offset=t), (1,)).unsqueeze(-1) * self.bottleneck_t_weight
+    def get_conditioning(self, t, len):
+        # flip to avoid confusion with transformer pos enc
+        len = self.autenc.bottleneck_size(len)
+        t_enc = torch.flip(self.t_encoding.forward(length=1, offset=t), (1,)).unsqueeze(-1)
+        pos_enc = self.attn_pos_enc.forward(length=len).T.unsqueeze(0)
+        mixed = t_enc * self.bottleneck_t_weight + pos_enc * self.pos_enc_weight
+        return mixed
 
     def forward(self, x_in, t, with_metrics=False):
-        conditioning = self.get_t_conditioning(t)
+        conditioning = self.get_conditioning(t, len=x_in.shape[2])
         x_predicted, _, _, metrics = self.autenc.forward(x_in, cond=conditioning)
         if with_metrics:
             return x_predicted, metrics
