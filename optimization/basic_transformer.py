@@ -3,7 +3,7 @@ from optimization.layers import ReZero, _get_clones, Residual
 
 
 class SelfAttentionBlock(nn.Module):
-    def __init__(self, width, heads, dropout):
+    def __init__(self, width, heads, dropout=0.1):
         super().__init__()
         self.self_attn = nn.MultiheadAttention(width, heads, dropout=dropout, batch_first=True)
 

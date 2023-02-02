@@ -1,15 +1,18 @@
 import math
 import torch.nn as nn
 from optimization.normalization import CustomNormalization, Conv1dWeightStandardized
-from optimization.layers import ReZero
+from optimization.layers import ReZero, Residual
+from optimization.basic_transformer import SelfAttentionBlock
 from vqvae.modules.skip_connections import SkipConnectionsDecoder, SkipConnectionsEncoder
 import torch
 
 
 class ResConv1DBlock(nn.Module):
     def __init__(self, n_in, n_state, norm_type, leaky_param, use_weight_standard, dilation=1, concat_skip=False,
-                 use_bias=False, res_scale=1.0, num_groups=32, rezero=False, alt_order=False):
+                 use_bias=False, res_scale=1.0, num_groups=32, rezero=False, condition_size=None, with_self_attn=False,
+                 attn_heads=2, alt_order=False):
         super().__init__()
+        self.condition_on_size = condition_size is not None
         self.concat_skip = concat_skip
         self.rezero = rezero
         self.res_scale = res_scale
@@ -30,23 +33,34 @@ class ResConv1DBlock(nn.Module):
         ])
         self.resconv = ReZero(blocks) if self.rezero else blocks
 
-    def forward(self, x):
+        if with_self_attn:
+            attn_block = SelfAttentionBlock(width=n_in, heads=attn_heads)
+            self.attn_block = ReZero(attn_block) if rezero else Residual(attn_block)
+
+        if self.condition_on_size:
+            self.cond_projection = nn.Linear(condition_size, first_in)
+
+    def forward(self, x, cond=None):
         x, skip = x if isinstance(x, tuple) else (x, None)
         x_scaled = x if self.res_scale == 1 else x * self.res_scale
+        add = 0
+        if self.condition_on_size:
+            assert cond is not None
+            add = self.cond_projection(cond).unsqueeze(-1)
         if self.concat_skip:
             assert skip is not None
-            x_in = torch.cat([x, skip], dim=1)
+            x_in = torch.cat([x, skip], dim=1) + add
             return x_scaled + self.resconv(x_in)
         else:
             skip = skip if skip is not None else 0
-            return skip + x_scaled + self.resconv(x)
+            return skip + x_scaled + self.resconv(x + add)
 
 
 class Resnet1D(nn.Module):
     def __init__(self, n_in, n_depth, m_conv=1.0, dilation_growth_rate=1, dilation_cycle=None, res_scale=False,
                  reverse_dilation=False, norm_type="none", leaky_param=1e-2, use_weight_standard=True, get_skip=False,
                  return_skip=False, concat_skip=False, use_bias=False, rezero=False, num_groups=32,
-                 skip_connections_step=1):
+                 skip_connections_step=1, condition_size=None, with_self_attn=False):
         super().__init__()
         assert not (get_skip and return_skip)
         concat_skip = concat_skip and get_skip
@@ -60,7 +74,8 @@ class Resnet1D(nn.Module):
                                  use_weight_standard=use_weight_standard, use_bias=use_bias,
                                  concat_skip=concat_skip and get_skip and skips[depth],
                                  dilation=self.get_dilation(depth), norm_type=norm_type, rezero=rezero,
-                                 res_scale=1.0 if not res_scale else 1.0 / math.sqrt(n_depth), num_groups=num_groups)
+                                 res_scale=1.0 if not res_scale else 1.0 / math.sqrt(n_depth), num_groups=num_groups,
+                                 condition_size=condition_size, with_self_attn=with_self_attn)
                   for depth in range(n_depth)]
         if reverse_dilation:
             blocks = blocks[::-1]
@@ -74,8 +89,8 @@ class Resnet1D(nn.Module):
         dilation = self.dilation_growth_rate ** depth
         return dilation
 
-    def forward(self, x):
-        return self.resblocks(x)
+    def forward(self, x, cond=None):
+        return self.resblocks(x) if cond is None else self.resblocks(x, cond=cond)
 
 
 class ResBlock2d(nn.Module):

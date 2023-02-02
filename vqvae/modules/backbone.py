@@ -27,6 +27,7 @@ class WavAutoEncoder(nn.Module):
         self.input_channels = input_channels
         self.levels = levels
         self.block_params = block_params
+        self.condition_size = self.block_params.get("condition_size", None)
         assert len(multipliers) == levels, "Invalid number of multipliers"
 
         model = default(base_model, self)
@@ -59,7 +60,8 @@ class WavAutoEncoder(nn.Module):
         elif bottleneck_type == "none" and self.skip_connections:
             return NoBottleneck(levels), "U-Net"
         elif bottleneck_type == "transformer":
-            return TransformerBottleneck(levels, btn_width=emb_width, **self.bottleneck_params), "U-Net Transformer"
+            return TransformerBottleneck(levels, btn_width=emb_width, condition_size=self.condition_size,
+                                         **self.bottleneck_params), "U-Net Transformer"
         elif bottleneck_type == "none":
             return NoBottleneck(levels), "Auto Encoder"
         elif bottleneck_type == "vae":
@@ -68,13 +70,13 @@ class WavAutoEncoder(nn.Module):
             raise Exception(f"Unknown bottleneck type {bottleneck_type}")
 
     def forward(self, x_in, cond=None):
-        encode_data = [encoder(x_in, last=True) for encoder in self.encoders]
+        encode_data = [encoder(x_in, last=True, cond=cond) for encoder in self.encoders]
         x_encoded, x_skips = zip(*encode_data) if self.skip_connections else (encode_data, itertools.repeat(None))
 
         bottleneck_data = self.bottleneck(x_encoded) if cond is None else self.bottleneck(x_encoded, cond)
         zs, xs_quantised, bottleneck_losses, prenorms, metrics = bottleneck_data
 
-        x_outs = [decoder(xs_quantised[level:level+1], all_levels=False, skips=skip)
+        x_outs = [decoder(xs_quantised[level:level+1], all_levels=False, skips=skip, cond=cond)
                   for level, (decoder, skip) in enumerate(zip(self.decoders, x_skips))]
         [assert_shape(x_out, x_in.shape) for x_out in x_outs]
         return x_outs, bottleneck_losses, prenorms, metrics

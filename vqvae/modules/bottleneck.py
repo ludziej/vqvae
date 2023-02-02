@@ -243,14 +243,19 @@ class NoBottleneck(nn.Module):
 
 
 class TransformerBottleneckBlock(nn.Module):
-    def __init__(self, **t_params):
+    def __init__(self, width, condition_size=None, **t_params):
         super().__init__()
-        self.transformer = TransformerEncoder(**t_params)
+        self.transformer = TransformerEncoder(width=width, **t_params)
+        self.condition_size = condition_size
+        self.projection = nn.Linear(condition_size, width)
 
     def forward(self, xs, cond=None):
         return self.encode(xs, cond)
 
     def encode(self, xs, cond=None):
+        if self.condition_size is not None:
+            assert cond is not None
+            cond = self.projection(cond).unsqueeze(-1)
         xs = xs + cond if cond is not None else xs
         xs = self.transformer(xs)
         return xs

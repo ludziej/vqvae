@@ -13,7 +13,8 @@ import gc
 class DiffusionUnet(LightningModule):
     def __init__(self, autenc_params, preprocessing: WavCompressor, diff_params, log_sample_bs, prep_chunks,
                  prep_level, opt_params, logger, log_interval, max_logged_sounds, bottleneck_t_weight,
-                 rmse_loss_weight, eps_loss_weight, t_pos_enc, attn_pos_enc_type, pos_enc_weight, **params):
+                 rmse_loss_weight, eps_loss_weight, t_pos_enc, attn_pos_enc_type, pos_enc_weight, cond_t_only=True,
+                 **params):
         super().__init__()
         self.rmse_loss_weight = rmse_loss_weight
         self.eps_loss_weight = eps_loss_weight
@@ -22,6 +23,7 @@ class DiffusionUnet(LightningModule):
         self.max_logged_sounds = max_logged_sounds
         self.opt_params = opt_params
         self.prep_level = prep_level
+        self.cond_t_only = cond_t_only
         self.my_logger = logger
         self.preprocessing = preprocessing
         self.log_interval = log_interval
@@ -31,7 +33,7 @@ class DiffusionUnet(LightningModule):
         self.diffusion = Diffusion(emb_width=self.preprocessing.emb_width, **diff_params)
         self.autenc = WavAutoEncoder(sr=self.preprocessing.sr, **autenc_params,
                                      input_channels=self.preprocessing.emb_width, base_model=self)
-        self.t_encoding = get_pos_emb(t_pos_enc, token_dim=self.autenc.emb_width,
+        self.t_encoding = get_pos_emb(t_pos_enc, token_dim=self.autenc.condition_size,
                                       n_ctx=self.diffusion.noise_steps + 1, max_len=self.diffusion.noise_steps + 1)[0]
         self.attn_pos_enc = get_pos_emb(attn_pos_enc_type, token_dim=self.autenc.emb_width)[0]
 
@@ -48,9 +50,11 @@ class DiffusionUnet(LightningModule):
     def get_conditioning(self, t, len):
         # flip to avoid confusion with transformer pos enc
         len = self.autenc.bottleneck_size(len)
-        t_enc = torch.flip(self.t_encoding.forward(length=1, offset=t), (1,)).unsqueeze(-1)
+        t_enc = torch.flip(self.t_encoding.forward(length=1, offset=t), (1,))
+        if self.cond_t_only:
+            return t_enc * self.bottleneck_t_weight
         pos_enc = self.attn_pos_enc.forward(length=len).T.unsqueeze(0)
-        mixed = t_enc * self.bottleneck_t_weight + pos_enc * self.pos_enc_weight
+        mixed = t_enc.unsqueeze(-1) * self.bottleneck_t_weight + pos_enc * self.pos_enc_weight
         return mixed
 
     def forward(self, x_in, t, with_metrics=False):

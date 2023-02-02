@@ -39,6 +39,8 @@ default_diffusion_autenc_params = Hparams(
     leaky_param=0,
     num_groups=32,
     bottleneck_type="transformer",  # ["none", "vqvae", "vae", "transformer"]
+    self_attn_from=3,
+    condition_size=128,
     bottleneck_params=default_bottleneck_transformer_params,
 )
 
@@ -75,7 +77,7 @@ default_diffusion_params = Hparams(
     n_ctx=4048,
     rmse_loss_weight=0.5,
     eps_loss_weight=1,
-    bottleneck_t_weight=0.1,  # None means trainable
+    bottleneck_t_weight=1,  # None means trainable
     pos_enc_weight=1,  # None means trainable
     attn_pos_enc_type="fourier",  # [trainable, fourier]
     t_pos_enc="fourier",
