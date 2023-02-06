@@ -17,7 +17,6 @@ class SelfAttentionBlock(nn.Module):
         return self._swap(x)
 
 
-
 class TransformerLayer(nn.Module):
     def __init__(self, width, heads, dim_ff=2, dropout=0.1, prenorm=False, layer_norm_eps=1e-5, rezero=False):
         super().__init__()

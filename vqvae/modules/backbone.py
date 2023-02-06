@@ -14,7 +14,8 @@ from vqvae.modules.audio_logger import AudioLogger
 class WavAutoEncoder(nn.Module):
     def __init__(self, sr, downs_t, emb_width, input_channels, l_bins, levels, mu,
                  norm_before_vqvae, strides_t, bottleneck_type, skip_connections, multipliers, bottleneck_params=None,
-                 fixed_commit=False, log_weights_norm=False, base_model=None, block_params=None, **params):
+                 fixed_commit=False, log_weights_norm=False, base_model=None, block_params=None, use_log_grads=False,
+                 **params):
         super().__init__()
         block_params = default(block_params, params)
         self.sr = sr
@@ -31,7 +32,8 @@ class WavAutoEncoder(nn.Module):
         assert len(multipliers) == levels, "Invalid number of multipliers"
 
         model = default(base_model, self)
-        self.audio_logger = AudioLogger(sr=self.sr, model=model, use_weights_logging=log_weights_norm)
+        self.audio_logger = AudioLogger(sr=self.sr, model=model, use_weights_logging=log_weights_norm,
+                                        use_log_grads=use_log_grads)
         encoders = nn.ModuleList([Encoder(input_channels, emb_width, level + 1, downs_t[:level + 1],
                                           strides_t[:level + 1], self.skip_connections, **self.block_kwargs(level))
                                   for level in range(levels)])

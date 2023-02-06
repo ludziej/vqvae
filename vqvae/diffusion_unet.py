@@ -47,6 +47,9 @@ class DiffusionUnet(LightningModule):
     def no_grad_forward(self, x_in):
         return self(x_in)
 
+    def on_after_backward(self) -> None:
+        self.autenc.audio_logger.log_grads()
+
     def get_conditioning(self, t, len):
         # flip to avoid confusion with transformer pos enc
         len = self.autenc.bottleneck_size(len)

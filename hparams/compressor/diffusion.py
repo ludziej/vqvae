@@ -26,6 +26,7 @@ default_diffusion_autenc_params = Hparams(
     log_weights_norm=True,
     skip_valid_logs=True,
     from_last_checkpot=True,
+    use_log_grads=True,
     skip_connections=True,
     skip_connections_step=3,
     channel_increase=2,

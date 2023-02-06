@@ -9,8 +9,9 @@ import matplotlib.pyplot as plt
 
 
 class AudioLogger(nn.Module):
-    def __init__(self, sr, model, use_weights_logging=False):
+    def __init__(self, sr, model, use_log_grads=False, use_weights_logging=False):
         super(AudioLogger, self).__init__()
+        self.use_log_grads = use_log_grads
         self.model = [model]
         self.sr = sr
         self.use_weights_logging = use_weights_logging
@@ -18,6 +19,18 @@ class AudioLogger(nn.Module):
         self.my_log = lambda *x, **xx: self.model[0].log(*x, **xx)
         self.spec = STFT(n_fft=512, center=True, hop_length=128, sr=self.sr, verbose=False)
         self.log_nr = {"val_": 0, "": 0, "test_": 0}
+
+    @torch.no_grad()
+    def log_grads(self):
+        if not self.use_log_grads:
+            return
+        metrics = {}
+        for name, value in self.model[0].named_parameters():
+            if value.grad is not None:
+                norm = torch.linalg.norm(value.grad)
+                metrics[f"grad_norm/{name}"] = norm
+        metrics[f"total_grad_norm"] = torch.linalg.norm(torch.tensor(list(metrics.values())))
+        self.log_add_metrics(metrics, prog_bar=False)
 
     def next_log_nr(self, prefix):
         nr = self.log_nr.get(prefix, 0)
@@ -31,9 +44,11 @@ class AudioLogger(nn.Module):
                 metrics[f"weight_norm/{name}"] = norm
         return metrics
 
-    def log_add_metrics(self, metrics, prefix=""):
+    def log_add_metrics(self, metrics, prefix="", prog_bar=True):
         for k, v in metrics.items():
-            self.my_log(prefix + k, v.item() if isinstance(v, torch.Tensor) else v, prog_bar=True, rank_zero_only=True)
+            self.my_log(prefix + k, v.item() if isinstance(v, torch.Tensor) else v, prog_bar=prog_bar,
+                        rank_zero_only=True)
+
 
     def log_metrics(self, metrics, prefix=""):
         self.next_log_nr(prefix)

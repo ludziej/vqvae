@@ -2,12 +2,14 @@ import os
 import logging
 import sys
 from datetime import datetime
+import pytorch_lightning as pl
 from pytorch_lightning import Trainer
 from pytorch_lightning import loggers as pl_loggers
 from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar, LearningRateMonitor, DeviceStatsMonitor
 from pathlib import Path
 import json
 import sys
+import warnings
 
 
 class NoSmoothingTQDM(TQDMProgressBar):
@@ -50,6 +52,9 @@ def generic_train(model, hparams, train, test, model_hparams, root_dir):
     restore_path = root_dir / model_hparams.ckpt_dir / model_hparams.restore_ckpt \
         if model_hparams.restore_ckpt is not None and hparams.restore_training else None
     restore_path = restore_path if restore_path is not None and os.path.exists(restore_path) else None
+
+    # supress rank_zero_only/sync_dist warning when logging
+    warnings.filterwarnings("ignore", message=".*sync_dist")
     trainer.fit(model, train_dataloaders=train, val_dataloaders=test, ckpt_path=restore_path)
 
 
