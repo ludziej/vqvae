@@ -29,7 +29,7 @@ class AudioLogger(nn.Module):
             if value.grad is not None:
                 norm = torch.linalg.norm(value.grad)
                 metrics[f"grad_norm/{name}"] = norm
-        metrics[f"total_grad_norm"] = torch.linalg.norm(torch.tensor(list(metrics.values())))
+        metrics[f"grad_norm_total"] = torch.linalg.norm(torch.tensor(list(metrics.values())))
         self.log_add_metrics(metrics, prog_bar=False)
 
     def next_log_nr(self, prefix):
