@@ -3,12 +3,19 @@ from optimization.layers import ReZero, _get_clones, Residual
 
 
 class SelfAttentionBlock(nn.Module):
-    def __init__(self, width, heads, dropout=0.1):
+    def __init__(self, width, heads, seq_last=False, dropout=0.1):
         super().__init__()
+        self.seq_last = seq_last
         self.self_attn = nn.MultiheadAttention(width, heads, dropout=dropout, batch_first=True)
 
+    def _swap(self, x):
+        return x.permute(0, 2, 1) if self.seq_last else x
+
     def forward(self, x):
-        return self.self_attn(x, x, x, attn_mask=None, key_padding_mask=None, need_weights=False)[0]
+        x = self._swap(x)
+        x = self.self_attn(x, x, x, attn_mask=None, key_padding_mask=None, need_weights=False)[0]
+        return self._swap(x)
+
 
 
 class TransformerLayer(nn.Module):
@@ -26,8 +33,8 @@ class TransformerLayer(nn.Module):
         fc_block = nn.Sequential(linear1, activation, dropout_fn, linear2, dropout_fn)
 
         if rezero:
-            self.sa_block = ReZero(sa_block)
-            self.fc_block = ReZero(fc_block)
+            self.sa_block = Residual(ReZero(sa_block))
+            self.fc_block = Residual(ReZero(fc_block))
         else:
             norm1 = nn.LayerNorm(width, eps=layer_norm_eps)
             norm2 = nn.LayerNorm(width, eps=layer_norm_eps)

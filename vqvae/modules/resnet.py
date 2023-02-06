@@ -14,6 +14,7 @@ class ResConv1DBlock(nn.Module):
         super().__init__()
         self.condition_on_size = condition_size is not None
         self.concat_skip = concat_skip
+        self.with_self_attn = with_self_attn
         self.rezero = rezero
         self.res_scale = res_scale
         padding = dilation
@@ -34,26 +35,28 @@ class ResConv1DBlock(nn.Module):
         self.resconv = ReZero(blocks) if self.rezero else blocks
 
         if with_self_attn:
-            attn_block = SelfAttentionBlock(width=n_in, heads=attn_heads)
-            self.attn_block = ReZero(attn_block) if rezero else Residual(attn_block)
+            attn_block = SelfAttentionBlock(width=n_in, heads=attn_heads, seq_last=True)
+            self.attn_block = ReZero(attn_block) if rezero else attn_block
 
         if self.condition_on_size:
             self.cond_projection = nn.Linear(condition_size, first_in)
 
     def forward(self, x, cond=None):
         x, skip = x if isinstance(x, tuple) else (x, None)
-        x_scaled = x if self.res_scale == 1 else x * self.res_scale
+        x_res = x if self.res_scale == 1 else x * self.res_scale
         add = 0
         if self.condition_on_size:
             assert cond is not None
             add = self.cond_projection(cond).unsqueeze(-1)
         if self.concat_skip:
             assert skip is not None
-            x_in = torch.cat([x, skip], dim=1) + add
-            return x_scaled + self.resconv(x_in)
+            x = torch.cat([x, skip], dim=1)
         else:
-            skip = skip if skip is not None else 0
-            return skip + x_scaled + self.resconv(x + add)
+            add += skip if skip is not None else 0
+        x = x_res + self.resconv(x + add)
+        if self.with_self_attn:
+            x = x + self.attn_block(x)
+        return x
 
 
 class Resnet1D(nn.Module):
