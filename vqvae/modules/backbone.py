@@ -53,7 +53,7 @@ class WavAutoEncoder(nn.Module):
         this_block_kwargs["depth"] *= self.multipliers[level]
         return this_block_kwargs
 
-    def bottleneck_size(self, len):  # TODO  WARN works only for one-level eno
+    def bottleneck_size(self, len):  # TODO  WARN works only for one-level encoders
         return int(len / self.strides_t[0] ** self.downs_t[0])
 
     def get_bottleneck(self, bottleneck_type, l_bins, emb_width, mu, levels, norm_before_vqvae, fixed_commit):
@@ -63,6 +63,7 @@ class WavAutoEncoder(nn.Module):
             return NoBottleneck(levels), "U-Net"
         elif bottleneck_type == "transformer":
             return TransformerBottleneck(levels, btn_width=emb_width, condition_size=self.condition_size,
+                                         downsample=self.strides_t[0] ** self.downs_t[0],
                                          **self.bottleneck_params), "U-Net Transformer"
         elif bottleneck_type == "none":
             return NoBottleneck(levels), "Auto Encoder"

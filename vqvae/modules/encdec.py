@@ -7,11 +7,11 @@ from vqvae.modules.skip_connections import SkipConnectionsDecoder, SkipConnectio
 
 
 class EncoderConvBlock(nn.Module):
-    def __init__(self, input_emb_width, output_emb_width, down_t,
-                 stride_t, skip_connections, width, depth, m_conv, norm_type,
-                 dilation_growth_rate=1, dilation_cycle=None, res_scale=False, leaky_param=1e-2,
+    def __init__(self, input_emb_width, output_emb_width, down_t, stride_t, skip_connections, width, depth, m_conv,
+                 norm_type, dilation_growth_rate=1, dilation_cycle=None, res_scale=False, leaky_param=1e-2,
                  use_weight_standard=True, num_groups=32, use_bias=False, concat_skip=False, rezero=False,
-                 skip_connections_step=1, channel_increase=1, condition_size=None, self_attn_from=None, **params):
+                 skip_connections_step=1, channel_increase=1, condition_size=None, self_attn_from=None,
+                 cond_with_time=False, **params):
         super().__init__()
         self.skip_connections = skip_connections
         filter_t, pad_t = stride_t * 2, stride_t // 2
@@ -21,13 +21,15 @@ class EncoderConvBlock(nn.Module):
             for i in range(down_t):
                 next_width = width * channel_increase ** i
                 with_self_attn = self_attn_from is not None and self_attn_from <= i + 1
+                downsample = stride_t ** (i + 1)
                 block = [
                     nn.Conv1d(input_emb_width if i == 0 else curr_width, next_width, filter_t, stride_t, pad_t),
                     Resnet1D(next_width, depth, m_conv, dilation_growth_rate, dilation_cycle, res_scale,
                              return_skip=skip_connections, norm_type=norm_type, leaky_param=leaky_param,
                              use_weight_standard=use_weight_standard, num_groups=num_groups, use_bias=use_bias,
                              concat_skip=concat_skip, skip_connections_step=skip_connections_step, rezero=rezero,
-                             condition_size=condition_size, with_self_attn=with_self_attn),
+                             condition_size=condition_size, with_self_attn=with_self_attn,
+                             cond_with_time=cond_with_time, downsample=downsample),
                 ]
                 blocks.append(nn.Sequential(*block) if condition_size is None else
                               SkipConnectionsEncoder(block, [False, True], pass_skips=True, pass_conds=[False, True]))
@@ -50,7 +52,7 @@ class DecoderConvBock(nn.Module):
                  skip_connections, width, depth, m_conv, norm_type, dilation_growth_rate=1, dilation_cycle=None,
                  res_scale=False, reverse_decoder_dilation=False, leaky_param=1e-2, use_weight_standard=True,
                  num_groups=32, use_bias=False, concat_skip=False, rezero=False, skip_connections_step=1,
-                 channel_increase=1, condition_size=None, self_attn_from=None, **params):
+                 channel_increase=1, condition_size=None, self_attn_from=None, cond_with_time=False, **params):
         super().__init__()
         self.skip_connections = skip_connections
         blocks = []
@@ -62,12 +64,14 @@ class DecoderConvBock(nn.Module):
                 curr_width = width * channel_increase ** (down_t - i - 1)
                 next_width = input_emb_width if i == (down_t - 1) else width * channel_increase ** (down_t - i - 2)
                 with_self_attn = self_attn_from is not None and self_attn_from <= down_t - i
+                downsample = stride_t ** (down_t - i)
                 block = [
                     Resnet1D(curr_width, depth, m_conv, dilation_growth_rate, dilation_cycle, leaky_param=leaky_param,
                              get_skip=skip_connections, norm_type=norm_type, res_scale=res_scale, num_groups=num_groups,
                              reverse_dilation=reverse_decoder_dilation, use_weight_standard=use_weight_standard,
                              use_bias=use_bias, concat_skip=concat_skip, rezero=rezero, with_self_attn=with_self_attn,
-                             skip_connections_step=skip_connections_step, condition_size=condition_size),
+                             skip_connections_step=skip_connections_step, condition_size=condition_size,
+                             cond_with_time=cond_with_time, downsample=downsample),
                     nn.ConvTranspose1d(curr_width, next_width, filter_t, stride_t, pad_t),
                 ]
                 blocks.append(nn.Sequential(*block) if condition_size is None else

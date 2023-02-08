@@ -15,8 +15,12 @@ def train(hparams):
     # calculate correct sample_len for chosen n_ctx inside tokens
     hparams.compressor.sample_len = get_sample_len_from_tokens(hparams.compressor.strides_t, hparams.compressor.downs_t,
                                                                model_params.prep_level, model_params.n_ctx)
-    compressor, train_dl, test_dl = get_model_with_data(**hparams.compressor, train_path=hparams.train_path,
-                                                        test_path=hparams.test_path, logger=logger)
+    compressor, train_dl, test_dl, train_dataset = get_model_with_data(
+        **hparams.compressor, train_path=hparams.train_path, test_path=hparams.test_path,
+        banned_genres=hparams.banned_genres, time_cond=model_params.data_time_cond,
+        context_cond=model_params.data_context_cond, logger=logger, with_train_data=True)
+    model_params.condition_params.genres = train_dataset.genres
+
     diffusion = get_model(preprocessing=compressor, **model_params, logger=logger)
     generic_train(diffusion, hparams, train_dl, test_dl, model_params, root_dir)
 

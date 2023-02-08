@@ -9,13 +9,16 @@ from data_processing.chunks import DatasetConfig, Chunk, Track
 from data_processing.tools import get_duration
 from utils.misc import load, save, flatten, load_json, reverse_mapper
 from torch.utils.data import random_split, Subset
+import json
+import pandas as pd
 import pathlib
 
 
 class MusicDataset(Dataset):
-    def __init__(self,  sound_dirs, sample_len, logger, sr=22050, transform=None, min_length=1, timeout=1, context_cond=False,
-                 time_cond=False, cache_name="file_lengths.pickle", channel_level_bias=0.25, use_audiofile=False,
-                 another_thread=False, rms_normalize_sound=True, rms_normalize_level=-5):
+    def __init__(self,  sound_dirs, sample_len, logger, sr=22050, transform=None, min_length=1, timeout=1,
+                 context_cond=False, time_cond=False, cache_name="file_lengths.pickle", channel_level_bias=0.25,
+                 use_audiofile=False, another_thread=False, rms_normalize_sound=True, metadata_tracks="tracks.csv",
+                 genres_data="genres.csv", rms_normalize_level=-5, banned_genres=()):
         self.sound_dirs = sound_dirs if isinstance(sound_dirs, list) else [sound_dirs]
         self.logger = logger
         self.time_cond = time_cond
@@ -27,19 +30,38 @@ class MusicDataset(Dataset):
         self.transform = transform
         self.use_audiofile = use_audiofile
         self.logger = logger
+        self.banned_genres = set(banned_genres)
         self.legal_suffix = [".wav", ".mp3", ".ape", ".flac"]
         self.context_file = "context.json"
-
-        self.empty_context = dict(artist="other", genre="other")
-        self.files, self.contexts = self.get_files_and_contexts()
-        self.contexts_vec, self.context_names, self.context_totals = self.vectorise_contexts()
+        self.genres = []
         self.cache_dir = pathlib.Path(self.sound_dirs[0])
+        if self.context_cond:
+            self.track_metadata, self.genres, self.genre_map, self.genre_reverse_mapper \
+                = self.calc_track_metadata(metadata_tracks, genres_data)
+
+        self.empty_context = dict()
+        self.files, self.contexts = self.get_files_and_contexts()
+        #self.contexts_vec, self.context_names, self.context_totals = self.vectorise_contexts()
         self.cache_path = self.cache_dir / cache_name if cache_name is not None else None
         self.sizes, self.dataset_size = self.calculate_lengths()
         self.chunk_config = DatasetConfig(channel_level_bias, use_audiofile, another_thread, self.sample_len, timeout,
                                           self.sr, logger, rms_normalize_sound, rms_normalize_level,
-                                          **self.context_names, **self.context_totals)
+                                          genre_total=len(self.genres))
         self.chunks = self.calculate_chunks()
+
+    def calc_track_metadata(self, tracks, genres):
+        genres = pd.read_csv(self.cache_dir / genres, header=0)
+        genre_mapper = {gid: id for id, gid in zip(genres.index, genres.genre_id)}
+        genre_legal = {g for g, name in zip(genres.index, genres.title) if name.lower() not in self.banned_genres}
+        genre_reverse_mapper = {v: k for k, v in genre_mapper.items()}
+
+        tracks = pd.read_csv(self.cache_dir / tracks, index_col=0, header=[0, 1])
+        tracks_data = [(list(map(genre_mapper.get, json.loads(g))), max(l, 1))
+                       for g, l in zip(tracks.track.genres_all, tracks.album.listens)]
+        tracks_data = {i: (g, l) for i, (g, l) in zip(tracks.index, tracks_data)
+                       if all(gi in genre_legal for gi in g)}
+
+        return tracks_data, genres, genre_mapper, genre_reverse_mapper
 
     def get_files_and_contexts(self):
         data = flatten(self.get_music_in(pathlib.Path(x), self.empty_context) for x in self.sound_dirs)
@@ -97,22 +119,29 @@ class MusicDataset(Dataset):
         return sizes, dataset_size
 
     def calculate_chunks(self):
-        return flatten(self.get_chunks(file, size, **context) for file, size, context in
-                       zip(tqdm(self.files, desc="Dividing dataset into chunks"), self.sizes, self.contexts_vec))
+        return flatten(self.get_chunks(file, size) for file, size in
+                       zip(tqdm(self.files, desc="Dividing dataset into chunks"), self.sizes))
 
-    def get_chunks(self, file: str, size: float, artist=0, genre=0) -> [Chunk]:
-        track = Track(self.chunk_config, file, size, artist, genre)
+    def get_chunks(self, file: str, size: float) -> [Chunk]:
+        file_id = int(os.path.basename(file).split('.')[0])
+        genres, listens = self.track_metadata.get(file_id, (None, None)) if self.context_cond else ([0], 1)
+        if genres is None or len(genres) == 0 or listens == -1:  # banned genre
+            return []
+        track = Track(self.chunk_config, file, size, 0, genres, listens)
         if size <= self.min_length:
             return []
-        len = self.sample_len / self.sr
-        return [Chunk(track, i * len, (i + 1) * len) for i in range(int(size / len))]
+        length = self.sample_len / self.sr
+        return [Chunk(track, i * length, (i + 1) * length) for i in range(int(size / length))]
 
     def __getitem__(self, idx):
         sound = self.chunks[idx].read()
         sound = self.transform(sound) if self.transform else sound
-        context_c = self.chunks[idx].get_context_cond() if self.context_cond else None
-        time_c = self.chunks[idx].get_time_cond() if self.time_cond else None
-        return tuple([x for x in [sound, context_c, time_c] if x is not None])
+        additional = dict()
+        if self.context_cond:
+            additional["context"] = self.chunks[idx].get_context_cond()
+        if self.time_cond:
+            additional["time"] = self.chunks[idx].get_time_cond()
+        return sound, additional
 
     def find_files_for_a_split(self, test_perc):
         wanted_size = self.dataset_size * test_perc

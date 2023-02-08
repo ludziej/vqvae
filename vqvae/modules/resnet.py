@@ -10,13 +10,14 @@ import torch
 class ResConv1DBlock(nn.Module):
     def __init__(self, n_in, n_state, norm_type, leaky_param, use_weight_standard, dilation=1, concat_skip=False,
                  use_bias=False, res_scale=1.0, num_groups=32, rezero=False, condition_size=None, with_self_attn=False,
-                 attn_heads=2, alt_order=False):
+                 attn_heads=2, downsample=1, cond_with_time=False, alt_order=False, cond_on_attn=True):
         super().__init__()
         self.condition_on_size = condition_size is not None
         self.concat_skip = concat_skip
         self.with_self_attn = with_self_attn
         self.rezero = rezero
         self.res_scale = res_scale
+        self.cond_on_attn = cond_on_attn
         padding = dilation
         bias = norm_type == "none" or use_bias
         use_standard = norm_type != "none" and use_weight_standard
@@ -39,7 +40,11 @@ class ResConv1DBlock(nn.Module):
             self.attn_block = ReZero(attn_block) if rezero else attn_block
 
         if self.condition_on_size:
-            self.cond_projection = nn.Linear(condition_size, first_in)
+            self.cond_projection = nn.Conv1d(condition_size, first_in) if not cond_with_time else \
+                nn.Conv1d(condition_size, first_in, kernel_size=downsample, stride=downsample)
+            if self.cond_on_attn:
+                self.cond_projection_attn = nn.Conv1d(condition_size, n_in) if not cond_with_time else \
+                    nn.Conv1d(condition_size, n_in, kernel_size=downsample, stride=downsample)
 
     def forward(self, x, cond=None):
         x, skip = x if isinstance(x, tuple) else (x, None)
@@ -47,7 +52,7 @@ class ResConv1DBlock(nn.Module):
         add = 0
         if self.condition_on_size:
             assert cond is not None
-            add = self.cond_projection(cond).unsqueeze(-1)
+            add = self.cond_projection(cond)
         if self.concat_skip:
             assert skip is not None
             x = torch.cat([x, skip], dim=1)
@@ -55,7 +60,8 @@ class ResConv1DBlock(nn.Module):
             add += skip if skip is not None else 0
         x = x_res + self.resconv(x + add)
         if self.with_self_attn:
-            x = x + self.attn_block(x)
+            add = self.cond_projection_attn(cond) if self.cond_on_attn else 0
+            x = x + self.attn_block(x + add)
         return x
 
 
@@ -63,7 +69,8 @@ class Resnet1D(nn.Module):
     def __init__(self, n_in, n_depth, m_conv=1.0, dilation_growth_rate=1, dilation_cycle=None, res_scale=False,
                  reverse_dilation=False, norm_type="none", leaky_param=1e-2, use_weight_standard=True, get_skip=False,
                  return_skip=False, concat_skip=False, use_bias=False, rezero=False, num_groups=32,
-                 skip_connections_step=1, condition_size=None, with_self_attn=False):
+                 skip_connections_step=1, condition_size=None, downsample=1, with_self_attn=False,
+                 cond_with_time=False):
         super().__init__()
         assert not (get_skip and return_skip)
         concat_skip = concat_skip and get_skip
@@ -78,7 +85,8 @@ class Resnet1D(nn.Module):
                                  concat_skip=concat_skip and get_skip and skips[depth],
                                  dilation=self.get_dilation(depth), norm_type=norm_type, rezero=rezero,
                                  res_scale=1.0 if not res_scale else 1.0 / math.sqrt(n_depth), num_groups=num_groups,
-                                 condition_size=condition_size, with_self_attn=with_self_attn)
+                                 condition_size=condition_size, with_self_attn=with_self_attn, downsample=downsample,
+                                 cond_with_time=cond_with_time)
                   for depth in range(n_depth)]
         if reverse_dilation:
             blocks = blocks[::-1]

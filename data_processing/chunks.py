@@ -22,7 +22,8 @@ class TimeConditioning(NamedTuple):
 
 class ContextConditioning(NamedTuple):
     artist: int  # class
-    genre: int
+    genres: List[int]
+    listens: int
 
 
 class DatasetConfig(NamedTuple):
@@ -35,10 +36,10 @@ class DatasetConfig(NamedTuple):
     logger: Any
     rms_normalize_sound: bool
     rms_normalize_level: float
-    artist_total: int
+    #artist_total: int
     genre_total: int
-    artist_names: List[str]
-    genre_names: List[str]
+    #artist_names: List[str]
+    #genre_names: List[str]
 
 
 class Track(NamedTuple):
@@ -46,10 +47,11 @@ class Track(NamedTuple):
     filename: str
     file_length: float  # in seconds
     artist: int
-    genre: int
+    genres: List[int]
+    listens: int
 
     def get_context_cond(self):
-        return ContextConditioning(artist=self.artist, genre=self.genre)
+        return ContextConditioning(artist=self.artist, genres=self.genres, listens=self.listens)
 
     def __str__(self):
         return f"{self.filename}[total {self.file_length:.1f}s]"

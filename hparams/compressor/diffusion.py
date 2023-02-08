@@ -41,7 +41,6 @@ default_diffusion_autenc_params = Hparams(
     num_groups=32,
     bottleneck_type="transformer",  # ["none", "vqvae", "vae", "transformer"]
     self_attn_from=3,
-    condition_size=128,
     bottleneck_params=default_bottleneck_transformer_params,
 )
 
@@ -66,20 +65,35 @@ default_diffusion_optim_params = Hparams(
     lr_start_linear_decay=0,
 )
 
+default_condition_params = Hparams(
+    listens_logarithm=True,
+    t_cond_size=128,
+    pos_cond_size=64,  # None if without conditioning
+    style_cond_size=64,
+    time_cond_size=64,
+    listens_cond_size=64,
+    artists_cond_size=None,
+    t_enc_type="fourier",  # [fourier, trainable]
+    pos_enc_type="fourier",
+    time_enc_type="fourier",
+    listens_enc_type="fourier",
+)
+
 default_diffusion_params = Hparams(
     autenc_params=default_diffusion_autenc_params,
     diff_params=default_diffusion_train_params,
     opt_params=default_diffusion_optim_params,
+    condition_params=default_condition_params,
     log_sample_bs=5,
     log_interval=100,
     max_logged_sounds=5,
+    data_time_cond=True,
+    data_context_cond=True,
     prep_chunks=2,
     prep_level=0,
     n_ctx=4048,
     rmse_loss_weight=0.5,
     eps_loss_weight=1,
-    bottleneck_t_weight=1,  # None means trainable
-    pos_enc_weight=1,  # None means trainable
     attn_pos_enc_type="fourier",  # [trainable, fourier]
     t_pos_enc="fourier",
     main_dir="generated/models/big_diffusion/",

@@ -48,19 +48,19 @@ class Diffusion(nn.Module):
             + torch.sqrt(posterior) * noise
         return x
 
-    def sample(self, model, n, length, steps=None):
+    def sample(self, model, n, length, steps=None, **context_args):
         logging.info(f"Sampling {n} new images....")
         x = torch.randn((n, self.emb_width, length)).to(model.device)
-        return self.denoise(x, model, steps=steps)
+        return self.denoise(x, model, steps=steps, **context_args)
 
-    def denoise(self, x, model, steps=None, level=0):
+    def denoise(self, x, model, steps=None, level=0, **context_args):
         was_training = self.training
         steps = default(steps, self.noise_steps)
         model.eval()
         with torch.no_grad():
             for i in tqdm(list(reversed(range(1, steps))), position=0, desc="Denoising"):
                 t = (torch.ones(len(x)) * i).long().to(model.device)
-                predicted_noise = model(x, t)
+                predicted_noise = model(x, t, **context_args)
                 x = self.denoise_step(x, predicted_noise[level], t, add_noise=i > 1)
                 norm = torch.sqrt(torch.mean(x**2))
                 if self.renormalize_sampling or norm >= 100:

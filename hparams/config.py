@@ -28,6 +28,7 @@ config_big_hparams = Hparams(
     logging="INFO",
     log_file="logs.txt",
     track_grad_norm=-1,
+    banned_genres=("experimental", "metal", "ambient", "soundtrack", "spoken", "glitch",),
     log_every_n_steps=10,
     restore_training=True,
     detect_anomaly=True,

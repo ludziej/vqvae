@@ -3,19 +3,20 @@ from pytorch_lightning import LightningModule
 
 from vqvae.modules.backbone import WavAutoEncoder
 from vqvae.model import WavCompressor
+from vqvae.modules.diff_condition import DiffusionConditioning
 from vqvae.modules.diffusion import Diffusion
 from optimization.opt_maker import get_optimizer
-from utils.misc import default
-from optimization.positional_encoding import get_pos_emb
 import gc
 
 
 class DiffusionUnet(LightningModule):
     def __init__(self, autenc_params, preprocessing: WavCompressor, diff_params, log_sample_bs, prep_chunks,
-                 prep_level, opt_params, logger, log_interval, max_logged_sounds, bottleneck_t_weight,
-                 rmse_loss_weight, eps_loss_weight, t_pos_enc, attn_pos_enc_type, pos_enc_weight, cond_t_only=True,
-                 **params):
+                 prep_level, opt_params, logger, log_interval, max_logged_sounds,
+                 rmse_loss_weight, eps_loss_weight, condition_params, data_time_cond, data_context_cond, **params):
         super().__init__()
+        self.preprocessing = preprocessing
+        self.data_time_cond = data_time_cond
+        self.data_context_cond = data_context_cond
         self.rmse_loss_weight = rmse_loss_weight
         self.eps_loss_weight = eps_loss_weight
         self.log_sample_bs = log_sample_bs
@@ -23,19 +24,15 @@ class DiffusionUnet(LightningModule):
         self.max_logged_sounds = max_logged_sounds
         self.opt_params = opt_params
         self.prep_level = prep_level
-        self.cond_t_only = cond_t_only
         self.my_logger = logger
-        self.preprocessing = preprocessing
         self.log_interval = log_interval
         self.skip_valid_logs = True
-        self.bottleneck_t_weight = bottleneck_t_weight
-        self.pos_enc_weight = pos_enc_weight
         self.diffusion = Diffusion(emb_width=self.preprocessing.emb_width, **diff_params)
-        self.autenc = WavAutoEncoder(sr=self.preprocessing.sr, **autenc_params,
-                                     input_channels=self.preprocessing.emb_width, base_model=self)
-        self.t_encoding = get_pos_emb(t_pos_enc, token_dim=self.autenc.condition_size,
-                                      n_ctx=self.diffusion.noise_steps + 1, max_len=self.diffusion.noise_steps + 1)[0]
-        self.attn_pos_enc = get_pos_emb(attn_pos_enc_type, token_dim=self.autenc.emb_width)[0]
+        self.diffusion_cond = DiffusionConditioning(**condition_params, noise_steps=self.diffusion.noise_steps)
+        self.autenc = WavAutoEncoder(**autenc_params, base_model=self, sr=self.preprocessing.sr,
+                                     cond_with_time=self.diffusion_cond.cond_with_time,
+                                     condition_size=self.diffusion_cond.cond_size,
+                                     input_channels=self.preprocessing.emb_width)
 
         for param in self.preprocessing.parameters():
             param.requires_grad = False
@@ -50,26 +47,20 @@ class DiffusionUnet(LightningModule):
     def on_after_backward(self) -> None:
         self.autenc.audio_logger.log_grads()
 
-    def get_conditioning(self, t, len):
-        # flip to avoid confusion with transformer pos enc
-        len = self.autenc.bottleneck_size(len)
-        t_enc = torch.flip(self.t_encoding.forward(length=1, offset=t), (1,))
-        if self.cond_t_only:
-            return t_enc * self.bottleneck_t_weight
-        pos_enc = self.attn_pos_enc.forward(length=len).T.unsqueeze(0)
-        mixed = t_enc.unsqueeze(-1) * self.bottleneck_t_weight + pos_enc * self.pos_enc_weight
-        return mixed
-
-    def forward(self, x_in, t, with_metrics=False):
-        conditioning = self.get_conditioning(t, len=x_in.shape[2])
+    def forward(self, x_in, t, time_cond=None, context_cond=None, with_metrics=False):
+        conditioning = self.diffusion_cond.get_conditioning(t, time_cond=time_cond, context_cond=context_cond,
+                                                            length=x_in.shape[2])
         x_predicted, _, _, metrics = self.autenc.forward(x_in, cond=conditioning)
         if with_metrics:
             return x_predicted, metrics
         return x_predicted
 
     @torch.no_grad()
-    def preprocess(self, sound):
-        return self.preprocessing.encode(sound, self.prep_level, self.prep_level + 1, bs_chunks=self.prep_chunks)[0]
+    def preprocess(self, batch):
+        sound, data_cond, time_cond = (batch[0], batch[1].get("context", None), batch[1].get("times", None)) \
+            if self.data_time_cond or self.data_context_cond else (batch[0], None, None)
+        latent = self.preprocessing.encode(sound, self.prep_level, self.prep_level + 1, bs_chunks=self.prep_chunks)[0]
+        return latent, data_cond, time_cond
 
     @torch.no_grad()
     def postprocess(self, latent_sound):
@@ -83,8 +74,8 @@ class DiffusionUnet(LightningModule):
         return x_noised, noise_target, t
 
     @torch.no_grad()
-    def sample(self, bs, length):
-        latent_samples = self.diffusion.sample(self, bs, length=length)
+    def sample(self, bs, length, **kwargs):
+        latent_samples = self.diffusion.sample(self, bs, length=length, **kwargs)
         sample_norm = self.bnorm(latent_samples)
         samples = self.postprocess(latent_samples)
         return samples, dict(sample_norm=sample_norm)
@@ -114,25 +105,26 @@ class DiffusionUnet(LightningModule):
         return loss, sounds_dict, metrics_l
 
     def evaluation_step(self, batch, batch_idx, phase="train"):
-        x_in = self.preprocess(batch)
+        x_in, context_cond, time_cond = self.preprocess(batch)
         x_noised, noise_target, t = self.noising(x_in)
 
-        noise_pred, metrics = self(x_noised, t, with_metrics=True)
+        noise_pred, metrics = self(x_noised, t, with_metrics=True, context_cond=context_cond, time_cond=time_cond)
         loss, sounds_dict, metrics = self.calc_loss(noise_pred, noise_target, x_noised, x_in, t, metrics)
 
-        self.log_metrics_and_samples(loss, metrics, sounds_dict, t, batch_idx, phase, sample_len=x_in.shape[-1])
+        self.log_metrics_and_samples(loss, metrics, sounds_dict, t, batch_idx, phase, sample_len=x_in.shape[-1],
+                                     context_cond=context_cond, time_cond=time_cond)
         return loss
 
     # lightning train boilerplate
 
     def training_step(self, batch, batch_idx):
-        return self.evaluation_step(batch[0], batch_idx, "train")
+        return self.evaluation_step(batch, batch_idx, "train")
 
     def test_step(self, batch, batch_idx):
-        return self.evaluation_step(batch[0], batch_idx, "test")
+        return self.evaluation_step(batch, batch_idx, "test")
 
     def validation_step(self, batch, batch_idx):
-        return self.evaluation_step(batch[0], batch_idx, "val")
+        return self.evaluation_step(batch, batch_idx, "val")
 
     def configure_optimizers(self):
         gopt, gsched = get_optimizer(self, **self.opt_params)
@@ -141,7 +133,7 @@ class DiffusionUnet(LightningModule):
     # metrics & logging
 
     @torch.no_grad()
-    def log_metrics_and_samples(self, loss, metrics, sounds_dict, t, batch_idx, phase, sample_len):
+    def log_metrics_and_samples(self, loss, metrics, sounds_dict, t, batch_idx, phase, sample_len, context_cond=None, time_cond=None):
         prefix = phase + "_" if phase != "train" else ""
         assert len(metrics) == 1  # currently no support for multiple levels
         self.autenc.audio_logger.log_metrics({**metrics[0], 'loss': loss}, prefix)
@@ -150,7 +142,11 @@ class DiffusionUnet(LightningModule):
                 (phase == "train" or not self.skip_valid_logs)):
             return  # log samples once per interval
 
-        samples, sample_metrics = self.sample(self.log_sample_bs, length=sample_len)
+        samples_num = min(len(t), self.log_sample_bs)
+        context_cond = context_cond[:samples_num] if context_cond is not None else None
+        time_cond = time_cond[:samples_num] if time_cond is not None else None
+        samples, sample_metrics = self.sample(samples_num, length=sample_len, context_cond=context_cond,
+                                              time_cond=time_cond)
         self.autenc.audio_logger.log_add_metrics(sample_metrics, prefix)
 
         self.autenc.audio_logger.plot_spec_as(samples, lambda i: f"generated_specs/{i}", prefix)
