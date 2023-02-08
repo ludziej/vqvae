@@ -3,6 +3,7 @@ import torch as t
 import torch.nn as nn
 import torch.nn.functional as F
 from optimization.basic_transformer import TransformerEncoder
+from optimization.layers import CondProjection
 
 
 class BottleneckBlock(nn.Module):
@@ -248,7 +249,7 @@ class TransformerBottleneckBlock(nn.Module):
         self.downsample = downsample
         self.transformer = TransformerEncoder(width=width, **t_params)
         self.condition_size = condition_size
-        self.projection = nn.Conv1d(condition_size, width, kernel_size=downsample, stride=downsample)
+        self.projection = CondProjection(condition_size, width, downsample=downsample, with_time=True)
 
     def forward(self, xs, cond=None):
         return self.encode(xs, cond)

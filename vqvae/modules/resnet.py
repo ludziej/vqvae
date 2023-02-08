@@ -1,7 +1,7 @@
 import math
 import torch.nn as nn
 from optimization.normalization import CustomNormalization, Conv1dWeightStandardized
-from optimization.layers import ReZero, Residual
+from optimization.layers import ReZero, CondProjection
 from optimization.basic_transformer import SelfAttentionBlock
 from vqvae.modules.skip_connections import SkipConnectionsDecoder, SkipConnectionsEncoder
 import torch
@@ -40,11 +40,11 @@ class ResConv1DBlock(nn.Module):
             self.attn_block = ReZero(attn_block) if rezero else attn_block
 
         if self.condition_on_size:
-            self.cond_projection = nn.Conv1d(condition_size, first_in) if not cond_with_time else \
-                nn.Conv1d(condition_size, first_in, kernel_size=downsample, stride=downsample)
+            self.cond_projection = CondProjection(x_in=condition_size, x_out=first_in, downsample=downsample,
+                                                  with_time=cond_with_time)
             if self.cond_on_attn:
-                self.cond_projection_attn = nn.Conv1d(condition_size, n_in) if not cond_with_time else \
-                    nn.Conv1d(condition_size, n_in, kernel_size=downsample, stride=downsample)
+                self.cond_projection_attn = CondProjection(x_in=condition_size, x_out=n_in, downsample=downsample,
+                                                           with_time=cond_with_time)
 
     def forward(self, x, cond=None):
         x, skip = x if isinstance(x, tuple) else (x, None)

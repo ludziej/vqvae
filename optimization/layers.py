@@ -1,5 +1,5 @@
 import torch
-from torch import nn
+from torch import nn, nn as nn
 import copy
 
 
@@ -25,3 +25,21 @@ class ReZero(nn.Module):
 
     def forward(self, x, **kwargs):
         return self.fn(x, **kwargs) * self.g
+
+
+class CondProjection(nn.Module):
+    def __init__(self, x_in, x_out, downsample, with_time=False):
+        super().__init__()
+        self.x_in = x_in
+        self.x_out = x_out
+        self.downsample = downsample
+        self.cond_projection = nn.Conv1d(x_in, x_out, kernel_size=1)
+        self.with_time = with_time
+        if self.with_time:
+            self.downsampling = nn.AvgPool1d(kernel_size=downsample, stride=downsample)
+
+    def forward(self, x):
+        if self.with_time:
+            x = self.downsampling(x)
+        x = self.cond_projection(x)
+        return x
