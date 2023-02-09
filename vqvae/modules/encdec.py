@@ -1,6 +1,9 @@
 import itertools
+import math
 
 import torch.nn as nn
+
+from optimization.layers import BigGanSkip
 from vqvae.modules.resnet import Resnet1D
 from utils.old_ml_utils.misc import assert_shape
 from vqvae.modules.skip_connections import SkipConnectionsDecoder, SkipConnectionsEncoder
@@ -11,25 +14,29 @@ class EncoderConvBlock(nn.Module):
                  norm_type, dilation_growth_rate=1, dilation_cycle=None, res_scale=False, leaky_param=1e-2,
                  use_weight_standard=True, num_groups=32, use_bias=False, concat_skip=False, rezero=False,
                  skip_connections_step=1, channel_increase=1, condition_size=None, self_attn_from=None,
-                 cond_with_time=False, **params):
+                 cond_with_time=False, biggan_skip=False, rezero_in_attn=False, **params):
         super().__init__()
         self.skip_connections = skip_connections
         filter_t, pad_t = stride_t * 2, stride_t // 2
         curr_width = width
         blocks = []
+        res_scale = (1.0 if not res_scale else 1.0 / math.sqrt(depth)) if isinstance(res_scale, bool) else res_scale
         if down_t > 0:
             for i in range(down_t):
                 next_width = width * channel_increase ** i
                 with_self_attn = self_attn_from is not None and self_attn_from <= i + 1
                 downsample = stride_t ** (i + 1)
+                in_width = input_emb_width if i == 0 else curr_width
+                shape_block = nn.Conv1d(in_width, next_width, filter_t, stride_t, pad_t)
                 block = [
-                    nn.Conv1d(input_emb_width if i == 0 else curr_width, next_width, filter_t, stride_t, pad_t),
+                    BigGanSkip(shape_block, in_width, next_width, downsample=stride_t, res_scale=res_scale)
+                    if biggan_skip else shape_block,
                     Resnet1D(next_width, depth, m_conv, dilation_growth_rate, dilation_cycle, res_scale,
                              return_skip=skip_connections, norm_type=norm_type, leaky_param=leaky_param,
                              use_weight_standard=use_weight_standard, num_groups=num_groups, use_bias=use_bias,
                              concat_skip=concat_skip, skip_connections_step=skip_connections_step, rezero=rezero,
                              condition_size=condition_size, with_self_attn=with_self_attn,
-                             cond_with_time=cond_with_time, downsample=downsample),
+                             cond_with_time=cond_with_time, downsample=downsample, rezero_in_attn=rezero_in_attn),
                 ]
                 blocks.append(nn.Sequential(*block) if condition_size is None else
                               SkipConnectionsEncoder(block, [False, True], pass_skips=True, pass_conds=[False, True]))
@@ -52,10 +59,12 @@ class DecoderConvBock(nn.Module):
                  skip_connections, width, depth, m_conv, norm_type, dilation_growth_rate=1, dilation_cycle=None,
                  res_scale=False, reverse_decoder_dilation=False, leaky_param=1e-2, use_weight_standard=True,
                  num_groups=32, use_bias=False, concat_skip=False, rezero=False, skip_connections_step=1,
-                 channel_increase=1, condition_size=None, self_attn_from=None, cond_with_time=False, **params):
+                 channel_increase=1, condition_size=None, self_attn_from=None, cond_with_time=False,
+                 rezero_in_attn=False, biggan_skip=False, **params):
         super().__init__()
         self.skip_connections = skip_connections
         blocks = []
+        res_scale = (1.0 if not res_scale else 1.0 / math.sqrt(depth)) if isinstance(res_scale, bool) else res_scale
         if down_t > 0:
             filter_t, pad_t = stride_t * 2, stride_t // 2
             block = nn.Conv1d(output_emb_width, width * channel_increase ** (down_t - 1), 3, 1, 1)
@@ -65,14 +74,17 @@ class DecoderConvBock(nn.Module):
                 next_width = input_emb_width if i == (down_t - 1) else width * channel_increase ** (down_t - i - 2)
                 with_self_attn = self_attn_from is not None and self_attn_from <= down_t - i
                 downsample = stride_t ** (down_t - i)
+
+                shape_block = nn.ConvTranspose1d(curr_width, next_width, filter_t, stride_t, pad_t)
                 block = [
                     Resnet1D(curr_width, depth, m_conv, dilation_growth_rate, dilation_cycle, leaky_param=leaky_param,
                              get_skip=skip_connections, norm_type=norm_type, res_scale=res_scale, num_groups=num_groups,
                              reverse_dilation=reverse_decoder_dilation, use_weight_standard=use_weight_standard,
                              use_bias=use_bias, concat_skip=concat_skip, rezero=rezero, with_self_attn=with_self_attn,
                              skip_connections_step=skip_connections_step, condition_size=condition_size,
-                             cond_with_time=cond_with_time, downsample=downsample),
-                    nn.ConvTranspose1d(curr_width, next_width, filter_t, stride_t, pad_t),
+                             cond_with_time=cond_with_time, downsample=downsample, rezero_in_attn=rezero_in_attn),
+                    BigGanSkip(shape_block, curr_width, next_width, upsample=stride_t, res_scale=res_scale)
+                    if biggan_skip else shape_block,
                 ]
                 blocks.append(nn.Sequential(*block) if condition_size is None else
                               SkipConnectionsDecoder(block, [True, False], pass_conds=[True, False]))

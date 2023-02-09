@@ -10,7 +10,8 @@ import torch
 class ResConv1DBlock(nn.Module):
     def __init__(self, n_in, n_state, norm_type, leaky_param, use_weight_standard, dilation=1, concat_skip=False,
                  use_bias=False, res_scale=1.0, num_groups=32, rezero=False, condition_size=None, with_self_attn=False,
-                 attn_heads=2, downsample=1, cond_with_time=False, alt_order=False, cond_on_attn=True):
+                 attn_heads=2, downsample=1, cond_with_time=False, alt_order=False, cond_on_attn=True,
+                 rezero_in_attn=False):
         super().__init__()
         self.condition_on_size = condition_size is not None
         self.concat_skip = concat_skip
@@ -37,7 +38,7 @@ class ResConv1DBlock(nn.Module):
 
         if with_self_attn:
             attn_block = SelfAttentionBlock(width=n_in, heads=attn_heads, seq_last=True)
-            self.attn_block = ReZero(attn_block) if rezero else attn_block
+            self.attn_block = ReZero(attn_block) if rezero_in_attn else attn_block
 
         if self.condition_on_size:
             self.cond_projection = CondProjection(x_in=condition_size, x_out=first_in, downsample=downsample,
@@ -66,11 +67,11 @@ class ResConv1DBlock(nn.Module):
 
 
 class Resnet1D(nn.Module):
-    def __init__(self, n_in, n_depth, m_conv=1.0, dilation_growth_rate=1, dilation_cycle=None, res_scale=False,
+    def __init__(self, n_in, n_depth, m_conv=1.0, dilation_growth_rate=1, dilation_cycle=None, res_scale=1.0,
                  reverse_dilation=False, norm_type="none", leaky_param=1e-2, use_weight_standard=True, get_skip=False,
                  return_skip=False, concat_skip=False, use_bias=False, rezero=False, num_groups=32,
                  skip_connections_step=1, condition_size=None, downsample=1, with_self_attn=False,
-                 cond_with_time=False):
+                 cond_with_time=False, rezero_in_attn=False,):
         super().__init__()
         assert not (get_skip and return_skip)
         concat_skip = concat_skip and get_skip
@@ -84,9 +85,9 @@ class Resnet1D(nn.Module):
                                  use_weight_standard=use_weight_standard, use_bias=use_bias,
                                  concat_skip=concat_skip and get_skip and skips[depth],
                                  dilation=self.get_dilation(depth), norm_type=norm_type, rezero=rezero,
-                                 res_scale=1.0 if not res_scale else 1.0 / math.sqrt(n_depth), num_groups=num_groups,
-                                 condition_size=condition_size, with_self_attn=with_self_attn, downsample=downsample,
-                                 cond_with_time=cond_with_time)
+                                 res_scale=res_scale, num_groups=num_groups, condition_size=condition_size,
+                                 with_self_attn=with_self_attn, downsample=downsample, cond_with_time=cond_with_time,
+                                 rezero_in_attn=rezero_in_attn)
                   for depth in range(n_depth)]
         if reverse_dilation:
             blocks = blocks[::-1]
