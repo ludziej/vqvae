@@ -123,8 +123,10 @@ class MusicDataset(Dataset):
                        zip(tqdm(self.files, desc="Dividing dataset into chunks"), self.sizes))
 
     def get_chunks(self, file: str, size: float) -> [Chunk]:
-        file_id = int(os.path.basename(file).split('.')[0])
-        genres, listens = self.track_metadata.get(file_id, (None, None)) if self.context_cond else ([0], 1)
+        genres, listens = ([0], 1)
+        if self.context_cond:
+            file_id = int(os.path.basename(file).split('.')[0])
+            genres, listens = self.track_metadata.get(file_id, (None, None))
         if genres is None or len(genres) == 0 or listens == -1:  # banned genre
             return []
         track = Track(self.chunk_config, file, size, 0, genres, listens)
@@ -137,10 +139,10 @@ class MusicDataset(Dataset):
         sound = self.chunks[idx].read()
         sound = self.transform(sound) if self.transform else sound
         additional = dict()
-        if self.context_cond:
-            additional["context"] = self.chunks[idx].get_context_cond()
-        if self.time_cond:
-            additional["time"] = self.chunks[idx].get_time_cond()
+#        if self.context_cond:
+        additional["context"] = self.chunks[idx].get_context_cond()
+#        if self.time_cond:
+        additional["time"] = self.chunks[idx].get_time_cond()
         return sound, additional
 
     def find_files_for_a_split(self, test_perc):
