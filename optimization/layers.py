@@ -1,5 +1,5 @@
 import torch
-from torch import nn, nn as nn
+from torch import nn
 import copy
 
 

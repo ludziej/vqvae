@@ -1,6 +1,7 @@
 import torch as t
 import logging
 from torch.optim import AdamW
+from optimization.ema import EMAOptimizer
 
 
 def get_lr_scheduler(opt, lr_use_linear_decay, lr_scale, lr_warmup, lr_start_linear_decay, lr_decay, lr_gamma, **params):
@@ -18,9 +19,12 @@ def get_lr_scheduler(opt, lr_use_linear_decay, lr_scale, lr_warmup, lr_start_lin
     return shd
 
 
-def get_optimizer(model, beta1, beta2, lr, weight_decay, eps, **params):
+def get_optimizer(model, beta1, beta2, lr, weight_decay, eps, with_ema=False, ema_decay=0.9999, **params):
     # Optimizer
     opt = AdamW(model.parameters(), lr=lr, weight_decay=weight_decay, betas=(beta1, beta2), eps=eps)
+
+    if with_ema:
+        opt = EMAOptimizer(opt, decay=ema_decay, device=model.device)
 
     # lr scheduler
     sch_config = {

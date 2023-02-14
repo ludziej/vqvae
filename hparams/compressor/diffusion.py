@@ -55,6 +55,8 @@ default_diffusion_train_params = Hparams(
 )
 
 default_diffusion_optim_params = Hparams(
+    with_ema=True,
+    ema_decay=0.9999,
     lr=0.0003,
     beta1=0.9,
     beta2=0.999,
@@ -71,11 +73,11 @@ default_diffusion_optim_params = Hparams(
 default_condition_params = Hparams(
     listens_logarithm=True,
     t_cond_size=128,
-    pos_cond_size=64,  # None if without conditioning
+    pos_cond_size=64,  # 0 if without conditioning
     style_cond_size=64,
     time_cond_size=64,
     listens_cond_size=64,
-    artists_cond_size=None,
+    artists_cond_size=0,
     t_enc_type="fourier",  # [fourier, trainable]
     pos_enc_type="fourier",
     time_enc_type="fourier",

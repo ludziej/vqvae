@@ -20,11 +20,11 @@ class DiffusionConditioning(nn.Module):
         self.listens_cond_size = listens_cond_size
         self.artists_cond_size = artists_cond_size
 
-        self.use_pos_embedding = self.pos_cond_size is not None
-        self.use_style_embedding = self.style_cond_size is not None
-        self.use_time_embedding = self.time_cond_size is not None
-        self.use_listens_embedding = self.listens_cond_size is not None
-        self.use_artist_embedding = self.artists_cond_size is not None
+        self.use_pos_embedding = self.pos_cond_size > 0
+        self.use_style_embedding = self.style_cond_size > 0
+        self.use_time_embedding = self.time_cond_size > 0
+        self.use_listens_embedding = self.listens_cond_size > 0
+        self.use_artist_embedding = self.artists_cond_size > 0
         self.cond_with_time = self.use_time_embedding or self.use_pos_embedding
 
         conds = [t_cond_size, pos_cond_size, style_cond_size, time_cond_size, listens_cond_size, artists_cond_size]
