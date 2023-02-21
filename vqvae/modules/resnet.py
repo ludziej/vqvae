@@ -24,6 +24,7 @@ class ResConv1DBlock(nn.Module):
         use_standard = norm_type != "none" and use_weight_standard
         first_in = 2 * n_in if self.concat_skip else n_in
         c_params = dict(bias=bias, use_standardization=use_standard)
+        num_groups = num_groups if n_in // num_groups >= 8 else num_groups / 2  # heuristic
         conv1 = Conv1dWeightStandardized(first_in, n_state, 3, 1, padding, dilation, **c_params)
         conv2 = Conv1dWeightStandardized(n_state, n_in, 1, 1, 0, **c_params)
         norm1 = CustomNormalization(first_in if alt_order else n_in, norm_type, num_groups=num_groups)

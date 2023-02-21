@@ -223,12 +223,14 @@ class NoBottleneckBlock(nn.Module):
 
 
 class NoBottleneck(nn.Module):
-    def __init__(self, levels):
+    def __init__(self, levels, use_cond=False):
         super().__init__()
         self.levels = levels
+        self.use_cond = use_cond
         self.level_blocks = nn.ModuleList([NoBottleneckBlock() for level in range(levels)])
 
     def encode(self, xs, cond=None, start_level=0, end_level=None):
+        cond = cond if self.use_cond else None
         return [layer.encode(x, cond=cond) for x, layer in zip(xs, self.level_blocks[start_level:end_level])]
 
     def decode(self, zs, start_level=0, end_level=None):
@@ -268,6 +270,6 @@ class TransformerBottleneckBlock(nn.Module):
 
 class TransformerBottleneck(NoBottleneck):
     def __init__(self, levels, btn_width, **t_params):
-        super().__init__(levels)
+        super().__init__(levels, use_cond=True)
         self.level_blocks = nn.ModuleList([TransformerBottleneckBlock(**t_params, width=btn_width)
                                            for level in range(levels)])
