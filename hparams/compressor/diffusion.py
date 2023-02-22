@@ -51,6 +51,9 @@ default_diffusion_train_params = Hparams(
     noise_steps=1000,
     beta_start=1e-4,
     beta_end=0.02,
+    clip_val=1.,
+    clip_pred=True,
+    use_one_step=False,
     renormalize_sampling=False,
 )
 
