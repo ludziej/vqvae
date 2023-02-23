@@ -14,7 +14,7 @@ class EncoderConvBlock(nn.Module):
                  norm_type, dilation_growth_rate=1, dilation_cycle=None, res_scale=False, leaky_param=1e-2,
                  use_weight_standard=True, num_groups=32, use_bias=False, concat_skip=False, rezero=False,
                  skip_connections_step=1, channel_increase=1, condition_size=None, self_attn_from=None,
-                 cond_with_time=False, biggan_skip=False, rezero_in_attn=False, **params):
+                 cond_with_time=False, biggan_skip=False, rezero_in_attn=False, swish_act=False, **params):
         super().__init__()
         self.skip_connections = skip_connections
         filter_t, pad_t = stride_t * 2, stride_t // 2
@@ -36,6 +36,7 @@ class EncoderConvBlock(nn.Module):
                              use_weight_standard=use_weight_standard, num_groups=num_groups, use_bias=use_bias,
                              concat_skip=concat_skip, skip_connections_step=skip_connections_step, rezero=rezero,
                              condition_size=condition_size, with_self_attn=with_self_attn,
+                             swish_act=swish_act,
                              cond_with_time=cond_with_time, downsample=downsample, rezero_in_attn=rezero_in_attn),
                 ]
                 blocks.append(nn.Sequential(*block) if condition_size is None else
@@ -60,7 +61,7 @@ class DecoderConvBock(nn.Module):
                  res_scale=False, reverse_decoder_dilation=False, leaky_param=1e-2, use_weight_standard=True,
                  num_groups=32, use_bias=False, concat_skip=False, rezero=False, skip_connections_step=1,
                  channel_increase=1, condition_size=None, self_attn_from=None, cond_with_time=False,
-                 rezero_in_attn=False, biggan_skip=False, **params):
+                 rezero_in_attn=False, biggan_skip=False, swish_act=False, **params):
         super().__init__()
         self.skip_connections = skip_connections
         blocks = []
@@ -82,6 +83,7 @@ class DecoderConvBock(nn.Module):
                              reverse_dilation=reverse_decoder_dilation, use_weight_standard=use_weight_standard,
                              use_bias=use_bias, concat_skip=concat_skip, rezero=rezero, with_self_attn=with_self_attn,
                              skip_connections_step=skip_connections_step, condition_size=condition_size,
+                             swish_act=swish_act,
                              cond_with_time=cond_with_time, downsample=downsample, rezero_in_attn=rezero_in_attn),
                     BigGanSkip(shape_block, curr_width, next_width, upsample=stride_t, res_scale=res_scale)
                     if biggan_skip else shape_block,

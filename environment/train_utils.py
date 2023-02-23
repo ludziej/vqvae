@@ -48,7 +48,8 @@ def generic_train(model, hparams, train, test, model_hparams, root_dir):
                       logger=tb_logger, strategy=hparams.accelerator,
                       detect_anomaly=hparams.detect_anomaly, precision=precision,
                       default_root_dir=root_dir / model_hparams.default_ckpt_root,
-                      track_grad_norm=hparams.track_grad_norm)
+                      track_grad_norm=hparams.track_grad_norm,
+                      check_val_every_n_epoch=hparams.check_val_every_n_epoch)
     restore_path = root_dir / model_hparams.ckpt_dir / model_hparams.restore_ckpt \
         if model_hparams.restore_ckpt is not None and hparams.restore_training else None
     restore_path = restore_path if restore_path is not None and os.path.exists(restore_path) else None

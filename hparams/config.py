@@ -30,6 +30,7 @@ config_big_hparams = Hparams(
     track_grad_norm=-1,
     banned_genres=("experimental", "metal", "ambient", "soundtrack", "spoken", "glitch",),
     log_every_n_steps=10,
+    check_val_every_n_epoch=5,
     restore_training=True,
     detect_anomaly=True,
     device_stats=True,

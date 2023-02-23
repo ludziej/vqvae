@@ -11,7 +11,7 @@ class ResConv1DBlock(nn.Module):
     def __init__(self, n_in, n_state, norm_type, leaky_param, use_weight_standard, dilation=1, concat_skip=False,
                  use_bias=False, res_scale=1.0, num_groups=32, rezero=False, condition_size=None, with_self_attn=False,
                  attn_heads=2, downsample=1, cond_with_time=False, alt_order=False, cond_on_attn=True,
-                 rezero_in_attn=False):
+                 rezero_in_attn=False, swish_act=False):
         super().__init__()
         self.condition_on_size = condition_size is not None
         self.concat_skip = concat_skip
@@ -29,7 +29,8 @@ class ResConv1DBlock(nn.Module):
         conv2 = Conv1dWeightStandardized(n_state, n_in, 1, 1, 0, **c_params)
         norm1 = CustomNormalization(first_in if alt_order else n_in, norm_type, num_groups=num_groups)
         norm2 = CustomNormalization(n_in, norm_type, num_groups=num_groups)
-        activation = nn.LeakyReLU(negative_slope=leaky_param) if leaky_param != 0 else nn.ReLU()
+        activation = nn.SiLU() if swish_act else\
+            nn.LeakyReLU(negative_slope=leaky_param) if leaky_param != 0 else nn.ReLU()
         blocks = nn.Sequential(*[
             conv1, norm1, activation, conv2, norm2, activation
         ] if not alt_order else [
@@ -72,7 +73,7 @@ class Resnet1D(nn.Module):
                  reverse_dilation=False, norm_type="none", leaky_param=1e-2, use_weight_standard=True, get_skip=False,
                  return_skip=False, concat_skip=False, use_bias=False, rezero=False, num_groups=32,
                  skip_connections_step=1, condition_size=None, downsample=1, with_self_attn=False,
-                 cond_with_time=False, rezero_in_attn=False,):
+                 cond_with_time=False, swish_act=False, rezero_in_attn=False,):
         super().__init__()
         assert not (get_skip and return_skip)
         concat_skip = concat_skip and get_skip
@@ -88,7 +89,7 @@ class Resnet1D(nn.Module):
                                  dilation=self.get_dilation(depth), norm_type=norm_type, rezero=rezero,
                                  res_scale=res_scale, num_groups=num_groups, condition_size=condition_size,
                                  with_self_attn=with_self_attn, downsample=downsample, cond_with_time=cond_with_time,
-                                 rezero_in_attn=rezero_in_attn)
+                                 rezero_in_attn=rezero_in_attn, swish_act=swish_act)
                   for depth in range(n_depth)]
         if reverse_dilation:
             blocks = blocks[::-1]
