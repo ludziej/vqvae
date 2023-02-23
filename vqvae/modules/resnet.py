@@ -2,7 +2,7 @@ import math
 import torch.nn as nn
 from optimization.normalization import CustomNormalization, Conv1dWeightStandardized
 from optimization.layers import ReZero, CondProjection
-from optimization.basic_transformer import SelfAttentionBlock
+from optimization.basic_transformer import TransformerLayer
 from vqvae.modules.skip_connections import SkipConnectionsDecoder, SkipConnectionsEncoder
 import torch
 
@@ -10,7 +10,7 @@ import torch
 class ResConv1DBlock(nn.Module):
     def __init__(self, n_in, n_state, norm_type, leaky_param, use_weight_standard, dilation=1, concat_skip=False,
                  use_bias=False, res_scale=1.0, num_groups=32, rezero=False, condition_size=None, with_self_attn=False,
-                 attn_heads=2, downsample=1, cond_with_time=False, alt_order=False, cond_on_attn=True,
+                 attn_heads=2, downsample=1, cond_with_time=False, alt_order=False, cond_on_attn=False,
                  rezero_in_attn=False, swish_act=False):
         super().__init__()
         self.condition_on_size = condition_size is not None
@@ -39,7 +39,7 @@ class ResConv1DBlock(nn.Module):
         self.resconv = ReZero(blocks) if self.rezero else blocks
 
         if with_self_attn:
-            attn_block = SelfAttentionBlock(width=n_in, heads=attn_heads, seq_last=True)
+            attn_block = TransformerLayer(width=n_in, heads=attn_heads, seq_last=True, dropout=0, swish=swish_act)
             self.attn_block = ReZero(attn_block) if rezero_in_attn else attn_block
 
         if self.condition_on_size:
@@ -63,8 +63,9 @@ class ResConv1DBlock(nn.Module):
             add += skip if skip is not None else 0
         x = x_res + self.resconv(x + add)
         if self.with_self_attn:
+            x_res = x if self.res_scale == 1 else x * self.res_scale
             add = self.cond_projection_attn(cond) if self.cond_on_attn else 0
-            x = x + self.attn_block(x + add)
+            x = x_res + self.attn_block(x + add)
         return x
 
 

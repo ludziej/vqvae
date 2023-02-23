@@ -18,18 +18,20 @@ class SelfAttentionBlock(nn.Module):
 
 
 class TransformerLayer(nn.Module):
-    def __init__(self, width, heads, dim_ff=2, dropout=0.1, prenorm=False, layer_norm_eps=1e-5, rezero=False):
+    def __init__(self, width, heads, dim_ff=2, dropout=0.1, prenorm=False, layer_norm_eps=1e-5, rezero=False,
+                 swish=False, seq_last=False):
         super().__init__()
         self.norm_first = prenorm
+        self.seq_last = seq_last
 
         self_attn = SelfAttentionBlock(width, heads, dropout=dropout)
-        linear1 = nn.Linear(width, dim_ff)
-        linear2 = nn.Linear(dim_ff, width)
+        linear1 = nn.Linear(width, dim_ff * width)
+        linear2 = nn.Linear(dim_ff * width, width)
         dropout_fn = nn.Dropout(dropout) if dropout > 0 else nn.Sequential()
-        activation = nn.ReLU()
+        activation = nn.SiLU() if swish else nn.ReLU()
 
         sa_block = nn.Sequential(self_attn, dropout_fn)
-        fc_block = nn.Sequential(linear1, activation, dropout_fn, linear2, dropout_fn)
+        fc_block = nn.Sequential(linear1, activation, dropout_fn, linear2, dropout_fn, activation)
 
         if rezero:
             self.sa_block = Residual(ReZero(sa_block))
@@ -44,10 +46,14 @@ class TransformerLayer(nn.Module):
                 self.sa_block = nn.Sequential(Residual(sa_block), norm1)
                 self.fc_block = nn.Sequential(Residual(fc_block), norm2)
 
+    def _swap(self, x):
+        return x.permute(0, 2, 1) if self.seq_last else x
+
     def forward(self, x):
+        x = self._swap(x)
         x = self.sa_block(x)
         x = self.fc_block(x)
-        return x
+        return self._swap(x)
 
 
 class TransformerEncoderStack(nn.Module):
@@ -64,7 +70,7 @@ class TransformerEncoder(nn.Module):
         super().__init__()
         self.depth = depth
         self.heads = heads
-        transformer_layer = TransformerLayer(width, heads, width * ff_mul, dropout, prenorm=prenorm, rezero=rezero)
+        transformer_layer = TransformerLayer(width, heads, ff_mul, dropout, prenorm=prenorm, rezero=rezero)
         self.transformer = TransformerEncoderStack(transformer_layer, depth)
 
     def forward(self, xs):
