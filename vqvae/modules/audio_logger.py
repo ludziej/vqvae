@@ -49,7 +49,6 @@ class AudioLogger(nn.Module):
             self.my_log(prefix + k, v.item() if isinstance(v, torch.Tensor) else v, prog_bar=prog_bar,
                         rank_zero_only=True)
 
-
     def log_metrics(self, metrics, prefix=""):
         self.next_log_nr(prefix)
         if self.use_weights_logging:

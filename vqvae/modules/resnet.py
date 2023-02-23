@@ -39,8 +39,8 @@ class ResConv1DBlock(nn.Module):
         self.resconv = ReZero(blocks) if self.rezero else blocks
 
         if with_self_attn:
-            attn_block = TransformerLayer(width=n_in, heads=attn_heads, seq_last=True, dropout=0, swish=swish_act)
-            self.attn_block = ReZero(attn_block) if rezero_in_attn else attn_block
+            self.attn_block = TransformerLayer(width=n_in, heads=attn_heads, seq_last=True, dropout=0, swish=swish_act,
+                                               rezero=rezero_in_attn)
 
         if self.condition_on_size:
             self.cond_projection = CondProjection(x_in=condition_size, x_out=first_in, downsample=downsample,
@@ -63,9 +63,8 @@ class ResConv1DBlock(nn.Module):
             add += skip if skip is not None else 0
         x = x_res + self.resconv(x + add)
         if self.with_self_attn:
-            x_res = x if self.res_scale == 1 else x * self.res_scale
             add = self.cond_projection_attn(cond) if self.cond_on_attn else 0
-            x = x_res + self.attn_block(x + add)
+            x = self.attn_block(x + add)
         return x
 
 
