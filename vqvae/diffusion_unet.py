@@ -12,7 +12,8 @@ import gc
 class DiffusionUnet(LightningModule):
     def __init__(self, autenc_params, preprocessing: WavCompressor, diff_params, log_sample_bs, prep_chunks,
                  prep_level, opt_params, logger, log_interval, max_logged_sounds,
-                 rmse_loss_weight, eps_loss_weight, condition_params, data_time_cond, data_context_cond, **params):
+                 rmse_loss_weight, eps_loss_weight, condition_params, data_time_cond, data_context_cond, logger_type,
+                 **params):
         super().__init__()
         self.preprocessing = preprocessing
         self.data_time_cond = data_time_cond
@@ -32,7 +33,7 @@ class DiffusionUnet(LightningModule):
         self.autenc = WavAutoEncoder(**autenc_params, base_model=self, sr=self.preprocessing.sr,
                                      cond_with_time=self.diffusion_cond.cond_with_time,
                                      condition_size=self.diffusion_cond.cond_size,
-                                     input_channels=self.preprocessing.emb_width)
+                                     input_channels=self.preprocessing.emb_width, logger_type=logger_type)
 
         for param in self.preprocessing.parameters():
             param.requires_grad = False

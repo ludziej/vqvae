@@ -3,12 +3,26 @@ import torch.nn as nn
 from tqdm import tqdm
 import logging
 from utils.misc import default
+import math
+
+
+def linear_noise_schedule(beta_start, beta_end, noise_steps):
+    return torch.linspace(beta_start, beta_end, noise_steps)
+
+
+def cosine_noise_schedule(timesteps, s):
+    steps = timesteps + 1
+    t = torch.linspace(0, timesteps, steps, dtype=torch.float64) / timesteps
+    alphas_cumprod = torch.cos((t + s) / (1 + s) * math.pi * 0.5) ** 2
+    alphas_cumprod = alphas_cumprod / alphas_cumprod[0]
+    betas = 1 - (alphas_cumprod[1:] / alphas_cumprod[:-1])
+    return torch.clip(betas, 0, 0.999).type(torch.float)
 
 
 # code from https://github.com/dome272/Diffusion-Models-pytorch/blob/main/ddpm.py
 class Diffusion(nn.Module):
-    def __init__(self, emb_width, renormalize_sampling=False, noise_steps=1000, beta_start=1e-4, beta_end=0.02,
-                 clip_val=1., clip_pred=True, use_one_step=False):
+    def __init__(self, emb_width, noise_schedule, renormalize_sampling=False, noise_steps=1000, beta_start=1e-4,
+                 beta_end=0.02, clip_val=1., clip_pred=True, use_one_step=False, noise_schedule_s=0.008):
         super(Diffusion, self).__init__()
         self.emb_width = emb_width
         self.noise_steps = noise_steps
@@ -17,6 +31,8 @@ class Diffusion(nn.Module):
         self.clip_pred = clip_pred
         self.use_one_step = use_one_step
         self.beta_end = beta_end
+        self.noise_schedule = noise_schedule
+        self.noise_schedule_s = noise_schedule_s
         self.renormalize_sampling = renormalize_sampling
         self.const_x0_post = False
 
@@ -25,7 +41,12 @@ class Diffusion(nn.Module):
         self.register_buffer('alpha_hat', torch.cumprod(self.alpha, dim=0))
 
     def prepare_noise_schedule(self):
-        return torch.linspace(self.beta_start, self.beta_end, self.noise_steps)
+        if self.noise_schedule == "linear":
+            return linear_noise_schedule(self.beta_start, self.beta_end, self.noise_steps)
+        elif self.noise_schedule == "cosine":
+            return cosine_noise_schedule(self.noise_steps, s=self.noise_schedule_s)
+        else:
+            raise Exception(f"Not Implemented noise schedule: {self.noise_schedule}")
 
     def sample_timesteps(self, n):
         return torch.randint(low=1, high=self.noise_steps, size=(n,))

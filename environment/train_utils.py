@@ -29,8 +29,20 @@ def generic_get_model(name, model_class, main_dir, ckpt_dir, restore_ckpt, **par
     return model
 
 
+def get_logger(root_dir, hparams, model_hparams):
+    if model_hparams.logger_type == "tensorboard":
+        return pl_loggers.TensorBoardLogger(root_dir / model_hparams.logs_dir)
+    elif model_hparams.logger_type == "neptune":
+        return pl_loggers.NeptuneLogger(
+            project="jahulas/wavefusion",
+            api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiIzNDYxZjgzZC0xYTljLTQwZGQtOTVjNC02MTI5ZTc4ZjBiNGIifQ=="
+        )
+    else:
+        raise Exception(f"Unknown logget type {hparams.logger_type}")
+
+
 def generic_train(model, hparams, train, test, model_hparams, root_dir):
-    tb_logger = pl_loggers.TensorBoardLogger(root_dir / model_hparams.logs_dir)
+    logger = get_logger(root_dir, hparams, model_hparams)
     checkpoint_callback = ModelCheckpoint(dirpath=root_dir / model_hparams.ckpt_dir, save_top_k=0,
                                           filename=model_hparams.distinct_ckpt_name,
                                           every_n_train_steps=model_hparams.ckpt_freq, save_last=True)
@@ -45,7 +57,7 @@ def generic_train(model, hparams, train, test, model_hparams, root_dir):
                       max_steps=hparams.max_steps if hparams.max_steps != 0 else -1,
                       gradient_clip_val=hparams.gradient_clip_val, callbacks=callbacks,
                       log_every_n_steps=hparams.log_every_n_steps,
-                      logger=tb_logger, strategy=hparams.accelerator,
+                      logger=logger, strategy=hparams.accelerator,
                       detect_anomaly=hparams.detect_anomaly, precision=precision,
                       default_root_dir=root_dir / model_hparams.default_ckpt_root,
                       track_grad_norm=hparams.track_grad_norm,

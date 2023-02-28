@@ -16,6 +16,7 @@ opt_params = Hparams(
 )
 
 default_transformer_params = Hparams(
+    logger_type="tensorboard",
     dim=512,  # 4800 orig
     depth=20,  # 72 orig
     heads=4,  # 8 orig

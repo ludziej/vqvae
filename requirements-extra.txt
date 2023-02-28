@@ -2,3 +2,5 @@ pytorch-fast-transformers
 performer_pytorch
 audiofile
 nnAudio
+pandas
+neptune-client

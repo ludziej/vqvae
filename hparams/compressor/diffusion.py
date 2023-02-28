@@ -50,6 +50,8 @@ default_diffusion_autenc_params = Hparams(
 
 default_diffusion_train_params = Hparams(
     noise_steps=1000,
+    noise_schedule="cosine",
+    noise_schedule_s=0.008,
     beta_start=1e-4,
     beta_end=0.02,
     clip_val=3.,
@@ -106,6 +108,7 @@ default_diffusion_params = Hparams(
     attn_pos_enc_type="fourier",  # [trainable, fourier]
     t_pos_enc="fourier",
     main_dir="generated/models/big_diffusion/",
+    logger_type="neptune",
     ckpt_freq=10,
     **dirs_config,
 )

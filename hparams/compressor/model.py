@@ -5,6 +5,7 @@ from hparams.compressor.optim import default_vqvae_opt_hparams, big_vqvae_opt_hp
 
 default_vqvae_model_params = Hparams(
     levels=2,
+    logger_type="tensorboard",
     loss_fn="l2",
     downs_t=(5, 3),
     strides_t=(2, 2),
