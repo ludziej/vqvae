@@ -5,4 +5,4 @@ pytorch-lightning
 tqdm
 jsonargparse
 librosa
-matplotlib
+matplotlib<=3.6

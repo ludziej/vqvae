@@ -74,7 +74,7 @@ class AudioLogger(nn.Module):
             self.elogger().add_audio(name, sound, nr, self.sr)
         elif self.logger_type == "neptune":
             filename = f"{tempfile.gettempdir()}/{uuid.uuid4()}.wav"
-            save_file(sound.squeeze(0), filename, self.sr)
+            save_file(sound.squeeze(0).to("cpu"), filename, self.sr)
             self.elogger()[name].upload(filename)
             #os.remove(filename)
         else:
