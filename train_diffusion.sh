@@ -19,6 +19,8 @@ python3 run_training.py --gpus=[0,1] --config=config_big --model=diffusion --tra
 	--diffusion.autenc_params.bottleneck_params.depth=2 --diffusion.autenc_params.bottleneck_params.ff_mul=2 \
 	--diffusion.autenc_params.dilation_cycle=4 --diffusion.autenc_params.res_scale=1. \
 	--diffusion.autenc_params.rezero=1 --diffusion.autenc_params.rezero_in_attn=1 \
+	--diffusion.data_context_cond=0 --diffusion.condition_params.style_cond_size=0 \
+	--diffusion.condition_params.listens_cond_size=0 \
 
 
 
