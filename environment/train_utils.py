@@ -35,7 +35,9 @@ def get_logger(root_dir, hparams, model_hparams):
     elif model_hparams.logger_type == "neptune":
         return pl_loggers.NeptuneLogger(
             project="jahulas/wavefusion",
-            api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiIzNDYxZjgzZC0xYTljLTQwZGQtOTVjNC02MTI5ZTc4ZjBiNGIifQ=="
+            api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiIzNDYxZjgzZC0xYTljLTQwZGQtOTVjNC02MTI5ZTc4ZjBiNGIifQ==",
+            log_model_checkpoints=False,
+
         )
     else:
         raise Exception(f"Unknown logget type {hparams.logger_type}")

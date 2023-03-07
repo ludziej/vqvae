@@ -24,25 +24,28 @@ class AudioLogger(nn.Module):
         self.sr = sr
         self.use_weights_logging = use_weights_logging
         self.elogger = lambda: self.model[0].logger.experiment
-        self.my_log = lambda *x, **xx: self.model[0].log(*x, **xx)
+        self.my_log = lambda *x, **xx: (
+            self.model[0].log(*x, **xx)
+        )
         self.spec = STFT(n_fft=512, center=True, hop_length=128, sr=self.sr, verbose=False)
         self.log_nr = {"val_": 0, "": 0, "test_": 0}
-
-    @torch.no_grad()
-    def log_grads(self):
-        if not self.use_log_grads:
-            return
-        metrics = {}
-        for name, value in self.model[0].named_parameters():
-            if value.grad is not None:
-                norm = torch.linalg.norm(value.grad)
-                metrics[f"grad_norm/{name}"] = norm
-        metrics[f"grad_norm_total"] = torch.linalg.norm(torch.tensor(list(metrics.values())))
-        self.log_add_metrics(metrics, prog_bar=False)
 
     def next_log_nr(self, prefix):
         nr = self.log_nr.get(prefix, 0)
         self.log_nr[prefix] = nr + 1
+
+    @torch.no_grad()
+    def log_grads(self):
+        #if not self.use_log_grads:
+            #return
+        metrics = {}
+        for name, value in self.model[0].named_parameters():
+            if value.grad is not None:
+                norm = torch.linalg.norm(value.grad)
+                if self.use_log_grads:
+                    metrics[f"grad_norm/{name}"] = norm
+        metrics[f"grad_norm_total"] = torch.linalg.norm(torch.tensor(list(metrics.values())))
+        self.log_add_metrics(metrics, prog_bar=False)
 
     def log_weights_norm(self):
         metrics = {}
@@ -50,7 +53,8 @@ class AudioLogger(nn.Module):
             if value.requires_grad:
                 norm = torch.linalg.norm(value)
                 metrics[f"weight_norm/{name}"] = norm
-        return metrics
+        metrics[f"weight_norm_total"] = torch.linalg.norm(torch.tensor(list(metrics.values())))
+        self.log_add_metrics(metrics, prog_bar=False)
 
     def log_add_metrics(self, metrics, prefix="", prog_bar=True):
         for k, v in metrics.items():
@@ -66,7 +70,7 @@ class AudioLogger(nn.Module):
     def log_metrics(self, metrics, prefix=""):
         self.next_log_nr(prefix)
         if self.use_weights_logging:
-            metrics.update(**self.log_weights_norm())
+            self.log_weights_norm()
         self.log_add_metrics(metrics, prefix)
 
     def log_sound(self, name, sound, nr, desc=""):
@@ -75,7 +79,7 @@ class AudioLogger(nn.Module):
         elif self.logger_type == "neptune":
             filename = f"{tempfile.gettempdir()}/{uuid.uuid4()}.wav"
             save_file(sound.squeeze(0).to("cpu"), filename, self.sr)
-            self.elogger()[name].upload(filename)
+            self.elogger()[f"{name}/{nr}"].upload(filename)
             #os.remove(filename)
         else:
             raise Exception("Not Implemented")
