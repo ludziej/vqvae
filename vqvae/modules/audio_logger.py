@@ -122,6 +122,6 @@ class AudioLogger(nn.Module):
             self.log_image(prefix + name(i), np.transpose(image, (2, 0, 1)), nr)
 
     def plot_spectrorams(self, batch, batch_outs, prefix):
-        self.plot_spec_as(batch, f"in", prefix)
+        self.plot_spec_as(batch, lambda i: f"spec_{i}/in", prefix)
         for level, lvl_outs in enumerate(batch_outs):
-            self.plot_spec_as(lvl_outs, f"out_lvl_{level}", prefix)
+            self.plot_spec_as(lvl_outs, lambda i: f"spec_{i}/out_lvl_{level}", prefix)

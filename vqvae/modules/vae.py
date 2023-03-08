@@ -10,9 +10,9 @@ class VAEBottleneck(nn.Module):
         self.level_blocks = nn.ModuleList([VAEBottleneckBlock(emb_width, lvl, kl_div_weight)
                                            for lvl in range(self.levels)])
 
-    def forward(self, xs):
+    def forward(self, xs, var_temp=None):
         assert len(xs) == self.levels
-        outs = [block(x) for level, (x, block) in enumerate(zip(xs, self.level_blocks))]
+        outs = [block(x, var_temp=var_temp) for level, (x, block) in enumerate(zip(xs, self.level_blocks))]
         zs, losses, metrics = zip(*outs)
         return zs, zs, losses, 0, metrics
 
@@ -46,7 +46,7 @@ class VAEBottleneckBlock(nn.Module):
         var = torch.exp(logvar)
         if var_temp is not None:
             var *= var_temp
-            logvar = torch.log(var)
+            logvar = torch.log(var.clamp(1e-8))
 
         z = mu + var * torch.randn_like(mu)
 

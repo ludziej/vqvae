@@ -51,6 +51,7 @@ config_small_hparams = Hparams(
     max_epochs=50000,
     max_steps=0,
     gradient_clip_val=5,
+    check_val_every_n_epoch=5,
     logging="INFO",
     log_file="logs.txt",
     track_grad_norm=-1,

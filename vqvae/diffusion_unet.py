@@ -81,8 +81,18 @@ class DiffusionUnet(LightningModule):
         samples = self.postprocess(latent_samples)
         return samples, dict(sample_norm=sample_norm)
 
-    def bnorm(self, x):
-        return torch.mean(torch.sqrt(torch.mean(torch.mean(x**2, dim=-1), dim=-1)))
+    def bnorm(self, x, reduce_batch=True):
+        x = torch.sqrt(torch.mean(torch.mean(x**2, dim=-1), dim=-1))
+        return torch.mean(x) if reduce_batch else x
+
+    def append_t_metric(self, key, value, t):
+        self.t_dep_stats = None
+        raise Exception("Not Implemented")
+
+    def aggregate_t_stats(self, metrics, t):
+        for key, value in metrics.items():
+            if key not in self.t_stats:
+                self.append_t_metric(key, value, t)
 
     def calc_loss(self, preds, target, x_noised, x_in, t, metrics_l):
         target_norm = self.bnorm(target)
@@ -90,8 +100,8 @@ class DiffusionUnet(LightningModule):
         loss = 0
         sounds_dict = []
         for metrics, pred in zip(metrics_l, preds):
-            mse = torch.mean((pred - target)**2)
-            r_squared = 1 - mse/target_variance
+            e_mse = torch.mean((pred - target)**2)
+            r_squared = 1 - e_mse/target_variance
 
             x_pred_denoised = self.diffusion.get_x0(x_noised, pred, t)
             x_pred_denoised_norm = self.bnorm(x_pred_denoised)
@@ -99,7 +109,7 @@ class DiffusionUnet(LightningModule):
             x_rmse = self.bnorm(x_in - x_pred_denoised)
             pred_norm = self.bnorm(pred)
 
-            loss += self.eps_loss_weight * mse + self.rmse_loss_weight * x_mse
+            loss += self.eps_loss_weight * e_mse + self.rmse_loss_weight * x_mse
             metrics.update(target_norm=target_norm, pred_norm=pred_norm, r_squared=r_squared,
                            x_rmse=x_rmse, x_mse=x_mse, x_pred_denoised_norm=x_pred_denoised_norm)
             sounds_dict.append(dict(x_in=x_in, x_pred_denoised=x_pred_denoised, x_noised=x_noised))

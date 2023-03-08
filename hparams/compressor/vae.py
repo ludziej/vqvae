@@ -7,6 +7,7 @@ big_vae_model_params = big_vqvae_model_params.update(
     bottleneck_type="vae",
     bottleneck_lw=1,
     main_dir="generated/models/big_vae/",
+    log_vae_no_stochastic=True,
 )
 
 big_vae_opt_hparams = big_vqvae_opt_hparams.update(
@@ -19,6 +20,7 @@ small_vae_model_params = small_vqvae_model_params.update(
     bottleneck_type="vae",
     bottleneck_lw=1,
     main_dir="generated/models/small_vae/",
+    log_vae_no_stochastic=True,
 )
 
 small_vae_opt_hparams = small_vqvae_opt_hparams.update(

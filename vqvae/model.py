@@ -15,7 +15,7 @@ class WavCompressor(LightningModule):
     def __init__(self, input_channels, levels, downs_t, strides_t, loss_fn, norm_before_vqvae, fixed_commit, logger,
                  emb_width, l_bins, mu, bottleneck_lw, spectral, multispectral, forward_params, multipliers,
                  bottleneck_type, adv_params, log_interval, prenorm_normalisation, prenorm_loss_weight, skip_valid_logs,
-                 rms_normalize_level, **params):
+                 rms_normalize_level, log_vae_no_stochastic=False, **params):
         super().__init__()
 
         self.levels = levels
@@ -31,6 +31,7 @@ class WavCompressor(LightningModule):
         self.rms_normalize_level = rms_normalize_level
         self.emb_width = emb_width
         self.bottleneck_type = bottleneck_type
+        self.log_vae_no_stochastic = log_vae_no_stochastic
 
         self.downs_t = downs_t
         self.strides_t = strides_t
@@ -88,14 +89,14 @@ class WavCompressor(LightningModule):
 
     # training & forward
 
-    def forward(self, x_in):
-        x_outs, bottleneck_losses, prenorms, metrics = self.generator(x_in)
+    def forward(self, x_in, b_params=None):
+        x_outs, bottleneck_losses, prenorms, metrics = self.generator(x_in, b_params=b_params)
         loss, metrics = self.calc_metrics_and_loss(bottleneck_losses, metrics, prenorms, x_in, x_outs)
         return loss, metrics, x_outs
 
     @torch.no_grad()
-    def no_grad_forward(self, x_in):
-        return self(x_in)
+    def no_grad_forward(self, x_in, b_params=None):
+        return self(x_in, b_params=b_params)
 
     def evaluation_step(self, batch, batch_idx, optimizer_idx, phase="train"):
         optimize_generator = optimizer_idx != 1
@@ -192,3 +193,8 @@ class WavCompressor(LightningModule):
         self.generator.audio_logger.log_sounds(batch, lambda i: f"sample_{i}/in", prefix)
         for level, xouts in enumerate(batch_outs):
             self.generator.audio_logger.log_sounds(xouts, lambda i: f"sample_{i}/out_lvl_{level + 1}", prefix)
+
+        if self.log_vae_no_stochastic:
+            _, _, outs_no_s = self.no_grad_forward(batch, b_params=dict(var_temp=0))
+            for level, xouts in enumerate(outs_no_s):
+                self.generator.audio_logger.log_sounds(xouts, lambda i: f"sample_{i}/out_no_s_lvl_{level + 1}", prefix)
