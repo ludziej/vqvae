@@ -4,6 +4,7 @@ from hparams.compressor.adversarial import adv_params
 from hparams.compressor.optim import default_vqvae_opt_hparams, big_vqvae_opt_hparams, small_vqvae_opt_hparams
 
 default_vqvae_model_params = Hparams(
+    model_type="vqvae",
     levels=2,
     logger_type="tensorboard",
     loss_fn="l2",

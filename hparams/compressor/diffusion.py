@@ -91,6 +91,7 @@ default_condition_params = Hparams(
 )
 
 default_diffusion_params = Hparams(
+    model_type="diffusion",
     autenc_params=default_diffusion_autenc_params,
     diff_params=default_diffusion_train_params,
     opt_params=default_diffusion_optim_params,
