@@ -37,8 +37,8 @@ class VAEBottleneckBlock(nn.Module):
 
     def get_kl_div(self, mu, var, logvar):
         kld_element = -0.5 * (1 + logvar - mu ** 2 - var) * self.kl_div_weight
-        kld_loss = torch.mean(torch.sum(kld_element, dim=-2))
-        return kld_loss
+        #kld_loss = torch.mean(torch.mean(kld_element, dim=-2))
+        return torch.mean(kld_element)
 
     def forward(self, x, var_temp=None):
         dist_params = self.to_params(x.permute(0, 2, 1)).permute(0, 2, 1).reshape(x.shape[0], 2, *x.shape[1:])
