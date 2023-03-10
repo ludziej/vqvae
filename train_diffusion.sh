@@ -1,6 +1,6 @@
 #!/bin/bash
 python3 run_training.py --gpus=[0,1] --config=config_big --model=diffusion --train_path=resources/fma_wav --compressor=big_vae \
-	--compressor.main_dir=generated/models/big_vae/big_l1linf_small_blw/ --compressor.restore_ckpt=last.ckpt \
+	--compressor.main_dir=generated/models/big_vae/big_vae_low_norm/ --compressor.restore_ckpt=last.ckpt \
 	--track_grad_norm=-1 --diffusion.ckpt_freq=1000 --device_stats=0 \
 	--compressor.batch_size=10 --compressor.num_workers=4 --compressor.use_audiofile=0 --accelerator=ddp \
 	--diffusion.n_ctx=10240 --diffusion.log_interval=500 --diffusion.prep_chunks=2 \
