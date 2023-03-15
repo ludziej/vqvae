@@ -1,7 +1,7 @@
 from hparams.parser import Hparams
 
 dirs_config = Hparams(
-    restore_ckpt="best_model.ckpt",
+    restore_ckpt="last.ckpt",
     ckpt_dir='models',
     logs_dir="logs",
     distinct_ckpt_name='last_model',

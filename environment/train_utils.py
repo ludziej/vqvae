@@ -10,6 +10,7 @@ from pathlib import Path
 import json
 import sys
 import warnings
+from utils.misc import exists
 
 
 class NoSmoothingTQDM(TQDMProgressBar):
@@ -19,10 +20,34 @@ class NoSmoothingTQDM(TQDMProgressBar):
         return bar
 
 
-def generic_get_model(name, model_class, main_dir, ckpt_dir, restore_ckpt, **params):
-    last_path = get_last_path(main_dir, ckpt_dir, restore_ckpt)
-    params["logger"].info(f"Restoring {name} from {last_path}" if last_path else
-                          f"Starting {name} training from scratch")
+def get_neptune_hparams(model_type):
+    return dict(
+            project=f"wavefusion/{model_type}",
+            api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiIzNDYxZjgzZC0xYTljLTQwZGQtOTVjNC02MTI5ZTc4ZjBiNGIifQ==",
+        )
+
+
+def try_get_last_from_neptune(last_path, neptune_path, neptune_run_id, neptune_project, logger):
+    if neptune_path == "" or neptune_run_id == "" or neptune_project == "" or os.path.exists(last_path):
+        return last_path if os.path.exists(last_path) else None
+    import neptune
+    run = neptune.init_run(**get_neptune_hparams(neptune_project), mode="read-only", with_id=neptune_run_id)
+    logger.info(f"Downloading model from {neptune_project}/{neptune_run_id}/{neptune_path} to {last_path}...")
+    last_path.parent.mkdir(parents=True, exist_ok=True)
+    run[neptune_path].download(str(last_path))
+    run.sync(wait=True)
+    run.stop()
+    logger.info(f"Downloaded model from neptune")
+    return last_path
+
+
+def generic_get_model(name, model_class, main_dir, ckpt_dir, restore_ckpt, logger_type, logger,
+                      neptune_path="", neptune_run_id="", neptune_project="", **params):
+    last_path = get_last_path(main_dir, ckpt_dir, restore_ckpt, return_non_existing=True)
+    last_path = try_get_last_from_neptune(last_path, neptune_path, neptune_run_id, neptune_project, logger)
+
+    logger.info(f"Restoring {name} from {last_path}" if last_path else f"Starting {name} training from scratch")
+    params.update(dict(logger=logger, logger_type=logger_type))
     model = model_class.load_from_checkpoint(last_path, **params, strict=False) \
         if last_path is not None else model_class(**params)
     params["logger"].debug(f"Model {name} loaded")
@@ -33,12 +58,9 @@ def get_logger(root_dir, hparams, model_hparams):
     if model_hparams.logger_type == "tensorboard":
         return pl_loggers.TensorBoardLogger(root_dir / model_hparams.logs_dir)
     elif model_hparams.logger_type == "neptune":
-        return pl_loggers.NeptuneLogger(
-            project=f"wavefusion/{model_hparams.model_type}",
-            api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiIzNDYxZjgzZC0xYTljLTQwZGQtOTVjNC02MTI5ZTc4ZjBiNGIifQ==",
-        )
+        return pl_loggers.NeptuneLogger(**get_neptune_hparams(model_hparams.model_type))
     else:
-        raise Exception(f"Unknown logget type {hparams.logger_type}")
+        raise Exception(f"Unknown logger type {hparams.logger_type}")
 
 
 def generic_train(model, hparams, train, test, model_hparams, root_dir):
@@ -71,9 +93,9 @@ def generic_train(model, hparams, train, test, model_hparams, root_dir):
     trainer.fit(model, train_dataloaders=train, val_dataloaders=test, ckpt_path=restore_path)
 
 
-def get_last_path(main_dir, ckpt_dir, best_ckpt):
+def get_last_path(main_dir, ckpt_dir, best_ckpt, return_non_existing=False):
     file = Path(main_dir) / ckpt_dir / best_ckpt
-    return file if os.path.exists(file) else None
+    return file if return_non_existing or os.path.exists(file) else None
 
 
 def save_hparams(root_path, hparams, filename):

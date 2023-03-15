@@ -107,7 +107,8 @@ class WavAutoEncoder(nn.Module):
         x_out = self.postprocess(x_out)
         return x_out
 
-    def encode_one_chunk(self, x, start_level=0, end_level=None):
+    def encode_one_chunk(self, x, start_level=0, end_level=None, b_params=None):
+        b_params = default(b_params, dict())
         # Encode
         if end_level is None:
             end_level = self.levels
@@ -117,7 +118,7 @@ class WavAutoEncoder(nn.Module):
             encoder = self.encoders[level]
             x_out = encoder(x_in)
             xs.append(x_out[-1])
-        zs = self.bottleneck.encode(xs)
+        zs = self.bottleneck.encode(xs, **b_params)
         return zs[start_level:end_level]
 
     def decode(self, zs, start_level=0, end_level=None, bs_chunks=1):
@@ -129,11 +130,11 @@ class WavAutoEncoder(nn.Module):
             x_outs.append(x_out)
         return t.cat(x_outs, dim=0)
 
-    def encode(self, x, start_level=0, end_level=None, bs_chunks=1):
+    def encode(self, x, start_level=0, end_level=None, bs_chunks=1, b_params=None):
         x_chunks = t.chunk(x, bs_chunks, dim=0)
         zs_list = []
         for x_i in x_chunks:
-            zs_i = self.encode_one_chunk(x_i, start_level=start_level, end_level=end_level)
+            zs_i = self.encode_one_chunk(x_i, start_level=start_level, end_level=end_level, b_params=b_params)
             zs_list.append(zs_i)
         zs = [t.cat(zs_level_list, dim=0) for zs_level_list in zip(*zs_list)]
         return zs

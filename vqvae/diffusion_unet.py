@@ -11,7 +11,7 @@ import gc
 
 class DiffusionUnet(LightningModule):
     def __init__(self, autenc_params, preprocessing: WavCompressor, diff_params, log_sample_bs, prep_chunks,
-                 prep_level, opt_params, logger, log_interval, max_logged_sounds,
+                 prep_level, opt_params, logger, log_interval, max_logged_sounds, no_stochastic_prep,
                  rmse_loss_weight, eps_loss_weight, condition_params, data_time_cond, data_context_cond, logger_type,
                  **params):
         super().__init__()
@@ -27,6 +27,7 @@ class DiffusionUnet(LightningModule):
         self.prep_level = prep_level
         self.my_logger = logger
         self.log_interval = log_interval
+        self.no_stochastic_prep = no_stochastic_prep
         self.skip_valid_logs = True
         self.diffusion = Diffusion(emb_width=self.preprocessing.emb_width, **diff_params)
         self.diffusion_cond = DiffusionConditioning(**condition_params, noise_steps=self.diffusion.noise_steps)
@@ -60,7 +61,9 @@ class DiffusionUnet(LightningModule):
     def preprocess(self, batch):
         sound, data_cond, time_cond = (batch[0], batch[1].get("context", None), batch[1].get("times", None)) \
             if self.data_time_cond or self.data_context_cond else (batch[0], None, None)
-        latent = self.preprocessing.encode(sound, self.prep_level, self.prep_level + 1, bs_chunks=self.prep_chunks)[0]
+        b_params = dict(var_temp=0) if self.no_stochastic_prep else None
+        latent = self.preprocessing.encode(sound, self.prep_level, self.prep_level + 1, bs_chunks=self.prep_chunks,
+                                           b_params=b_params)[0]
         return latent, data_cond, time_cond
 
     @torch.no_grad()
@@ -144,7 +147,8 @@ class DiffusionUnet(LightningModule):
     # metrics & logging
 
     @torch.no_grad()
-    def log_metrics_and_samples(self, loss, metrics, sounds_dict, t, batch_idx, phase, sample_len, context_cond=None, time_cond=None):
+    def log_metrics_and_samples(self, loss, metrics, sounds_dict, t, batch_idx, phase, sample_len, context_cond=None,
+                                time_cond=None):
         prefix = phase + "_" if phase != "train" else ""
         assert len(metrics) == 1  # currently no support for multiple levels
         self.autenc.audio_logger.log_metrics({**metrics[0], 'loss': loss}, prefix)

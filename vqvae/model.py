@@ -81,11 +81,11 @@ class WavCompressor(LightningModule):
 
     # encoding & decoding
 
-    def decode(self, zs, start_level=0, end_level=None, bs_chunks=1):
-        return self.generator.decode(zs, start_level, end_level, bs_chunks)
+    def decode(self, zs, start_level=0, end_level=None, bs_chunks=1, **params):
+        return self.generator.decode(zs, start_level, end_level, bs_chunks, **params)
 
-    def encode(self, x, start_level=0, end_level=None, bs_chunks=1):
-        return self.generator.encode(x, start_level, end_level, bs_chunks)
+    def encode(self, x, start_level=0, end_level=None, bs_chunks=1, **params):
+        return self.generator.encode(x, start_level, end_level, bs_chunks, **params)
 
     # training & forward
 

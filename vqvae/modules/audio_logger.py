@@ -15,14 +15,14 @@ import tempfile
 
 
 class AudioLogger(nn.Module):
-    def __init__(self, sr, model, use_log_grads=False, use_weights_logging=False,
+    def __init__(self, sr, model, use_log_grads=0, use_weights_logging=0,
                  logger_type="tensorboard"):
         super(AudioLogger, self).__init__()
         self.use_log_grads = use_log_grads
+        self.use_weights_logging = use_weights_logging
         self.logger_type = logger_type
         self.model = [model]
         self.sr = sr
-        self.use_weights_logging = use_weights_logging
         self.elogger = lambda: self.model[0].logger.experiment
         self.my_log = lambda *x, **xx: (
             self.model[0].log(*x, **xx)
@@ -36,24 +36,27 @@ class AudioLogger(nn.Module):
 
     @torch.no_grad()
     def log_grads(self):
-        #if not self.use_log_grads:
-            #return
+        if not self.use_log_grads:
+            return
         metrics = {}
         for name, value in self.model[0].named_parameters():
             if value.grad is not None:
                 norm = torch.linalg.norm(value.grad)
-                if self.use_log_grads:
-                    metrics[f"grad_norm/{name}"] = norm
+                metrics[f"grad_norm/{name}"] = norm
         metrics[f"grad_norm_total"] = torch.linalg.norm(torch.tensor(list(metrics.values())))
+        metrics = metrics if self.use_log_grads == 2 else dict(grad_norm_total=metrics["grad_norm_total"])
         self.log_add_metrics(metrics, prog_bar=False)
 
     def log_weights_norm(self):
+        if not self.use_weights_logging:
+            return
         metrics = {}
         for name, value in self.model[0].named_parameters():
             if value.requires_grad:
                 norm = torch.linalg.norm(value)
                 metrics[f"weight_norm/{name}"] = norm
         metrics[f"weight_norm_total"] = torch.linalg.norm(torch.tensor(list(metrics.values())))
+        metrics = metrics if self.use_weights_logging == 2 else dict(weight_norm_total=metrics["weight_norm_total"])
         self.log_add_metrics(metrics, prog_bar=False)
 
     def log_add_metrics(self, metrics, prefix="", prog_bar=True):
@@ -69,8 +72,7 @@ class AudioLogger(nn.Module):
 
     def log_metrics(self, metrics, prefix=""):
         self.next_log_nr(prefix)
-        if self.use_weights_logging:
-            self.log_weights_norm()
+        self.log_weights_norm()
         self.log_add_metrics(metrics, prefix)
 
     def log_sound(self, name, sound, nr, desc=""):
