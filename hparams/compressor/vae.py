@@ -8,6 +8,7 @@ big_vae_model_params = big_vqvae_model_params.update(
     bottleneck_type="vae",
     bottleneck_lw=1,
     main_dir="generated/models/big_vae/",
+    sample_len=262144,
     log_vae_no_stochastic=True,
     logger_type="neptune",
     neptune_run_id="VAE-8",
