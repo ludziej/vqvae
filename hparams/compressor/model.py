@@ -38,11 +38,15 @@ default_vqvae_model_params = Hparams(
     skip_valid_logs=True,
     from_last_checkpot=True,
     log_weights_norm=1,
+    use_log_grads=1,
     prenorm_normalisation=None,
     prenorm_loss_weight=1,
     leaky_param=1e-2,
     bottleneck_type="vqvae",  # ["none", "vqvae", "vae"]
     main_dir="generated/models/small_vqvae/",
+    neptune_run_id="",
+    neptune_path="",
+    neptune_project="",
 )
 default_vqvae_params = Hparams(**default_vqvae_opt_hparams.__dict__, **default_vqvae_model_params.__dict__)
 

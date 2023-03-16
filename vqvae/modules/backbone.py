@@ -14,7 +14,7 @@ from vqvae.modules.audio_logger import AudioLogger
 class WavAutoEncoder(nn.Module):
     def __init__(self, sr, downs_t, emb_width, input_channels, l_bins, levels, mu,
                  norm_before_vqvae, strides_t, bottleneck_type, skip_connections, multipliers, bottleneck_params=None,
-                 fixed_commit=False, log_weights_norm=False, base_model=None, block_params=None, use_log_grads=False,
+                 fixed_commit=False, log_weights_norm=0, base_model=None, block_params=None, use_log_grads=0,
                  logger_type="tensorboard", **params):
         super().__init__()
         block_params = default(block_params, params)

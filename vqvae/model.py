@@ -15,7 +15,8 @@ class WavCompressor(LightningModule):
     def __init__(self, input_channels, levels, downs_t, strides_t, loss_fn, norm_before_vqvae, fixed_commit, logger,
                  emb_width, l_bins, mu, bottleneck_lw, spectral, multispectral, forward_params, multipliers,
                  bottleneck_type, adv_params, log_interval, prenorm_normalisation, prenorm_loss_weight, skip_valid_logs,
-                 rms_normalize_level, logger_type, log_vae_no_stochastic=False, **params):
+                 rms_normalize_level, logger_type, log_vae_no_stochastic=False, use_log_grads=0, log_weights_norm=0,
+                 **params):
         super().__init__()
 
         self.levels = levels
@@ -50,7 +51,8 @@ class WavCompressor(LightningModule):
         self.generator = WavAutoEncoder(self.sr, downs_t, emb_width, input_channels,
                                         l_bins, levels, mu, norm_before_vqvae, strides_t, bottleneck_type,
                                         base_model=self, multipliers=multipliers, block_params=params,
-                                        skip_connections=False, fixed_commit=fixed_commit, logger_type=logger_type)
+                                        skip_connections=False, fixed_commit=fixed_commit, logger_type=logger_type,
+                                        use_log_grads=use_log_grads, log_weights_norm=log_weights_norm)
         adv_block = self.generator.block_kwargs(self.discriminator_level, multiply=adv_params["multiply_level"])
         self.discriminator = AdversarialTrainer(**adv_params, **adv_block,
                                                 input_channels=input_channels, level=self.discriminator_level,
