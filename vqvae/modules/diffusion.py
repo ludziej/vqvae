@@ -80,7 +80,7 @@ class Diffusion(nn.Module):
             return x
         if self.dynamic_clipping:
             thresh_quantile = torch.quantile(torch.abs(x.reshape(x.shape[0], -1)), self.dclip_perc, dim=1)
-            thresh_quantile = thresh_quantile.clamp(self.clip_val)
+            thresh_quantile = thresh_quantile.clamp(self.clip_val).reshape(len(x), 1, 1)
             x = x / thresh_quantile * self.clip_val
         return x.clamp(-self.clip_val, self.clip_val)
 
