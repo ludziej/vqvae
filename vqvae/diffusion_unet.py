@@ -7,6 +7,7 @@ from vqvae.modules.diff_condition import DiffusionConditioning
 from vqvae.modules.diffusion import Diffusion
 from optimization.opt_maker import get_optimizer
 import gc
+from utils.misc import default
 
 
 class DiffusionUnet(LightningModule):
@@ -43,12 +44,15 @@ class DiffusionUnet(LightningModule):
         return f"Diffusion model on {self.preprocessing}"
 
     @torch.no_grad()
-    def eval_no_grad(self, x_in, t, **args):
+    def eval_no_grad(self, x_in, t, cfg_weight=None, **args):
         if not self.diffusion_cond.cls_free_guidance:
             return self(x_in, t, **args, with_metrics=False)
-        unguided = self(x_in, t, **args, with_metrics=False, drop_cond=True)
+        cfg_weight = default(cfg_weight, self.diffusion_cond.cfg_guid_weight)
         guided = self(x_in, t, **args, with_metrics=False, drop_cond=False)
-        return self.diffusion_cond.cfg_guid_weight * guided + (1 - self.diffusion_cond.cfg_guid_weight) * unguided
+        if cfg_weight == 1:
+            return guided
+        unguided = self(x_in, t, **args, with_metrics=False, drop_cond=True)
+        return cfg_weight * guided + (1 - cfg_weight) * unguided
 
     def on_after_backward(self) -> None:
         self.autenc.audio_logger.log_grads()
