@@ -46,19 +46,19 @@ class DiffusionConditioning(nn.Module):
         if self.use_artist_embedding:
             raise Exception("Not Implemented")
 
-    def resolve_cfg_mask(self, drop_cond, t):
+    def resolve_cfg_mask(self, drop_cond, t, device):
         if not self.cls_free_guidance:
             return None
         if drop_cond is not None:
             return 0 if drop_cond else 1
         probs = torch.ones_like(t) * (1 - self.drop_guidance_prob)
         mask = torch.bernoulli(probs)
-        return mask.reshape(len(t), 1, 1).to(t.device)
+        return mask.reshape(len(t), 1, 1).to(device)
 
     # drop_cond resolved according to resolve_drop_cond
     def get_conditioning(self, t, length, time_cond=None, context_cond=None, drop_cond=None):
-        cfg_mask = self.resolve_cfg_mask(drop_cond, t)
         cond = self.t_encoding.forward(length=1, offset=t).unsqueeze(-1)
+        cfg_mask = self.resolve_cfg_mask(drop_cond, t, device=cond.device)
         if self.use_style_embedding:
             assert context_cond is not None  # sum of embeddings of all genres
             styles = [self.style_enc(torch.stack(context.genres)).sum(dim=0) for context in context_cond]
