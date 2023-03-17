@@ -75,14 +75,14 @@ def generic_train(model, hparams, train, test, model_hparams, root_dir):
         callbacks.append(DeviceStatsMonitor(cpu_stats=True))
 
     precision = 16 if hparams.fp16 else 32
-    trainer = Trainer(gpus=hparams.gpus, profiler="simple", max_epochs=hparams.max_epochs,
+    use_gpu = len(hparams.gpus) > 0
+    trainer = Trainer(devices=hparams.gpus if use_gpu else None, profiler="simple", max_epochs=hparams.max_epochs,
                       max_steps=hparams.max_steps if hparams.max_steps != 0 else -1,
                       gradient_clip_val=hparams.gradient_clip_val, callbacks=callbacks,
-                      log_every_n_steps=hparams.log_every_n_steps,
+                      log_every_n_steps=hparams.log_every_n_steps, accelerator="gpu" if use_gpu else "cpu",
                       logger=logger, strategy=hparams.accelerator,
                       detect_anomaly=hparams.detect_anomaly, precision=precision,
                       default_root_dir=root_dir / model_hparams.default_ckpt_root,
-                      track_grad_norm=hparams.track_grad_norm,
                       check_val_every_n_epoch=hparams.check_val_every_n_epoch)
     restore_path = root_dir / model_hparams.ckpt_dir / model_hparams.restore_ckpt \
         if model_hparams.restore_ckpt is not None and hparams.restore_training else None
