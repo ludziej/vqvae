@@ -43,15 +43,19 @@ class DiffusionUnet(LightningModule):
         return f"Diffusion model on {self.preprocessing}"
 
     @torch.no_grad()
-    def no_grad_forward(self, x_in):
-        return self(x_in)
+    def eval_no_grad(self, x_in, t, **args):
+        if not self.diffusion_cond.cls_free_guidance:
+            return self(x_in, t, **args, with_metrics=False)
+        unguided = self(x_in, t, **args, with_metrics=False, drop_cond=True)
+        guided = self(x_in, t, **args, with_metrics=False, drop_cond=False)
+        return self.diffusion_cond.cfg_guid_weight * guided + (1 - self.diffusion_cond.cfg_guid_weight) * unguided
 
     def on_after_backward(self) -> None:
         self.autenc.audio_logger.log_grads()
 
-    def forward(self, x_in, t, time_cond=None, context_cond=None, with_metrics=False):
+    def forward(self, x_in, t, time_cond=None, context_cond=None, with_metrics=False, drop_cond=None):
         conditioning = self.diffusion_cond.get_conditioning(t, time_cond=time_cond, context_cond=context_cond,
-                                                            length=x_in.shape[2])
+                                                            length=x_in.shape[2], drop_cond=drop_cond)
         x_predicted, _, _, metrics = self.autenc.forward(x_in, cond=conditioning)
         if with_metrics:
             return x_predicted, metrics

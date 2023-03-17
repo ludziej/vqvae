@@ -19,7 +19,7 @@ def train(hparams):
         **hparams.compressor, train_path=hparams.train_path, test_path=hparams.test_path,
         banned_genres=hparams.banned_genres, time_cond=model_params.data_time_cond,
         context_cond=model_params.data_context_cond, logger=logger, with_train_data=True)
-    model_params.condition_params.genres = train_dataset.genres
+    model_params.condition_params.genre_names = train_dataset.genre_names
 
     diffusion = get_model(preprocessing=compressor, **model_params, logger=logger)
     generic_train(diffusion, hparams, train_dl, test_dl, model_params, root_dir)

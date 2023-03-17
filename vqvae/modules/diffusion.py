@@ -22,11 +22,13 @@ def cosine_noise_schedule(timesteps, s):
 # code from https://github.com/dome272/Diffusion-Models-pytorch/blob/main/ddpm.py
 class Diffusion(nn.Module):
     def __init__(self, emb_width, noise_schedule, renormalize_sampling=False, noise_steps=1000, beta_start=1e-4,
-                 beta_end=0.02, clip_val=1., clip_pred=True, use_one_step=False, noise_schedule_s=0.008):
+                 beta_end=0.02, clip_val=1., dynamic_clipping=False, dclip_perc=0.99,
+                 clip_pred=True, use_one_step=False, clip_input=False, noise_schedule_s=0.008):
         super(Diffusion, self).__init__()
         self.emb_width = emb_width
         self.noise_steps = noise_steps
         self.beta_start = beta_start
+        self.clip_input = clip_input
         self.clip_val = clip_val
         self.clip_pred = clip_pred
         self.use_one_step = use_one_step
@@ -34,6 +36,8 @@ class Diffusion(nn.Module):
         self.noise_schedule = noise_schedule
         self.noise_schedule_s = noise_schedule_s
         self.renormalize_sampling = renormalize_sampling
+        self.dynamic_clipping = dynamic_clipping
+        self.dclip_perc = dclip_perc
         self.const_x0_post = False
 
         self.register_buffer('beta', self.prepare_noise_schedule())
@@ -71,9 +75,18 @@ class Diffusion(nn.Module):
         xt_coef = (1.0 - alpha_hat_prev) * torch.sqrt(alpha) / (1.0 - alpha_hat)
         return x0_coef * x0 + xt_coef * xt
 
+    def clipping(self, x):
+        if not self.clip_pred:
+            return x
+        if self.dynamic_clipping:
+            thresh_quantile = torch.quantile(torch.abs(x.reshape(x.shape[0], -1)), self.dclip_perc, dim=1)
+            thresh_quantile = thresh_quantile.clamp(self.clip_val)
+            x = x / thresh_quantile * self.clip_val
+        return x.clamp(-self.clip_val, self.clip_val)
+
     def two_step_q_posterior(self, x, prediceted_noise, t):
         x0 = self.get_x0(x, prediceted_noise, t)
-        x0 = x0.clamp(-self.clip_val, self.clip_val) if self.clip_pred else x0
+        x0 = self.clipping(x0)
         return self.get_q_posterior_from_x0(x, x0, t)
 
     def one_step_q_posterior(self, x, predicted_noise, t):
@@ -103,7 +116,7 @@ class Diffusion(nn.Module):
         with torch.no_grad():
             for i in tqdm(list(reversed(range(1, steps))), position=0, desc="Denoising"):
                 t = (torch.ones(len(x)) * i).long().to(model.device)
-                predicted_noise = model(x, t, **context_args)
+                predicted_noise = model.eval_no_grad(x, t, **context_args)
                 x = self.denoise_step(x, predicted_noise[level], t, add_noise=i > 1)
                 norm = torch.sqrt(torch.mean(x**2))
                 if self.renormalize_sampling or norm >= 100:

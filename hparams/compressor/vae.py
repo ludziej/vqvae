@@ -3,23 +3,32 @@ from hparams.parser import Hparams
 from hparams.compressor.optim import big_vqvae_opt_hparams, small_vqvae_opt_hparams
 from hparams.compressor.model import big_vqvae_model_params, small_vqvae_model_params
 
+vae_forward_params = big_forward_params.update(
+    lmix_l1=0.1,
+    lmix_linf=0.1,
+)
+
 big_vae_model_params = big_vqvae_model_params.update(
     model_type="vae",
     bottleneck_type="vae",
-    bottleneck_lw=1,
-    main_dir="generated/models/big_vae/",
+    bottleneck_lw=0.0001,
+    main_dir="generated/models/big_vae_hq/",
     sample_len=262144,
     log_vae_no_stochastic=True,
     logger_type="neptune",
-    neptune_run_id="VAE-8",
+    neptune_run_id="VAE-26",
     neptune_path="training/model/checkpoints/last",
     neptune_project="vae",
-    emb_width=4,
+    emb_width=16,
     log_interval=500,
     ckpt_freq=500,
+    forward_params=vae_forward_params,
 )
 
 big_vae_opt_hparams = big_vqvae_opt_hparams.update(
+    lr=0.001,
+    lr_decay=5000,
+    lr_gamma=0.7,
 )
 
 big_vae_params = Hparams(**big_vae_opt_hparams.__dict__, **big_vae_model_params.__dict__)

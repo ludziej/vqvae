@@ -33,10 +33,9 @@ class MusicDataset(Dataset):
         self.banned_genres = set(banned_genres)
         self.legal_suffix = [".wav", ".mp3", ".ape", ".flac"]
         self.context_file = "context.json"
-        self.genres = []
         self.cache_dir = pathlib.Path(self.sound_dirs[0])
         if self.context_cond:
-            self.track_metadata, self.genres, self.genre_map, self.genre_reverse_mapper \
+            self.track_metadata, self.genre_names, self.genre_map, self.genre_reverse_mapper \
                 = self.calc_track_metadata(metadata_tracks, genres_data)
 
         self.empty_context = dict()
@@ -46,7 +45,7 @@ class MusicDataset(Dataset):
         self.sizes, self.dataset_size = self.calculate_lengths()
         self.chunk_config = DatasetConfig(channel_level_bias, use_audiofile, another_thread, self.sample_len, timeout,
                                           self.sr, logger, rms_normalize_sound, rms_normalize_level,
-                                          genre_total=len(self.genres))
+                                          genre_total=len(self.genre_names))
         self.chunks = self.calculate_chunks()
 
     def calc_track_metadata(self, tracks, genres):
@@ -54,14 +53,16 @@ class MusicDataset(Dataset):
         genre_mapper = {gid: id for id, gid in zip(genres.index, genres.genre_id)}
         genre_legal = {g for g, name in zip(genres.index, genres.title) if name.lower() not in self.banned_genres}
         genre_reverse_mapper = {v: k for k, v in genre_mapper.items()}
+        genre_names = [x for x in genres.title]
 
         tracks = pd.read_csv(self.cache_dir / tracks, index_col=0, header=[0, 1])
         tracks_data = [(list(map(genre_mapper.get, json.loads(g))), max(l, 1))
                        for g, l in zip(tracks.track.genres_all, tracks.album.listens)]
         tracks_data = {i: (g, l) for i, (g, l) in zip(tracks.index, tracks_data)
                        if all(gi in genre_legal for gi in g)}
-
-        return tracks_data, genres, genre_mapper, genre_reverse_mapper
+        del genres
+        del tracks
+        return tracks_data, genre_names, genre_mapper, genre_reverse_mapper
 
     def get_files_and_contexts(self):
         data = flatten(self.get_music_in(pathlib.Path(x), self.empty_context) for x in self.sound_dirs)

@@ -56,6 +56,9 @@ default_diffusion_train_params = Hparams(
     beta_end=0.02,
     clip_val=3.,
     clip_pred=True,
+    clip_input=False,
+    dynamic_clipping=True,
+    dclip_perc=0.99,
     use_one_step=False,
     renormalize_sampling=False,
 )
@@ -78,6 +81,9 @@ default_diffusion_optim_params = Hparams(
 
 default_condition_params = Hparams(
     listens_logarithm=True,
+    cls_free_guidance=True,
+    drop_guidance_prob=0.1,
+    cfg_guid_weight=1,
     t_cond_size=128,
     pos_cond_size=64,  # 0 if without conditioning
     style_cond_size=0,
@@ -88,6 +94,7 @@ default_condition_params = Hparams(
     pos_enc_type="fourier",
     time_enc_type="fourier",
     listens_enc_type="fourier",
+    genre_names=None,  # filled in during dataset creation
 )
 
 default_diffusion_params = Hparams(
@@ -110,7 +117,7 @@ default_diffusion_params = Hparams(
     t_pos_enc="fourier",
     main_dir="generated/models/big_diffusion/",
     logger_type="neptune",
-    neptune_run_id="DIF-1",
+    neptune_run_id="",
     neptune_path="training/model/checkpoints/last",
     neptune_project="diffusion",
     no_stochastic_prep=True,

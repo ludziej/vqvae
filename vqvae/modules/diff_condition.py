@@ -7,18 +7,21 @@ from optimization.positional_encoding import get_pos_emb
 class DiffusionConditioning(nn.Module):
     def __init__(self, t_cond_size, style_cond_size, listens_cond_size, pos_cond_size, time_cond_size,
                  artists_cond_size, t_enc_type, pos_enc_type, time_enc_type, listens_enc_type, listens_logarithm,
-                 genres, noise_steps):
+                 genre_names, noise_steps, cls_free_guidance, drop_guidance_prob, cfg_guid_weight):
         super().__init__()
         self.listens_logarithm = listens_logarithm
         self.noise_steps = noise_steps
-        self.genres_map = genres
-        self.style_embedding_size = len(genres)
+        self.genre_names = genre_names
+        self.style_embedding_size = len(genre_names)
         self.t_cond_size = t_cond_size
         self.pos_cond_size = pos_cond_size
         self.style_cond_size = style_cond_size
         self.time_cond_size = time_cond_size
         self.listens_cond_size = listens_cond_size
         self.artists_cond_size = artists_cond_size
+        self.cls_free_guidance = cls_free_guidance
+        self.drop_guidance_prob = drop_guidance_prob
+        self.cfg_guid_weight = cfg_guid_weight
 
         self.use_pos_embedding = self.pos_cond_size > 0
         self.use_style_embedding = self.style_cond_size > 0
@@ -43,17 +46,32 @@ class DiffusionConditioning(nn.Module):
         if self.use_artist_embedding:
             raise Exception("Not Implemented")
 
-    def get_conditioning(self, t, length, time_cond=None, context_cond=None):
+    def resolve_cfg_mask(self, drop_cond, t):
+        if not self.cls_free_guidance:
+            return None
+        if drop_cond is not None:
+            return 0 if drop_cond else 1
+        probs = torch.ones_like(t) * (1 - self.drop_guidance_prob)
+        mask = torch.bernoulli(probs)
+        return mask
+
+    # drop_cond resolved according to resolve_drop_cond
+    def get_conditioning(self, t, length, time_cond=None, context_cond=None, drop_cond=None):
+        cfg_mask = self.resolve_cfg_mask(drop_cond, t)
         cond = self.t_encoding.forward(length=1, offset=t).unsqueeze(-1)
         if self.use_style_embedding:
             assert context_cond is not None  # sum of embeddings of all genres
             styles = [self.style_enc(torch.stack(context.genres)).sum(dim=0) for context in context_cond]
             styles = torch.stack(styles).permute(0, 2, 1)
+            if cfg_mask is not None:
+                styles *= cfg_mask
             cond = torch.cat([cond, styles], dim=1)
         if self.use_listens_embedding:
             listens = torch.cat([context.listens for context in context_cond])
             listens = (torch.log(listens)*10).type(torch.LongTensor) if self.listens_logarithm else listens
             listens_enc = self.listens_enc.forward(length=1, offset=listens).unsqueeze(-1)
+            if cfg_mask is not None:
+                listens_enc *= cfg_mask
             cond = torch.cat([cond, listens_enc], dim=1)
 
         if self.use_pos_embedding or self.use_time_embedding:
