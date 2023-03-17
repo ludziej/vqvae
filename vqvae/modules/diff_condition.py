@@ -53,7 +53,7 @@ class DiffusionConditioning(nn.Module):
             return 0 if drop_cond else 1
         probs = torch.ones_like(t) * (1 - self.drop_guidance_prob)
         mask = torch.bernoulli(probs)
-        return mask.reshape(len(t), 1, 1)
+        return mask.reshape(len(t), 1, 1).to(t.device)
 
     # drop_cond resolved according to resolve_drop_cond
     def get_conditioning(self, t, length, time_cond=None, context_cond=None, drop_cond=None):
