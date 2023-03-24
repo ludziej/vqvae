@@ -5,6 +5,7 @@ from vqvae.modules.backbone import WavAutoEncoder
 from vqvae.model import WavCompressor
 from vqvae.modules.diff_condition import DiffusionConditioning
 from vqvae.modules.diffusion import Diffusion
+from vqvae.modules.diffusion_stats import DiffusionStats
 from optimization.opt_maker import get_optimizer
 import gc
 from utils.misc import default
@@ -14,7 +15,7 @@ class DiffusionUnet(LightningModule):
     def __init__(self, autenc_params, preprocessing: WavCompressor, diff_params, log_sample_bs, prep_chunks,
                  prep_level, opt_params, logger, log_interval, max_logged_sounds, no_stochastic_prep,
                  rmse_loss_weight, eps_loss_weight, condition_params, data_time_cond, data_context_cond, logger_type,
-                 **params):
+                 log_intervals, **params):
         super().__init__()
         self.preprocessing = preprocessing
         self.data_time_cond = data_time_cond
@@ -32,6 +33,7 @@ class DiffusionUnet(LightningModule):
         self.skip_valid_logs = True
         self.diffusion = Diffusion(emb_width=self.preprocessing.emb_width, **diff_params)
         self.diffusion_cond = DiffusionConditioning(**condition_params, noise_steps=self.diffusion.noise_steps)
+        self.diffusion_stats = DiffusionStats(self.diffusion.noise_steps, intervals=log_intervals, cond=self.diffusion_cond)
         self.autenc = WavAutoEncoder(**autenc_params, base_model=self, sr=self.preprocessing.sr,
                                      cond_with_time=self.diffusion_cond.cond_with_time,
                                      condition_size=self.diffusion_cond.cond_size,
@@ -88,41 +90,20 @@ class DiffusionUnet(LightningModule):
     @torch.no_grad()
     def sample(self, bs, length, **kwargs):
         latent_samples = self.diffusion.sample(self, bs, length=length, **kwargs)
-        sample_norm = self.bnorm(latent_samples)
+        sample_norm = self.diffusion_stats.bnorm(latent_samples)
         samples = self.postprocess(latent_samples)
         return samples, dict(sample_norm=sample_norm)
 
-    def bnorm(self, x, reduce_batch=True):
-        x = torch.sqrt(torch.mean(torch.mean(x**2, dim=-1), dim=-1))
-        return torch.mean(x) if reduce_batch else x
-
-    def append_t_metric(self, key, value, t):
-        self.t_dep_stats = None
-        raise Exception("Not Implemented")
-
-    def aggregate_t_stats(self, metrics, t):
-        for key, value in metrics.items():
-            if key not in self.t_stats:
-                self.append_t_metric(key, value, t)
-
     def calc_loss(self, preds, target, x_noised, x_in, t, metrics_l):
-        target_norm = self.bnorm(target)
-        target_variance = torch.mean(target**2)
-        loss = 0
-        sounds_dict = []
+        loss, sounds_dict = 0, []
+        assert len(preds) == 1  # wont work for multiple levels
         for metrics, pred in zip(metrics_l, preds):
-            e_mse = torch.mean((pred - target)**2)
-            r_squared = 1 - e_mse/target_variance
-
             x_pred_denoised = self.diffusion.get_x0(x_noised, pred, t)
-            x_pred_denoised_norm = self.bnorm(x_pred_denoised)
-            x_mse = torch.mean((x_in - x_pred_denoised)**2)
-            x_rmse = self.bnorm(x_in - x_pred_denoised)
-            pred_norm = self.bnorm(pred)
-
-            loss += self.eps_loss_weight * e_mse + self.rmse_loss_weight * x_mse
-            metrics.update(target_norm=target_norm, pred_norm=pred_norm, r_squared=r_squared,
-                           x_rmse=x_rmse, x_mse=x_mse, x_pred_denoised_norm=x_pred_denoised_norm)
+            e_loss, e_metrics = self.diffusion_stats.residual_metrics(pred, target, "e")
+            x_loss, x_metrics = self.diffusion_stats.residual_metrics(x_pred_denoised, x_in, "x")
+            loss += self.eps_loss_weight * e_loss + self.rmse_loss_weight * x_loss
+            self.diffusion_stats.aggregate(t, metrics={**e_metrics, **x_metrics})
+            metrics.update(self.diffusion_stats.get_aggr())
             sounds_dict.append(dict(x_in=x_in, x_pred_denoised=x_pred_denoised, x_noised=x_noised))
         return loss, sounds_dict, metrics_l
 
@@ -173,10 +154,12 @@ class DiffusionUnet(LightningModule):
         self.autenc.audio_logger.log_add_metrics(sample_metrics, prefix)
 
         self.autenc.audio_logger.plot_spec_as(samples, lambda i: f"generated_specs/{i}", prefix)
-        self.autenc.audio_logger.log_sounds(samples, lambda i: f"generated_samples/{i}", prefix)
+        sample_name = lambda i: f"generated_samples/{i}_{self.diffusion_stats.get_sample_info(i, t, context_cond)}"
+        self.autenc.audio_logger.log_sounds(samples, sample_name, prefix)
         for name, latent_sound in sounds_dict[0].items():
             sound = self.postprocess(latent_sound[:self.max_logged_sounds])
             self.autenc.audio_logger.plot_spec_as(sound, lambda i: f"spec_{i}/{name}", prefix)
-            self.autenc.audio_logger.log_sounds(sound, lambda i: f"sample_{i}/{name}", prefix)
+            sample_name = lambda i: f"sample_{i}/{name}_{self.diffusion_stats.get_sample_info(i, context=context_cond)}"
+            self.autenc.audio_logger.log_sounds(sound, sample_name, prefix)
 
         gc.collect()

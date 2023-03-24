@@ -64,3 +64,8 @@ def get_normal(*shape, std=0.01):
     w = t.empty(shape)
     nn.init.normal_(w, std=std)
     return w
+
+
+# batched mean square
+def bms(x):
+    return t.mean(x**2, dim=tuple(range(1, len(x.shape))))

@@ -1,5 +1,6 @@
 from hparams.parser import Hparams
 from hparams.compressor.misc import dirs_config
+from utils.misc import flatten
 
 
 default_bottleneck_transformer_params = Hparams(
@@ -97,6 +98,13 @@ default_condition_params = Hparams(
     genre_names=None,  # filled in during dataset creation
 )
 
+noise_log_intervals = flatten([
+    [(1, 1000)],
+    [(i, i) for i in range(1, 5)],
+    [(1000 - i, 1000 - i) for i in range(5)],
+    [(i*100 + 1, (i+1)*100) for i in range(10)],
+])
+
 default_diffusion_params = Hparams(
     model_type="diffusion",
     autenc_params=default_diffusion_autenc_params,
@@ -105,7 +113,7 @@ default_diffusion_params = Hparams(
     condition_params=default_condition_params,
     log_sample_bs=2,
     max_logged_sounds=2,
-    log_interval=500,
+    log_interval=1000,
     data_time_cond=True,
     data_context_cond=True,
     prep_chunks=2,
@@ -122,6 +130,7 @@ default_diffusion_params = Hparams(
     neptune_project="diffusion",
     no_stochastic_prep=True,
     ckpt_freq=1000,
+    log_intervals=noise_log_intervals,
     **dirs_config,
 )
 
