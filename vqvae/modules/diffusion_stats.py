@@ -6,7 +6,7 @@ from utils.misc import default, bms
 class DiffusionStats(nn.Module):
     def __init__(self, steps, intervals, cond):
         super().__init__()
-        self.cond = cond
+        self.cond = [cond]
         self.steps = steps
         self.intervals = intervals
         self.int_names = ["total" if iv == (1, self.steps) else iv[0] if iv[0] == iv[1]
@@ -41,7 +41,7 @@ class DiffusionStats(nn.Module):
         if t is not None:
             full_name.append(f"t={t[i]}")
         if context is not None:
-            genres = ",".join([self.cond.genre_names[gid] for gid in context[i].genres])
+            genres = ",".join([self.cond[0].genre_names[gid] for gid in context[i].genres])
             full_name.append(f"({genres})")
         return "_".join(full_name)
 
