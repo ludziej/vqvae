@@ -103,8 +103,8 @@ noise_log_intervals = flatten([
     [(i, i) for i in range(1, 5)],
     [(1000 - i, 1000 - i) for i in range(5)],
     [(i*100 + 1, (i+1)*100) for i in range(10)],
-    [(1000-(i+1)*10, 1000-i*10) for i in range(10)],
-    [(i*10 + 1, (i+1)*10) for i in range(10)],
+    #[(1000-(i+1)*10, 1000-i*10) for i in range(10)],
+    #[(i*10 + 1, (i+1)*10) for i in range(10)],
 ])
 
 default_diffusion_params = Hparams(
@@ -131,7 +131,9 @@ default_diffusion_params = Hparams(
     neptune_path="training/model/checkpoints/last",
     neptune_project="diffusion",
     stats_momentum=0.9,
+    renormalize_loss=True,
     no_stochastic_prep=True,
+    sample_cfgw=1.5,
     ckpt_freq=1000,
     log_intervals=noise_log_intervals,
     **dirs_config,
