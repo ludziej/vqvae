@@ -4,9 +4,10 @@ from utils.misc import default, bms
 
 
 class DiffusionStats(nn.Module):
-    def __init__(self, steps, intervals, cond, momentum):
+    def __init__(self, steps, intervals, cond, momentum, renormalize_loss):
         super().__init__()
         self.cond = [cond]
+        self.renormalize_loss = renormalize_loss
         self.steps = steps
         self.momentum = momentum
         self.intervals = intervals
@@ -41,6 +42,11 @@ class DiffusionStats(nn.Module):
                     metrics[f"{k}/{i_name}"] = mean
         return metrics
 
+    def get_loss_weights(self, t, name):
+        dist = self.stats.get(name, torch.ones_like(t, device=t.device))
+        dist = torch.nanmean(dist) / torch.cat([dist[ti] for ti in t])
+        return torch.nan_to_num(dist, nan=1.)
+
     def get_sample_info(self, i, t=None, context=None, time=None):
         full_name = []
         if t is not None:
@@ -50,7 +56,7 @@ class DiffusionStats(nn.Module):
             full_name.append(f"({genres})")
         return "_".join(full_name)
 
-    def residual_metrics(self, pred, target, name):
+    def residual_metrics(self, pred, target, name, t):
         mse = bms(pred - target)
         rmse = mse**.5
         p_norm = bms(pred)**.5
@@ -58,4 +64,6 @@ class DiffusionStats(nn.Module):
         t_norm = t_var**.5
         r_squared = 1 - mse/t_var
         metrics = dict(mse=mse, rmse=rmse, norm=t_norm, pred_norm=p_norm, r_squared=r_squared)
-        return torch.mean(mse), {f"{name}/{k}": v for k, v in metrics.items()}
+
+        loss = mse if self.renormalize_loss else mse * self.get_loss_weights(t, f"{name}/mse")
+        return torch.mean(loss), {f"{name}/{k}": v for k, v in metrics.items()}

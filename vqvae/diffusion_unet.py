@@ -15,8 +15,9 @@ class DiffusionUnet(LightningModule):
     def __init__(self, autenc_params, preprocessing: WavCompressor, diff_params, log_sample_bs, prep_chunks,
                  prep_level, opt_params, logger, log_interval, max_logged_sounds, no_stochastic_prep,
                  rmse_loss_weight, eps_loss_weight, condition_params, data_time_cond, data_context_cond, logger_type,
-                 log_intervals, stats_momentum, **params):
+                 log_intervals, stats_momentum, renormalize_loss, sample_cfgw, **params):
         super().__init__()
+        self.renormalize_loss = renormalize_loss
         self.preprocessing = preprocessing
         self.data_time_cond = data_time_cond
         self.data_context_cond = data_context_cond
@@ -24,6 +25,7 @@ class DiffusionUnet(LightningModule):
         self.eps_loss_weight = eps_loss_weight
         self.log_sample_bs = log_sample_bs
         self.prep_chunks = prep_chunks
+        self.sample_cfgw = sample_cfgw
         self.max_logged_sounds = max_logged_sounds
         self.opt_params = opt_params
         self.prep_level = prep_level
@@ -34,7 +36,8 @@ class DiffusionUnet(LightningModule):
         self.diffusion = Diffusion(emb_width=self.preprocessing.emb_width, **diff_params)
         self.diffusion_cond = DiffusionConditioning(**condition_params, noise_steps=self.diffusion.noise_steps)
         self.diffusion_stats = DiffusionStats(self.diffusion.noise_steps, intervals=log_intervals,
-                                              cond=self.diffusion_cond, momentum=stats_momentum)
+                                              cond=self.diffusion_cond, momentum=stats_momentum,
+                                              renormalize_loss=renormalize_loss)
         self.autenc = WavAutoEncoder(**autenc_params, base_model=self, sr=self.preprocessing.sr,
                                      cond_with_time=self.diffusion_cond.cond_with_time,
                                      condition_size=self.diffusion_cond.cond_size,
@@ -55,7 +58,7 @@ class DiffusionUnet(LightningModule):
         if cfg_weight == 1:
             return guided
         unguided = self(x_in, t, **args, with_metrics=False, drop_cond=True)
-        return cfg_weight * guided + (1 - cfg_weight) * unguided
+        return [cfg_weight * guided[0] + (1 - cfg_weight) * unguided[0]]
 
     def on_after_backward(self) -> None:
         self.autenc.audio_logger.log_grads()
@@ -100,8 +103,8 @@ class DiffusionUnet(LightningModule):
         assert len(preds) == 1  # wont work for multiple levels
         for metrics, pred in zip(metrics_l, preds):
             x_pred_denoised = self.diffusion.get_x0(x_noised, pred, t)
-            e_loss, e_metrics = self.diffusion_stats.residual_metrics(pred, target, "e")
-            x_loss, x_metrics = self.diffusion_stats.residual_metrics(x_pred_denoised, x_in, "x")
+            e_loss, e_metrics = self.diffusion_stats.residual_metrics(pred, target, "e", t)
+            x_loss, x_metrics = self.diffusion_stats.residual_metrics(x_pred_denoised, x_in, "x", t)
             loss += self.eps_loss_weight * e_loss + self.rmse_loss_weight * x_loss
             self.diffusion_stats.aggregate(t, metrics={**e_metrics, **x_metrics})
             metrics.update(self.diffusion_stats.get_aggr())
@@ -155,8 +158,17 @@ class DiffusionUnet(LightningModule):
         self.autenc.audio_logger.log_add_metrics(sample_metrics, prefix)
 
         self.autenc.audio_logger.plot_spec_as(samples, lambda i: f"generated_specs/{i}", prefix)
-        sample_name = lambda i: f"generated_samples/{i}_{self.diffusion_stats.get_sample_info(i, t, context_cond)}"
+        sample_name = lambda i: f"generated_samples/{i}_{self.diffusion_stats.get_sample_info(i, context_cond)}"
         self.autenc.audio_logger.log_sounds(samples, sample_name, prefix)
+
+        if self.sample_cfgw is not None:
+            samples, sample_metrics = self.sample(samples_num, length=sample_len, context_cond=context_cond,
+                                                  time_cond=time_cond, cfg_weight=self.sample_cfgw)
+            self.autenc.audio_logger.log_add_metrics({f"{k}_cfg": v for k, v in sample_metrics.items()}, prefix)
+            self.autenc.audio_logger.plot_spec_as(samples, lambda i: f"generated_specs/cfg/{i}", prefix)
+            sample_name = lambda i: f"generated_samples/cfg/{i}_{self.diffusion_stats.get_sample_info(i, context_cond)}"
+            self.autenc.audio_logger.log_sounds(samples, sample_name, prefix)
+
         for name, latent_sound in sounds_dict[0].items():
             sound = self.postprocess(latent_sound[:self.max_logged_sounds])
             self.autenc.audio_logger.plot_spec_as(sound, lambda i: f"spec_{i}/{name}", prefix)
