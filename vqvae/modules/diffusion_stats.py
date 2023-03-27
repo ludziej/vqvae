@@ -24,9 +24,8 @@ class DiffusionStats(nn.Module):
     @torch.no_grad()
     def aggregate(self, t, metrics):
         for key, value in metrics.items():
-            if key not in self.stats:
-                for b in range(len(t)):
-                    self.append_t_metric(key, value[b], t[b])
+            for b in range(len(t)):
+                self.append_t_metric(key, value[b], t[b])
 
     @torch.no_grad()
     def get_aggr(self):
