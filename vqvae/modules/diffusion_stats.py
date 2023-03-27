@@ -43,8 +43,10 @@ class DiffusionStats(nn.Module):
         return metrics
 
     def get_loss_weights(self, t, name):
-        dist = self.stats.get(name, torch.ones_like(t, device=t.device))
-        dist = torch.nanmean(dist) / torch.cat([dist[ti] for ti in t])
+        if name not in self.stats:
+            return torch.ones_like(t, device=t.device)
+        dist = self.stats[name]
+        dist = torch.nanmean(dist) / torch.stack([dist[ti] for ti in t])
         return torch.nan_to_num(dist, nan=1.)
 
     def get_sample_info(self, i, t=None, context=None, time=None):
