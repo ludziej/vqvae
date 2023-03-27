@@ -42,9 +42,9 @@ class DiffusionStats(nn.Module):
                     metrics[f"{k}/{i_name}"] = mean
         return metrics
 
-    def get_loss_weights(self, t, name):
+    def get_loss_weights(self, t, name, device):
         if name not in self.stats:
-            return torch.ones_like(t, device=t.device)
+            return torch.ones_like(t, device=device)
         dist = self.stats[name]
         dist = torch.nanmean(dist) / torch.stack([dist[ti] for ti in t])
         return torch.nan_to_num(dist, nan=1.)
@@ -67,5 +67,5 @@ class DiffusionStats(nn.Module):
         r_squared = 1 - mse/t_var
         metrics = dict(mse=mse, rmse=rmse, norm=t_norm, pred_norm=p_norm, r_squared=r_squared)
 
-        loss = mse if not self.renormalize_loss else mse * self.get_loss_weights(t, f"{name}/mse")
+        loss = mse if not self.renormalize_loss else mse * self.get_loss_weights(t, f"{name}/mse", device=mse.device)
         return torch.mean(loss), {f"{name}/{k}": v for k, v in metrics.items()}
