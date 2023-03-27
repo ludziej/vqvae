@@ -65,5 +65,5 @@ class DiffusionStats(nn.Module):
         r_squared = 1 - mse/t_var
         metrics = dict(mse=mse, rmse=rmse, norm=t_norm, pred_norm=p_norm, r_squared=r_squared)
 
-        loss = mse if self.renormalize_loss else mse * self.get_loss_weights(t, f"{name}/mse")
+        loss = mse if not self.renormalize_loss else mse * self.get_loss_weights(t, f"{name}/mse")
         return torch.mean(loss), {f"{name}/{k}": v for k, v in metrics.items()}
