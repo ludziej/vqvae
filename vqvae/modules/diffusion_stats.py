@@ -4,10 +4,11 @@ from utils.misc import default, bms
 
 
 class DiffusionStats(nn.Module):
-    def __init__(self, steps, intervals, cond):
+    def __init__(self, steps, intervals, cond, momentum):
         super().__init__()
         self.cond = [cond]
         self.steps = steps
+        self.momentum = momentum
         self.intervals = intervals
         self.int_names = ["total" if iv == (1, self.steps) else iv[0] if iv[0] == iv[1]
                           else f"{iv[0]}-{iv[1]}" for iv in intervals]
@@ -18,8 +19,11 @@ class DiffusionStats(nn.Module):
 
     def append_t_metric(self, key, value, t):
         if key not in self.stats:
-            self.stats[key] = torch.zeros((self.steps,), dtype=torch.float, device=value.device)
-        self.stats[key][t] = value
+            self.stats[key] = torch.zeros((self.steps,), dtype=torch.float, device=value.device) + torch.nan
+        if torch.isnan(self.stats[key][t]):
+            self.stats[key][t] = value
+        else:
+            self.stats[key][t] = self.momentum * self.stats[key][t] + (1 - self.momentum) * value
 
     @torch.no_grad()
     def aggregate(self, t, metrics):
@@ -32,7 +36,9 @@ class DiffusionStats(nn.Module):
         metrics = {}
         for intv, i_name in zip(self.intervals, self.int_names):
             for k, v in self.stats.items():
-                metrics[f"{k}/{i_name}"] = torch.mean(self.stats[k][intv[0] - 1:intv[1]])
+                mean = torch.nanmean(self.stats[k][intv[0] - 1:intv[1]])
+                if not torch.isnan(mean):
+                    metrics[f"{k}/{i_name}"] = mean
         return metrics
 
     def get_sample_info(self, i, t=None, context=None, time=None):
