@@ -193,11 +193,11 @@ class WavCompressor(LightningModule):
             return  # log samples once per interval
 
         self.generator.audio_logger.plot_spectrorams(batch, batch_outs, prefix)
-        self.generator.audio_logger.log_sounds(batch, lambda i: f"sample_{i}/in", prefix)
+        self.generator.audio_logger.log_sounds(batch, lambda b, i: f"sample_{b}/in", prefix)
         for level, xouts in enumerate(batch_outs):
-            self.generator.audio_logger.log_sounds(xouts, lambda i: f"sample_{i}/out_lvl_{level + 1}", prefix)
+            self.generator.audio_logger.log_sounds(xouts, lambda b, i: f"sample_{b}/out_lvl_{level + 1}", prefix)
 
         if self.log_vae_no_stochastic:
             _, _, outs_no_s = self.no_grad_forward(batch, b_params=dict(var_temp=0))
             for level, xouts in enumerate(outs_no_s):
-                self.generator.audio_logger.log_sounds(xouts, lambda i: f"sample_{i}/out_no_s_lvl_{level + 1}", prefix)
+                self.generator.audio_logger.log_sounds(xouts, lambda b, i: f"sample_{b}/out_no_s_lvl_{level + 1}", prefix)

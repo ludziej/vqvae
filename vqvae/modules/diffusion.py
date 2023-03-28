@@ -53,7 +53,7 @@ class Diffusion(nn.Module):
             raise Exception(f"Not Implemented noise schedule: {self.noise_schedule}")
 
     def sample_timesteps(self, n):
-        return torch.randint(low=1, high=self.noise_steps, size=(n,))
+        return torch.randint(low=1, high=self.noise_steps - 1, size=(n,))
 
     def extract(self, data, t):
         return data[t][:, None, None]
@@ -114,7 +114,7 @@ class Diffusion(nn.Module):
         steps = default(steps, self.noise_steps)
         model.eval()
         with torch.no_grad():
-            for i in tqdm(list(reversed(range(1, steps))), position=0, desc="Denoising"):
+            for i in tqdm(list(reversed(range(1, steps - 1))), position=0, desc="Denoising"):
                 t = (torch.ones(len(x)) * i).long().to(model.device)
                 predicted_noise = model.eval_no_grad(x, t, **context_args)
                 x = self.denoise_step(x, predicted_noise[level], t, add_noise=i > 1)

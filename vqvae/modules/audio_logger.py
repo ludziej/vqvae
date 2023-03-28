@@ -81,7 +81,7 @@ class AudioLogger(nn.Module):
         elif self.logger_type == "neptune":
             filename = f"{tempfile.gettempdir()}/{uuid.uuid4()}.wav"
             save_file(sound.squeeze(0).to("cpu"), filename, self.sr)
-            self.elogger()[f"{name}/{nr}"].upload(filename)
+            self.elogger()[name].upload(filename)
             #os.remove(filename)
         else:
             raise Exception("Not Implemented")
@@ -95,8 +95,9 @@ class AudioLogger(nn.Module):
             raise Exception("Not Implemented")
 
     def log_sounds(self, batch, name, prefix):
-        for i, xin in enumerate(batch):
-            self.log_sound(prefix + name(i), xin, self.log_nr.get(prefix, 0))
+        for bi, xin in enumerate(batch):
+            nr = self.log_nr.get(prefix, 0)
+            self.log_sound(prefix + name(bi, nr), xin, nr)
 
     def get_fft(self, sound):
         return self.spec(sound).permute(0, 3, 1, 2)

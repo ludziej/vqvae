@@ -1,5 +1,6 @@
 import torch
 from pytorch_lightning import LightningModule
+from functools import partial
 
 from vqvae.modules.backbone import WavAutoEncoder
 from vqvae.model import WavCompressor
@@ -119,7 +120,7 @@ class DiffusionUnet(LightningModule):
         loss, sounds_dict, metrics = self.calc_loss(noise_pred, noise_target, x_noised, x_in, t, metrics)
 
         self.log_metrics_and_samples(loss, metrics, sounds_dict, t, batch_idx, phase, sample_len=x_in.shape[-1],
-                                     context_cond=context_cond, time_cond=time_cond)
+                                     context=context_cond, time_cond=time_cond)
         return loss
 
     # lightning train boilerplate
@@ -140,7 +141,7 @@ class DiffusionUnet(LightningModule):
     # metrics & logging
 
     @torch.no_grad()
-    def log_metrics_and_samples(self, loss, metrics, sounds_dict, t, batch_idx, phase, sample_len, context_cond=None,
+    def log_metrics_and_samples(self, loss, metrics, sounds_dict, t, batch_idx, phase, sample_len, context=None,
                                 time_cond=None):
         prefix = phase + "_" if phase != "train" else ""
         assert len(metrics) == 1  # currently no support for multiple levels
@@ -151,28 +152,27 @@ class DiffusionUnet(LightningModule):
             return  # log samples once per interval
 
         samples_num = min(len(t), self.log_sample_bs)
-        context_cond = context_cond[:samples_num] if context_cond is not None else None
+        context = context[:samples_num] if context is not None else None
         time_cond = time_cond[:samples_num] if time_cond is not None else None
-        samples, sample_metrics = self.sample(samples_num, length=sample_len, context_cond=context_cond,
+        samples, sample_metrics = self.sample(samples_num, length=sample_len, context_cond=context,
                                               time_cond=time_cond)
         self.autenc.audio_logger.log_add_metrics(sample_metrics, prefix)
 
+        sample_name = lambda ntype, ti, b, i: f"samples/{i}/{ntype}/{b}_" \
+                                              f"{self.diffusion_stats.get_sample_info(i, t=ti, context=context)}"
         self.autenc.audio_logger.plot_spec_as(samples, lambda i: f"generated_specs/{i}", prefix)
-        sample_name = lambda i: f"generated_samples/{i}_{self.diffusion_stats.get_sample_info(i, context_cond)}"
-        self.autenc.audio_logger.log_sounds(samples, sample_name, prefix)
+        self.autenc.audio_logger.log_sounds(samples, partial(sample_name, "generated", None), prefix)
 
         if self.sample_cfgw is not None:
-            samples, sample_metrics = self.sample(samples_num, length=sample_len, context_cond=context_cond,
+            samples, sample_metrics = self.sample(samples_num, length=sample_len, context_cond=context,
                                                   time_cond=time_cond, cfg_weight=self.sample_cfgw)
             self.autenc.audio_logger.log_add_metrics({f"{k}_cfg": v for k, v in sample_metrics.items()}, prefix)
             self.autenc.audio_logger.plot_spec_as(samples, lambda i: f"generated_specs/cfg/{i}", prefix)
-            sample_name = lambda i: f"generated_samples/cfg/{i}_{self.diffusion_stats.get_sample_info(i, context_cond)}"
-            self.autenc.audio_logger.log_sounds(samples, sample_name, prefix)
+            self.autenc.audio_logger.log_sounds(samples, partial(sample_name, f"cfg={self.sample_cfgw}", None), prefix)
 
         for name, latent_sound in sounds_dict[0].items():
             sound = self.postprocess(latent_sound[:self.max_logged_sounds])
             self.autenc.audio_logger.plot_spec_as(sound, lambda i: f"spec_{i}/{name}", prefix)
-            sample_name = lambda i: f"sample_{i}/{name}_{self.diffusion_stats.get_sample_info(i, context=context_cond)}"
-            self.autenc.audio_logger.log_sounds(sound, sample_name, prefix)
+            self.autenc.audio_logger.log_sounds(sound, partial(sample_name, name, t), prefix)
 
         gc.collect()
