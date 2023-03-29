@@ -65,6 +65,8 @@ class DiffusionUnet(LightningModule):
         self.autenc.audio_logger.log_grads()
 
     def forward(self, x_in, t, time_cond=None, context_cond=None, with_metrics=False, drop_cond=None):
+        if self.optimizers().optimizer.param_groups[0]["weight_decay"] > 0:
+            self.optimizers().optimizer.param_groups[0]["weight_decay"] = 0
         conditioning = self.diffusion_cond.get_conditioning(t, time_cond=time_cond, context_cond=context_cond,
                                                             length=x_in.shape[2], drop_cond=drop_cond)
         x_predicted, _, _, metrics = self.autenc.forward(x_in, cond=conditioning)
