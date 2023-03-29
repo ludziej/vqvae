@@ -159,7 +159,7 @@ class DiffusionUnet(LightningModule):
         self.autenc.audio_logger.log_add_metrics(sample_metrics, prefix)
 
         sample_name = lambda ntype, ti, b, i: f"samples/{i}/{ntype}/{b}_" \
-                                              f"{self.diffusion_stats.get_sample_info(i, t=ti, context=context)}"
+                                              f"{self.diffusion_stats.get_sample_info(b, t=ti, context=context)}"
         self.autenc.audio_logger.plot_spec_as(samples, lambda i: f"generated_specs/{i}", prefix)
         self.autenc.audio_logger.log_sounds(samples, partial(sample_name, "generated", None), prefix)
 
