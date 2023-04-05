@@ -4,7 +4,8 @@ from torch.optim import AdamW
 from optimization.ema import EMAOptimizer
 
 
-def get_lr_scheduler(opt, lr_use_linear_decay, lr_scale, lr_warmup, lr_start_linear_decay, lr_decay, lr_gamma, **params):
+def get_lr_scheduler(opt, lr_use_linear_decay, lr_scale, lr_warmup, lr_start_linear_decay, lr_decay, lr_gamma,
+                     lr_decay_thresh=None, **params):
     def lr_lambda(step):
         if lr_use_linear_decay:
             curr_lr_scale = lr_scale * min(1.0, step / lr_warmup)
@@ -13,7 +14,7 @@ def get_lr_scheduler(opt, lr_use_linear_decay, lr_scale, lr_warmup, lr_start_lin
                 logging.info("Reached end of training")
             return curr_lr_scale * decay
         else:
-            return lr_scale * (lr_gamma ** (step // lr_decay)) * min(1.0, step / lr_warmup)
+            return lr_scale * max(lr_decay_thresh, lr_gamma ** (step // lr_decay)) * min(1.0, step / lr_warmup)
 
     shd = t.optim.lr_scheduler.LambdaLR(opt, lr_lambda)
     return shd
