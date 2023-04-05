@@ -56,13 +56,14 @@ class EncoderConvBlock(nn.Module):
 
 
 class DecoderConvBock(nn.Module):
-    def __init__(self, input_emb_width, output_emb_width, down_t, stride_t,
+    def __init__(self, output_emb_width, down_t, stride_t,
                  skip_connections, width, depth, m_conv, norm_type, dilation_growth_rate=1, dilation_cycle=None,
                  res_scale=False, reverse_decoder_dilation=False, leaky_param=1e-2, use_weight_standard=True,
                  num_groups=32, use_bias=False, concat_skip=False, rezero=False, skip_connections_step=1,
                  channel_increase=1, condition_size=None, self_attn_from=None, cond_with_time=False,
-                 rezero_in_attn=False, biggan_skip=False, swish_act=False, **params):
+                 rezero_in_attn=False, biggan_skip=False, swish_act=False, last_emb_fixed=True, **params):
         super().__init__()
+        self.last_width = width if last_emb_fixed else output_emb_width
         self.skip_connections = skip_connections
         blocks = []
         res_scale = (1.0 if not res_scale else 1.0 / math.sqrt(depth)) if isinstance(res_scale, bool) else res_scale
@@ -72,7 +73,7 @@ class DecoderConvBock(nn.Module):
             blocks.append(block)
             for i in range(down_t):
                 curr_width = width * channel_increase ** (down_t - i - 1)
-                next_width = input_emb_width if i == (down_t - 1) else width * channel_increase ** (down_t - i - 2)
+                next_width = width * channel_increase ** (down_t - i - 2) if i < down_t - 1 else self.last_width
                 with_self_attn = self_attn_from is not None and self_attn_from <= down_t - i
                 downsample = stride_t ** (down_t - i)
 
@@ -153,10 +154,10 @@ class Decoder(nn.Module):
         self.strides_t = strides_t
 
         self.level_blocks = nn.ModuleList(
-            DecoderConvBock(output_emb_width, output_emb_width, down_t, stride_t, self.skip_connections, **block_kwargs)
+            DecoderConvBock(output_emb_width, down_t, stride_t, self.skip_connections, **block_kwargs)
             for level, down_t, stride_t in zip(range(self.levels), downs_t, strides_t))
 
-        self.out = nn.Conv1d(output_emb_width, input_emb_width, 3, 1, 1)
+        self.out = nn.Conv1d(self.level_blocks[-1].last_width, input_emb_width, 3, 1, 1)
 
     def forward(self, xs, all_levels=True, skips=None, cond=None):
         assert len(xs) == (self.levels if all_levels else 1)
@@ -172,7 +173,7 @@ class Decoder(nn.Module):
         for level, down_t, stride_t, skip in iterator:
             level_block = self.level_blocks[level]
             x = level_block(x, skips=skip, cond=cond)
-            emb, T = self.output_emb_width, T * (stride_t ** down_t)
+            emb, T = self.level_blocks[-1].last_width, T * (stride_t ** down_t)
             assert_shape(x, (N, emb, T))
             if level != 0 and all_levels:
                 x = x + xs[level - 1]

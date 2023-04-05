@@ -20,7 +20,7 @@ class UpTokenConditioner(nn.Module):
             self.x_emb.weight = bins_init
 
         # Conditioner
-        self.cond = DecoderConvBock(self.width, self.width, down_t, stride_t, zero_out=zero_out, res_scale=res_scale,
+        self.cond = DecoderConvBock(self.width, down_t, stride_t, zero_out=zero_out, res_scale=res_scale,
                                     norm_type=norm_type, **block_kwargs)
         self.ln = CustomNormalization(self.width, norm_type=norm_type)
 

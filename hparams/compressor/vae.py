@@ -12,6 +12,7 @@ big_vae_model_params = big_vqvae_model_params.update(
     model_type="vae",
     bottleneck_type="vae",
     bottleneck_lw=0.0001,
+    last_emb_fixed=False,  # this is legacy option, set to True on new training
     main_dir="generated/models/big_vae_hq/",
     sample_len=262144,
     log_vae_no_stochastic=True,
