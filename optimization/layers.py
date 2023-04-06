@@ -71,7 +71,13 @@ class BigGanSkip(nn.Module):
         y = self.fn(x)
         if self.with_rezero:
             y = y * self.rezero_g
-
+        if self.try_match:
+            if self.downsample == 2 and 2*self.ch_in == self.ch_out:
+                x = x.reshape(x.shape[0], x.shape[1]*2, x.shape[2]//2)
+                return self.res_scale * x + y
+            if self.upsample == 2 and self.ch_in == 2*self.ch_out:
+                x = x.reshape(x.shape[0], x.shape[1]//2, x.shape[2]*2)
+                return self.res_scale * x + y
         if self.ch_in > self.ch_out:
             x = x[:, :self.ch_out, :]
         if self.upsample > 1:

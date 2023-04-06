@@ -15,7 +15,7 @@ class EncoderConvBlock(nn.Module):
                  use_weight_standard=True, num_groups=32, use_bias=False, concat_skip=False, rezero=False,
                  skip_connections_step=1, channel_increase=1, condition_size=None, self_attn_from=None,
                  cond_with_time=False, biggan_skip=False, rezero_in_attn=False, swish_act=False, max_width=None,
-                 skip_with_rezero=False, **params):
+                 skip_with_rezero=False, skip_reshape=False, **params):
         super().__init__()
         self.skip_connections = skip_connections
         filter_t, pad_t = stride_t * 2, stride_t // 2
@@ -33,7 +33,7 @@ class EncoderConvBlock(nn.Module):
                 shape_block = nn.Conv1d(in_width, next_width, filter_t, stride_t, pad_t)
                 block = [
                     BigGanSkip(shape_block, in_width, next_width, downsample=stride_t, res_scale=res_scale,
-                               with_rezero=skip_with_rezero) if biggan_skip else shape_block,
+                               with_rezero=skip_with_rezero, try_match=skip_reshape) if biggan_skip else shape_block,
                     Resnet1D(next_width, depth, m_conv, dilation_growth_rate, dilation_cycle, res_scale,
                              return_skip=skip_connections, norm_type=norm_type, leaky_param=leaky_param,
                              use_weight_standard=use_weight_standard, num_groups=num_groups, use_bias=use_bias,
@@ -65,7 +65,7 @@ class DecoderConvBock(nn.Module):
                  num_groups=32, use_bias=False, concat_skip=False, rezero=False, skip_connections_step=1,
                  channel_increase=1, condition_size=None, self_attn_from=None, cond_with_time=False, max_width=None,
                  rezero_in_attn=False, biggan_skip=False, swish_act=False, last_emb_fixed=True,
-                 skip_with_rezero=False, **params):
+                 skip_with_rezero=False, skip_reshape=False, **params):
         super().__init__()
         self.last_width = width if last_emb_fixed else output_emb_width
         self.skip_connections = skip_connections
@@ -97,7 +97,7 @@ class DecoderConvBock(nn.Module):
                              swish_act=swish_act,
                              cond_with_time=cond_with_time, downsample=downsample, rezero_in_attn=rezero_in_attn),
                     BigGanSkip(shape_block, curr_width, next_width, upsample=stride_t, res_scale=res_scale,
-                               with_rezero=skip_with_rezero) if biggan_skip else shape_block,
+                               try_match=skip_reshape, with_rezero=skip_with_rezero) if biggan_skip else shape_block,
                 ]
                 blocks.append(nn.Sequential(*block) if condition_size is None else
                               SkipConnectionsDecoder(block, [True, False], pass_conds=[True, False]))
