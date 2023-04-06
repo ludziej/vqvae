@@ -46,9 +46,11 @@ class CondProjection(nn.Module):
 
 
 class BigGanSkip(nn.Module):
-    def __init__(self, fn, ch_in, ch_out, res_scale, downsample=1, upsample=1):
+    def __init__(self, fn, ch_in, ch_out, res_scale, downsample=1, upsample=1, try_match=False, with_rezero=False):
         super().__init__()
         assert downsample == 1 or upsample == 1
+        self.with_rezero = with_rezero
+        self.try_match = try_match
         self.fn = fn
         self.ch_in = ch_in
         self.ch_out = ch_out
@@ -62,8 +64,14 @@ class BigGanSkip(nn.Module):
         if self.downsample > 1:
             self.downsample_layer = nn.AvgPool1d(downsample, downsample)
 
+        if with_rezero:
+            self.rezero_g = nn.Parameter(torch.tensor(1e-3))
+
     def forward(self, x):
         y = self.fn(x)
+        if self.with_rezero:
+            y = y * self.rezero_g
+
         if self.ch_in > self.ch_out:
             x = x[:, :self.ch_out, :]
         if self.upsample > 1:
