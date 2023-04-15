@@ -27,6 +27,13 @@ def get_neptune_hparams(model_type):
         )
 
 
+def del_neptune_model(run_id):
+    import neptune
+    run = neptune.init_run(**get_neptune_hparams("diffusion"), with_id=run_id)
+    del run["training/model/checkpoints/last"]
+    run.stop()
+
+
 def try_get_last_from_neptune(last_path, neptune_path, neptune_run_id, neptune_project, logger):
     if neptune_path == "" or neptune_run_id == "" or neptune_project == "" or os.path.exists(last_path):
         return last_path if os.path.exists(last_path) else None
@@ -50,21 +57,24 @@ def generic_get_model(name, model_class, main_dir, ckpt_dir, restore_ckpt, logge
     params.update(dict(logger=logger, logger_type=logger_type))
     model = model_class.load_from_checkpoint(last_path, **params, strict=False) \
         if last_path is not None else model_class(**params)
-    params["logger"].debug(f"Model {name} loaded")
+    logger.debug(f"Model {name} loaded")
     return model
 
 
-def get_logger(root_dir, hparams, model_hparams):
+def get_data_logger(root_dir, hparams, model_hparams):
     if model_hparams.logger_type == "tensorboard":
         return pl_loggers.TensorBoardLogger(root_dir / model_hparams.logs_dir)
     elif model_hparams.logger_type == "neptune":
-        return pl_loggers.NeptuneLogger(**get_neptune_hparams(model_hparams.model_type))
+        data_logger = pl_loggers.NeptuneLogger(**get_neptune_hparams(model_hparams.model_type), tags=hparams.tags)
+        data_logger.experiment["hparams"].upload(hparams.hparams_file)
+        data_logger.experiment["logger"].upload(hparams.logger_file)
+        return data_logger
     else:
         raise Exception(f"Unknown logger type {hparams.logger_type}")
 
 
 def generic_train(model, hparams, train, test, model_hparams, root_dir):
-    logger = get_logger(root_dir, hparams, model_hparams)
+    data_logger = get_data_logger(root_dir, hparams, model_hparams)
     checkpoint_callback = ModelCheckpoint(dirpath=root_dir / model_hparams.ckpt_dir, save_top_k=0,
                                           filename=model_hparams.distinct_ckpt_name,
                                           every_n_train_steps=model_hparams.ckpt_freq, save_last=True)
@@ -80,7 +90,7 @@ def generic_train(model, hparams, train, test, model_hparams, root_dir):
                       max_steps=hparams.max_steps if hparams.max_steps != 0 else -1,
                       gradient_clip_val=hparams.gradient_clip_val, callbacks=callbacks,
                       log_every_n_steps=hparams.log_every_n_steps, accelerator="gpu" if use_gpu else "cpu",
-                      logger=logger, strategy=hparams.accelerator,
+                      logger=data_logger, strategy=hparams.accelerator,
                       detect_anomaly=hparams.detect_anomaly, precision=precision,
                       default_root_dir=root_dir / model_hparams.default_ckpt_root,
                       check_val_every_n_epoch=hparams.check_val_every_n_epoch)
@@ -98,9 +108,9 @@ def get_last_path(main_dir, ckpt_dir, best_ckpt, return_non_existing=False):
     return file if return_non_existing or os.path.exists(file) else None
 
 
-def save_hparams(root_path, hparams, filename):
+def save_hparams(hparams):
     whole_save = dict(cli_args=sys.argv, hparams=hparams)
-    with open(root_path / filename, 'w') as f:
+    with open(hparams.hparams_file, 'w') as f:
         json.dump(whole_save, fp=f, default=lambda obj: obj.__dict__, indent=4)
 
 
@@ -110,7 +120,9 @@ def create_logger(root_dir, hparams, level=None, hparams_file="hparams.json"):
     root_dir.mkdir(parents=True, exist_ok=True)
 
     strtime = datetime.now().strftime("%d.%m.%Y, %H:%M:%S")
-    save_hparams(root_dir, hparams, f"{strtime} {hparams_file}")
+    hparams.logger_file = str(root_dir / f"{strtime} {hparams.log_file}")
+    hparams.hparams_file = str(root_dir / f"{strtime} {hparams_file}")
+    save_hparams(hparams)
     logging.basicConfig(format="%(asctime)s [%(threadName)-1s] [%(thread)-1s] [%(levelname)-1s]  %(message)s")
 #    logging.basicConfig(level=hparams.logging,
 #                        format="%(asctime)s [%(threadName)-1s] [%(thread)-1s] [%(levelname)-1s]  %(message)s",
@@ -118,5 +130,5 @@ def create_logger(root_dir, hparams, level=None, hparams_file="hparams.json"):
 #                                  logging.FileHandler(root_dir / f"{strtime} {hparams.log_file}")],)
     logger = logging.getLogger(__name__)
     logger.setLevel(hparams.logging)
-    logger.addHandler(logging.FileHandler(root_dir / f"{strtime} {hparams.log_file}"))
+    logger.addHandler(logging.FileHandler(hparams.logger_file))
     return logger, root_dir
