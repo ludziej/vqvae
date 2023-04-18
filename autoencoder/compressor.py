@@ -2,12 +2,12 @@ import torch
 import torch as t
 from pytorch_lightning import LightningModule
 
-from vqvae.modules.backbone import WavAutoEncoder
+from autoencoder.modules.backbone import WavAutoEncoder
 from utils.old_ml_utils.misc import average_metrics
 from utils.old_ml_utils.audio_utils import spectral_convergence, audio_postprocess, norm
 from optimization.opt_maker import get_optimizer
-from vqvae.modules.helpers import calculate_strides, _loss_fn, multispectral_loss_util, spectral_loss_util
-from vqvae.adversarial.trainer import AdversarialTrainer
+from autoencoder.modules.helpers import calculate_strides, _loss_fn, multispectral_loss_util, spectral_loss_util
+from autoencoder.adversarial.trainer import AdversarialTrainer
 import numpy as np
 
 

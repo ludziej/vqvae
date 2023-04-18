@@ -4,9 +4,9 @@ import math
 import torch.nn as nn
 
 from optimization.layers import BigGanSkip
-from vqvae.modules.resnet import Resnet1D
+from autoencoder.modules.resnet import Resnet1D
 from utils.old_ml_utils.misc import assert_shape
-from vqvae.modules.skip_connections import SkipConnectionsDecoder, SkipConnectionsEncoder
+from autoencoder.modules.skip_connections import SkipConnectionsDecoder, SkipConnectionsEncoder
 
 
 class EncoderConvBlock(nn.Module):

@@ -2,11 +2,11 @@ import torch
 from pytorch_lightning import LightningModule
 from functools import partial
 
-from vqvae.modules.backbone import WavAutoEncoder
-from vqvae.compressor import WavCompressor
-from vqvae.modules.diff_condition import DiffusionConditioning
-from vqvae.modules.diffusion import Diffusion
-from vqvae.modules.diffusion_stats import DiffusionStats
+from autoencoder.modules.backbone import WavAutoEncoder
+from autoencoder.compressor import WavCompressor
+from autoencoder.modules.diff_condition import DiffusionConditioning
+from autoencoder.modules.diffusion import Diffusion
+from autoencoder.modules.diffusion_stats import DiffusionStats
 from optimization.opt_maker import get_optimizer
 import gc
 from utils.misc import default

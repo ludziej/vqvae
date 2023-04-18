@@ -5,10 +5,10 @@ import torch as t
 
 from utils.misc import exists, default
 from utils.old_ml_utils.misc import assert_shape
-from vqvae.modules.bottleneck import Bottleneck, NoBottleneck, TransformerBottleneck
-from vqvae.modules.vae import VAEBottleneck
-from vqvae.modules.encdec import Encoder, Decoder
-from vqvae.modules.audio_logger import AudioLogger
+from autoencoder.modules.bottleneck import Bottleneck, NoBottleneck, TransformerBottleneck
+from autoencoder.modules.vae import VAEBottleneck
+from autoencoder.modules.encdec import Encoder, Decoder
+from autoencoder.modules.audio_logger import AudioLogger
 
 
 class WavAutoEncoder(nn.Module):

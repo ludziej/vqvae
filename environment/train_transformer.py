@@ -1,7 +1,7 @@
 from environment.train_embeddings import get_model_with_data
 from generator.model import LevelGenerator
 from environment.train_utils import generic_train, create_logger, generic_get_model
-from vqvae.modules.helpers import get_sample_len_from_tokens
+from autoencoder.modules.helpers import get_sample_len_from_tokens
 
 
 def get_model(**params):

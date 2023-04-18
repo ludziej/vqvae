@@ -3,7 +3,7 @@ from collections import ChainMap
 import torch
 from torch import nn as nn
 
-from vqvae.adversarial.model import JoinedDiscriminator, FFTDiscriminator, WavDiscriminator
+from autoencoder.adversarial.model import JoinedDiscriminator, FFTDiscriminator, WavDiscriminator
 
 
 def get_discriminator(with_discriminator, type, **params):

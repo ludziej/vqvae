@@ -1,7 +1,7 @@
 import torch.utils.data
 from torch.utils.data import DataLoader
 from data_processing.dataset import MusicDataset
-from vqvae.compressor import WavCompressor
+from autoencoder.compressor import WavCompressor
 from utils.misc import lazy_compute_pickle
 from utils.old_ml_utils.audio_utils import calculate_bandwidth
 from environment.train_utils import generic_train, create_logger, generic_get_model

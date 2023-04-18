@@ -4,7 +4,7 @@ import numpy as np
 import statistics
 from pytorch_lightning import LightningModule
 from generator.modules.performer import Performer, top_k, repetition_penalty_fn
-from vqvae.compressor import WavCompressor
+from autoencoder.compressor import WavCompressor
 import torch.nn.functional as F
 from optimization.scheduler import ReduceLROnPlateauWarmup
 from optimization.normalization import CustomNormalization
@@ -14,7 +14,7 @@ from generator.modules.conditioner import Conditioner, GenerationParams
 from optimization.opt_maker import get_lr_scheduler
 from generator.modules.fast_transformer import FastTransformer
 from typing import Dict
-from vqvae.modules.audio_logger import AudioLogger
+from autoencoder.modules.audio_logger import AudioLogger
 from functools import partial
 
 

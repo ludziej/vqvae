@@ -1,6 +1,6 @@
 import torch.nn as nn
 from utils.old_ml_utils.misc import assert_shape
-from vqvae.modules.encdec import DecoderConvBock
+from autoencoder.modules.encdec import DecoderConvBock
 from optimization.normalization import CustomNormalization
 
 

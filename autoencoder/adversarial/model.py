@@ -1,7 +1,7 @@
 import torch.nn as nn
 import torch
-from vqvae.modules.encdec import Encoder
-from vqvae.modules.resnet import ResNet2d
+from autoencoder.modules.encdec import Encoder
+from autoencoder.modules.resnet import ResNet2d
 from torchaudio.transforms import MelSpectrogram
 from collections import namedtuple
 import abc

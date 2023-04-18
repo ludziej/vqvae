@@ -3,7 +3,7 @@ import torch.nn as nn
 from optimization.normalization import CustomNormalization, Conv1dWeightStandardized
 from optimization.layers import ReZero, CondProjection
 from optimization.basic_transformer import TransformerLayer
-from vqvae.modules.skip_connections import SkipConnectionsDecoder, SkipConnectionsEncoder
+from autoencoder.modules.skip_connections import SkipConnectionsDecoder, SkipConnectionsEncoder
 import torch
 
 
