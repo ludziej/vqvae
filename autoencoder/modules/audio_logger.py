@@ -24,6 +24,8 @@ class AudioLogger(nn.Module):
         self.model = [model]
         self.sr = sr
         self.elogger = lambda: self.model[0].logger.experiment
+        self.log_full_grad = False
+        self.log_full_weights = False
         self.my_log = lambda *x, **xx: (
             self.model[0].log(*x, **xx)
         )
@@ -42,9 +44,11 @@ class AudioLogger(nn.Module):
         for name, value in self.model[0].named_parameters():
             if value.grad is not None:
                 norm = torch.linalg.norm(value.grad)
-                metrics[f"grad_norm/{name}"] = norm
+                metrics[f"grad_norm/{name.replace('.', '/')}"] = norm
         metrics[f"grad_norm_total"] = torch.linalg.norm(torch.tensor(list(metrics.values())))
-        metrics = metrics if self.use_log_grads == 2 else dict(grad_norm_total=metrics["grad_norm_total"])
+        if not (self.use_log_grads == 2 or self.log_full_grad):
+            metrics = dict(grad_norm_total=metrics["grad_norm_total"])
+        self.log_full_grad = False
         self.log_add_metrics(metrics, prog_bar=False)
 
     def log_weights_norm(self):
@@ -54,10 +58,16 @@ class AudioLogger(nn.Module):
         for name, value in self.model[0].named_parameters():
             if value.requires_grad:
                 norm = torch.linalg.norm(value)
-                metrics[f"weight_norm/{name}"] = norm
+                metrics[f"weight_norm/{name.replace('.', '/')}"] = norm
         metrics[f"weight_norm_total"] = torch.linalg.norm(torch.tensor(list(metrics.values())))
-        metrics = metrics if self.use_weights_logging == 2 else dict(weight_norm_total=metrics["weight_norm_total"])
+        if not (self.use_log_grads == 2 or self.log_full_weights):
+            metrics = dict(weight_norm_total=metrics["weight_norm_total"])
+        self.log_full_weights = False
         self.log_add_metrics(metrics, prog_bar=False)
+
+    def switch_full_grad_log(self):
+        self.log_full_grad = True
+        self.log_full_weights = True
 
     def log_add_metrics(self, metrics, prefix="", prog_bar=True):
         for k, v in metrics.items():

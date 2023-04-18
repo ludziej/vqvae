@@ -109,7 +109,7 @@ class Diffusion(nn.Module):
         x = torch.randn((n, self.emb_width, length)).to(model.device)
         return self.denoise(x, model, steps=steps, **context_args)
 
-    def denoise(self, x, model, steps=None, level=0, **context_args):
+    def denoise(self, x, model, steps=None, level=0, skip_full_sample=False, **context_args):
         was_training = self.training
         steps = default(steps, self.noise_steps)
         model.eval()
@@ -121,5 +121,7 @@ class Diffusion(nn.Module):
                 norm = torch.sqrt(torch.mean(x**2))
                 if self.renormalize_sampling or norm >= 100:
                     x *= 1 / norm
+                if skip_full_sample:
+                    break
         model.train(was_training)
         return x

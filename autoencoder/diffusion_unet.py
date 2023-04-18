@@ -34,6 +34,7 @@ class DiffusionUnet(LightningModule):
         self.log_interval = log_interval
         self.no_stochastic_prep = no_stochastic_prep
         self.skip_valid_logs = True
+        self.is_first_log = True
         self.diffusion = Diffusion(emb_width=self.preprocessing.emb_width, **diff_params)
         self.diffusion_cond = DiffusionConditioning(**condition_params, noise_steps=self.diffusion.noise_steps)
         self.diffusion_stats = DiffusionStats(self.diffusion.noise_steps, intervals=log_intervals,
@@ -153,11 +154,14 @@ class DiffusionUnet(LightningModule):
                 (phase == "train" or not self.skip_valid_logs)):
             return  # log samples once per interval
 
+        skip_full_sample = self.is_first_log
+        self.is_first_log = False
+        self.autenc.audio_logger.switch_full_grad_log()
         samples_num = min(len(t), self.log_sample_bs)
         context = context[:samples_num] if context is not None else None
         time_cond = time_cond[:samples_num] if time_cond is not None else None
         samples, sample_metrics = self.sample(samples_num, length=sample_len, context_cond=context,
-                                              time_cond=time_cond)
+                                              time_cond=time_cond, skip_full_sample=skip_full_sample)
         self.autenc.audio_logger.log_add_metrics(sample_metrics, prefix)
 
         sample_name = lambda ntype, ti, b, i: f"samples/{i}/{ntype}/{b}_" \
@@ -167,7 +171,8 @@ class DiffusionUnet(LightningModule):
 
         if self.sample_cfgw is not None:
             samples, sample_metrics = self.sample(samples_num, length=sample_len, context_cond=context,
-                                                  time_cond=time_cond, cfg_weight=self.sample_cfgw)
+                                                  time_cond=time_cond, cfg_weight=self.sample_cfgw,
+                                                  skip_full_sample=skip_full_sample)
             self.autenc.audio_logger.log_add_metrics({f"{k}_cfg": v for k, v in sample_metrics.items()}, prefix)
             self.autenc.audio_logger.plot_spec_as(samples, lambda i: f"generated_specs/cfg/{i}", prefix)
             self.autenc.audio_logger.log_sounds(samples, partial(sample_name, f"cfg={self.sample_cfgw}", None), prefix)
