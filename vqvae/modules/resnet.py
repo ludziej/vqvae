@@ -11,12 +11,11 @@ class ResConv1DBlock(nn.Module):
     def __init__(self, n_in, n_state, norm_type, leaky_param, use_weight_standard, dilation=1, concat_skip=False,
                  use_bias=False, res_scale=1.0, num_groups=32, rezero=False, condition_size=None, with_self_attn=False,
                  attn_heads=2, downsample=1, cond_with_time=False, alt_order=False, cond_on_attn=False,
-                 rezero_in_attn=False, swish_act=False):
+                 rezero_in_attn=False, swish_act=False, **params):
         super().__init__()
         self.condition_on_size = condition_size is not None
         self.concat_skip = concat_skip
         self.with_self_attn = with_self_attn
-        self.rezero = rezero
         self.res_scale = res_scale
         self.cond_on_attn = cond_on_attn
         padding = dilation
@@ -36,7 +35,7 @@ class ResConv1DBlock(nn.Module):
         ] if not alt_order else [
             norm1, conv1, activation, norm2, conv2, activation
         ])
-        self.resconv = ReZero(blocks) if self.rezero else blocks
+        self.resconv = ReZero(blocks) if rezero else blocks
 
         if with_self_attn:
             self.attn_block = TransformerLayer(width=n_in, heads=attn_heads, seq_last=True, dropout=0, swish=swish_act,
@@ -69,11 +68,9 @@ class ResConv1DBlock(nn.Module):
 
 
 class Resnet1D(nn.Module):
-    def __init__(self, n_in, n_depth, m_conv=1.0, dilation_growth_rate=1, dilation_cycle=None, res_scale=1.0,
-                 reverse_dilation=False, norm_type="none", leaky_param=1e-2, use_weight_standard=True, get_skip=False,
-                 return_skip=False, concat_skip=False, use_bias=False, rezero=False, num_groups=32,
-                 skip_connections_step=1, condition_size=None, downsample=1, with_self_attn=False,
-                 cond_with_time=False, swish_act=False, rezero_in_attn=False,):
+    def __init__(self, n_in, n_depth, m_conv=1.0, dilation_growth_rate=1, dilation_cycle=None, reverse_dilation=False,
+                 leaky_param=1e-2, get_skip=False, return_skip=False, concat_skip=False, skip_connections_step=1,
+                 **params):
         super().__init__()
         assert not (get_skip and return_skip)
         concat_skip = concat_skip and get_skip
@@ -83,13 +80,8 @@ class Resnet1D(nn.Module):
         self.dilation_growth_rate = dilation_growth_rate
         skips = [d % skip_connections_step == 0 for d in range(n_depth)]
         skips = skips[::-1] if get_skip ^ reverse_dilation else skips
-        blocks = [ResConv1DBlock(n_in, int(m_conv * n_in), leaky_param=leaky_param,
-                                 use_weight_standard=use_weight_standard, use_bias=use_bias,
-                                 concat_skip=concat_skip and get_skip and skips[depth],
-                                 dilation=self.get_dilation(depth), norm_type=norm_type, rezero=rezero,
-                                 res_scale=res_scale, num_groups=num_groups, condition_size=condition_size,
-                                 with_self_attn=with_self_attn, downsample=downsample, cond_with_time=cond_with_time,
-                                 rezero_in_attn=rezero_in_attn, swish_act=swish_act)
+        blocks = [ResConv1DBlock(n_in, int(m_conv * n_in), leaky_param=leaky_param, dilation=self.get_dilation(depth),
+                                 concat_skip=concat_skip and get_skip and skips[depth], **params)
                   for depth in range(n_depth)]
         if reverse_dilation:
             blocks = blocks[::-1]

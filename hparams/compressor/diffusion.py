@@ -32,6 +32,7 @@ default_diffusion_autenc_params = Hparams(
     skip_connections=True,
     skip_connections_step=1,
     channel_increase=2,
+    attn_heads=4,
     mu=0.99,
     res_scale=1.,  # 1/(2**0.5),
     dilation_cycle=1,
