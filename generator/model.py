@@ -4,7 +4,7 @@ import numpy as np
 import statistics
 from pytorch_lightning import LightningModule
 from generator.modules.performer import Performer, top_k, repetition_penalty_fn
-from vqvae.model import WavCompressor
+from vqvae.compressor import WavCompressor
 import torch.nn.functional as F
 from optimization.scheduler import ReduceLROnPlateauWarmup
 from optimization.normalization import CustomNormalization

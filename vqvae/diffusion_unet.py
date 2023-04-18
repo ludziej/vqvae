@@ -3,7 +3,7 @@ from pytorch_lightning import LightningModule
 from functools import partial
 
 from vqvae.modules.backbone import WavAutoEncoder
-from vqvae.model import WavCompressor
+from vqvae.compressor import WavCompressor
 from vqvae.modules.diff_condition import DiffusionConditioning
 from vqvae.modules.diffusion import Diffusion
 from vqvae.modules.diffusion_stats import DiffusionStats

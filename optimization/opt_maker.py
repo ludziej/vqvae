@@ -5,7 +5,7 @@ from optimization.ema import EMAOptimizer
 
 
 def get_lr_scheduler(opt, lr_use_linear_decay, lr_scale, lr_warmup, lr_start_linear_decay, lr_decay, lr_gamma,
-                     lr_decay_thresh=None, **params):
+                     lr_decay_thresh=0, **params):
     def lr_lambda(step):
         if lr_use_linear_decay:
             curr_lr_scale = lr_scale * min(1.0, step / lr_warmup)

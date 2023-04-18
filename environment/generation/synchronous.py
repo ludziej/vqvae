@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 from environment.generation.token_generator import SynchronousTokenGenerator
-from vqvae.model import WavCompressor
+from vqvae.compressor import WavCompressor
 from generator.model import LevelGenerator
 from generator.modules.conditioner import GenerationParams
 from data_processing.tools import load_file, save_file

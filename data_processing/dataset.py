@@ -45,7 +45,7 @@ class MusicDataset(Dataset):
         self.sizes, self.dataset_size = self.calculate_lengths()
         self.chunk_config = DatasetConfig(channel_level_bias, use_audiofile, another_thread, self.sample_len, timeout,
                                           self.sr, logger, rms_normalize_sound, rms_normalize_level,
-                                          genre_total=len(self.genre_names))
+                                          genre_total=len(self.genre_names) if self.context_cond else 0)
         self.chunks = self.calculate_chunks()
 
     def calc_track_metadata(self, tracks, genres):
