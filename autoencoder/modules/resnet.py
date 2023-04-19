@@ -11,7 +11,7 @@ class ResConv1DBlock(nn.Module):
     def __init__(self, n_in, n_state, norm_type, leaky_param, use_weight_standard, dilation=1, concat_skip=False,
                  use_bias=False, res_scale=1.0, num_groups=32, rezero=False, condition_size=None, with_self_attn=False,
                  attn_heads=2, downsample=1, cond_with_time=False, alt_order=False, cond_on_attn=False,
-                 rezero_in_attn=False, swish_act=False, **params):
+                 rezero_in_attn=False, swish_act=False, attn_ff_mul=2, **params):
         super().__init__()
         self.condition_on_size = condition_size is not None
         self.concat_skip = concat_skip
@@ -39,7 +39,7 @@ class ResConv1DBlock(nn.Module):
 
         if with_self_attn:
             self.attn_block = TransformerLayer(width=n_in, heads=attn_heads, seq_last=True, dropout=0, swish=swish_act,
-                                               rezero=rezero_in_attn)
+                                               rezero=rezero_in_attn, dim_ff=attn_ff_mul)
 
         if self.condition_on_size:
             self.cond_projection = CondProjection(x_in=condition_size, x_out=first_in, downsample=downsample,

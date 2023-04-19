@@ -25,8 +25,8 @@ class TransformerLayer(nn.Module):
         self.seq_last = seq_last
 
         self_attn = SelfAttentionBlock(width, heads, dropout=dropout)
-        linear1 = nn.Linear(width, dim_ff * width)
-        linear2 = nn.Linear(dim_ff * width, width)
+        linear1 = nn.Linear(width, int(dim_ff * width))
+        linear2 = nn.Linear(int(dim_ff * width), width)
         dropout_fn = nn.Dropout(dropout) if dropout > 0 else nn.Sequential()
         activation = nn.SiLU() if swish else nn.ReLU()
 

@@ -60,6 +60,10 @@ def fst(x, y):
     return x
 
 
+def clamp(x, x_min, x_max):
+    return min(x_max, max(x_min, x))
+
+
 def get_normal(*shape, std=0.01):
     w = t.empty(shape)
     nn.init.normal_(w, std=std)

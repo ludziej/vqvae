@@ -6,25 +6,24 @@ import torch.nn as nn
 from optimization.layers import BigGanSkip
 from autoencoder.modules.resnet import Resnet1D
 from utils.old_ml_utils.misc import assert_shape
+from utils.misc import clamp
 from autoencoder.modules.skip_connections import SkipConnectionsDecoder, SkipConnectionsEncoder
 
 
 class EncoderConvBlock(nn.Module):
     def __init__(self, input_emb_width, output_emb_width, down_t, stride_t, skip_connections, width, depth,
                  norm_type, res_scale=False, num_groups=32, rezero=False, channel_increase=1, condition_size=None,
-                 self_attn_from=None, biggan_skip=False, max_width=None, skip_with_rezero=False, skip_reshape=False,
-                 **params):
+                 self_attn_from=None, biggan_skip=False, max_width=1000000, min_width=0,
+                 skip_with_rezero=False, skip_reshape=False, **params):
         super().__init__()
         self.skip_connections = skip_connections
         filter_t, pad_t = stride_t * 2, stride_t // 2
-        self.max_width = max_width
         curr_width = width
         blocks = []
         res_scale = (1.0 if not res_scale else 1.0 / math.sqrt(depth)) if isinstance(res_scale, bool) else res_scale
         if down_t > 0:
             for i in range(down_t):
-                next_width = width * channel_increase ** i
-                next_width = min(next_width, max_width) if max_width is not None else next_width
+                next_width = clamp(width * channel_increase ** i, min_width, max_width)
                 with_self_attn = self_attn_from is not None and self_attn_from <= i + 1
                 downsample = stride_t ** (i + 1)
                 in_width = input_emb_width if i == 0 else curr_width
@@ -55,26 +54,23 @@ class EncoderConvBlock(nn.Module):
 class DecoderConvBock(nn.Module):
     def __init__(self, output_emb_width, down_t, stride_t, skip_connections, width, depth, res_scale=False,
                  reverse_decoder_dilation=False, rezero=False, channel_increase=1, condition_size=None,
-                 self_attn_from=None, max_width=None, rezero_in_attn=False, biggan_skip=False, last_emb_fixed=True,
-                 skip_with_rezero=False, skip_reshape=False, **params):
+                 self_attn_from=None,  max_width=1000000, min_width=0, rezero_in_attn=False, biggan_skip=False,
+                 last_emb_fixed=True, skip_with_rezero=False, skip_reshape=False, **params):
         super().__init__()
-        self.last_width = width if last_emb_fixed else output_emb_width
+        self.last_width =  clamp(width, min_width, max_width) if last_emb_fixed else output_emb_width
         self.skip_connections = skip_connections
         self.max_width = max_width
         blocks = []
         res_scale = (1.0 if not res_scale else 1.0 / math.sqrt(depth)) if isinstance(res_scale, bool) else res_scale
         if down_t > 0:
             filter_t, pad_t = stride_t * 2, stride_t // 2
-            curr_width = width * channel_increase ** (down_t - 1)
-            curr_width = min(curr_width, max_width) if max_width is not None else curr_width
+            curr_width = clamp(width * channel_increase ** (down_t - 1), min_width, max_width)
             block = nn.Conv1d(output_emb_width, curr_width, 3, 1, 1)
             blocks.append(block)
             for i in range(down_t):
-                curr_width = width * channel_increase ** (down_t - i - 1)
+                curr_width = clamp(width * channel_increase ** (down_t - i - 1), min_width, max_width)
                 next_width = width * channel_increase ** (down_t - i - 2) if i < down_t - 1 else self.last_width
-                if max_width is not None:
-                    curr_width = min(curr_width, max_width)
-                    next_width = min(next_width, max_width)
+                next_width = clamp(next_width, min_width, max_width)
                 with_self_attn = self_attn_from is not None and self_attn_from <= down_t - i
                 downsample = stride_t ** (down_t - i)
 
