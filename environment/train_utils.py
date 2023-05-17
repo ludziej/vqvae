@@ -99,7 +99,7 @@ def generic_train(model, hparams, train, test, model_hparams, root_dir, logger):
                 max_steps=hparams.max_steps if hparams.max_steps != 0 else -1,
                 gradient_clip_val=hparams.gradient_clip_val, callbacks=callbacks,
                 log_every_n_steps=hparams.log_every_n_steps, accelerator="gpu" if use_gpu else "cpu",
-                logger=data_logger, strategy=hparams.accelerator if not force_single else None,
+                logger=data_logger, strategy=hparams.accelerator if not force_single else "auto",
                 detect_anomaly=hparams.detect_anomaly, precision=precision,
                 default_root_dir=root_dir / model_hparams.default_ckpt_root,
                 check_val_every_n_epoch=hparams.check_val_every_n_epoch)
