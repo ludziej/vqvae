@@ -17,7 +17,7 @@ def train_generator(hparams, model_params, level):
     compressor, train_dl, test_dl = get_model_with_data(**hparams.compressor, train_path=hparams.train_path,
                                                         test_path=hparams.test_path, logger=logger)
     prior = get_model(preprocessing=compressor, level=level, **model_params, logger=logger)
-    generic_train(prior, hparams, train_dl, test_dl, model_params, root_dir)
+    generic_train(prior, hparams, train_dl, test_dl, model_params, root_dir, logger)
 
 
 def train_prior(hparams):

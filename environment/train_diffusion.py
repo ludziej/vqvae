@@ -22,6 +22,6 @@ def train(hparams):
     model_params.condition_params.genre_names = train_dataset.genre_names
 
     diffusion = get_model(preprocessing=compressor, **model_params, logger=logger)
-    generic_train(diffusion, hparams, train_dl, test_dl, model_params, root_dir)
+    generic_train(diffusion, hparams, train_dl, test_dl, model_params, root_dir, logger)
 
 

@@ -2,6 +2,7 @@ import torch
 import torch as t
 from pytorch_lightning import LightningModule
 
+from environment.generic_model import GenericModel
 from autoencoder.modules.backbone import WavAutoEncoder
 from utils.old_ml_utils.misc import average_metrics
 from utils.old_ml_utils.audio_utils import spectral_convergence, audio_postprocess, norm
@@ -11,36 +12,20 @@ from autoencoder.adversarial.trainer import AdversarialTrainer
 import numpy as np
 
 
-class WavCompressor(LightningModule):
+class WavCompressor(GenericModel):
     def __init__(self, input_channels, levels, downs_t, strides_t, loss_fn, norm_before_vqvae, fixed_commit, logger,
-                 emb_width, l_bins, mu, bottleneck_lw, spectral, multispectral, forward_params, multipliers,
+                 emb_width, l_bins, mu, bottleneck_lw, spectral, multispectral, forward_params, multipliers, batch_size,
                  bottleneck_type, adv_params, log_interval, prenorm_normalisation, prenorm_loss_weight, skip_valid_logs,
                  rms_normalize_level, logger_type, log_vae_no_stochastic=False, use_log_grads=0, log_weights_norm=0,
                  **params):
-        super().__init__()
-
-        self.levels = levels
-        self.forward_params = forward_params
-        self.loss_fn = loss_fn
-        self.adv_params = adv_params
-        self.my_logger = logger
-        self.log_interval = log_interval
-        self.multipliers = multipliers
-        self.prenorm_normalisation = prenorm_normalisation
-        self.prenorm_loss_weight = prenorm_loss_weight
-        self.skip_valid_logs = skip_valid_logs
-        self.rms_normalize_level = rms_normalize_level
-        self.emb_width = emb_width
-        self.bottleneck_type = bottleneck_type
-        self.log_vae_no_stochastic = log_vae_no_stochastic
-
-        self.downs_t = downs_t
-        self.strides_t = strides_t
-        self.l_bins = l_bins
-        self.bottleneck_lw = bottleneck_lw
-        self.spectral = spectral
-        self.multispectral = multispectral
-        self.opt_params = params
+        super().__init__(batch_size=batch_size, levels=levels, forward_params=forward_params,
+                         loss_fn=loss_fn, adv_params=adv_params, my_logger=logger, log_interval=log_interval,
+                         multipliers=multipliers, prenorm_normalisation=prenorm_normalisation,
+                         prenorm_loss_weight=prenorm_loss_weight, skip_valid_logs=skip_valid_logs,
+                         rms_normalize_level=rms_normalize_level, emb_width=emb_width, bottleneck_type=bottleneck_type,
+                         log_vae_no_stochastic=log_vae_no_stochastic, downs_t=downs_t, strides_t=strides_t,
+                         l_bins=l_bins, bottleneck_lw=bottleneck_lw, spectral=spectral, multispectral=multispectral,
+                         opt_params=params)
 
         self.with_discriminator = self.adv_params["with_discriminator"]
         self.discriminator_level = self.adv_params["discriminator_level"]
@@ -58,6 +43,7 @@ class WavCompressor(LightningModule):
                                                 input_channels=input_channels, level=self.discriminator_level,
                                                 downs_t=downs_t[:self.discriminator_level + 1], emb_width=emb_width,
                                                 strides_t=strides_t[:self.discriminator_level + 1], levels=self.levels)
+        self.set_audio_logger(lambda: self.generator.audio_logger)
         self.my_logger.info(str(self))
 
     # helpers & api
@@ -100,7 +86,7 @@ class WavCompressor(LightningModule):
     def no_grad_forward(self, x_in, b_params=None):
         return self(x_in, b_params=b_params)
 
-    def evaluation_step(self, batch, batch_idx, optimizer_idx, phase="train"):
+    def evaluation_step(self, batch, batch_idx, optimizer_idx, phase="train", **params):
         optimize_generator = optimizer_idx != 1
         if not optimize_generator and not self.discriminator.is_used(batch_idx, self.current_epoch, optimize_generator):
             return None
@@ -108,19 +94,11 @@ class WavCompressor(LightningModule):
         loss, metrics, x_outs = self(x_in) if optimize_generator else self.no_grad_forward(x_in)
         loss += self.discriminator.training_step(metrics, optimize_generator, x_in, x_outs, batch_idx,
                                                  self.current_epoch)
-        self.log_metrics_and_samples(loss, metrics, x_in, x_outs, batch_idx, optimize_generator, phase)
+        self.log_metrics_and_samples(loss=loss, metrics=metrics, batch=x_in, batch_outs=x_outs, batch_idx=batch_idx,
+                                     optimize_generator=optimize_generator, phase=phase)
         return loss
 
     # lightning train boilerplate
-
-    def training_step(self, batch, batch_idx, optimizer_idx=-1):
-        return self.evaluation_step(batch, batch_idx, optimizer_idx, "train")
-
-    def test_step(self, batch, batch_idx, optimizer_idx=-1):
-        return self.evaluation_step(batch, batch_idx, optimizer_idx, "test")
-
-    def validation_step(self, batch, batch_idx, optimizer_idx=-1):
-        return self.evaluation_step(batch, batch_idx, optimizer_idx, "val")
 
     def on_train_batch_end(self, outputs, batch, batch_idx: int, unused=0) -> None:
         super().on_train_batch_end(outputs, batch, batch_idx)
@@ -184,20 +162,17 @@ class WavCompressor(LightningModule):
                 metrics[key] = val.detach()
         return loss, metrics
 
-    @torch.no_grad()
-    def log_metrics_and_samples(self, loss, metrics, batch, batch_outs, batch_idx, optimize_generator, phase):
-        prefix = phase + "_" if phase != "train" else ""
-        self.generator.audio_logger.log_metrics({**metrics, 'loss': loss}, prefix)
-        if not (batch_idx % self.log_interval == 0 and optimize_generator and self.local_rank == 0 and
-                (phase == "train" or not self.skip_valid_logs)):
-            return  # log samples once per interval
+    def should_run_heavy_logs(self, optimize_generator, **params):
+        return super().should_run_heavy_logs(**params) and optimize_generator
 
-        self.generator.audio_logger.plot_spectrorams(batch, batch_outs, prefix)
-        self.generator.audio_logger.log_sounds(batch, lambda b, i: f"sample_{b}/in", prefix)
+    def heavy_logs(self, batch, batch_outs, prefix, **params):
+        super().heavy_logs()
+        self.audio_logger.plot_spectrorams(batch, batch_outs, prefix)
+        self.audio_logger.log_sounds(batch, lambda b, i: f"sample_{b}/in", prefix)
         for level, xouts in enumerate(batch_outs):
-            self.generator.audio_logger.log_sounds(xouts, lambda b, i: f"sample_{b}/out_lvl_{level + 1}", prefix)
+            self.audio_logger.log_sounds(xouts, lambda b, i: f"sample_{b}/out_lvl_{level + 1}", prefix)
 
         if self.log_vae_no_stochastic:
             _, _, outs_no_s = self.no_grad_forward(batch, b_params=dict(var_temp=0))
             for level, xouts in enumerate(outs_no_s):
-                self.generator.audio_logger.log_sounds(xouts, lambda b, i: f"sample_{b}/out_no_s_lvl_{level + 1}", prefix)
+                self.audio_logger.log_sounds(xouts, lambda b, i: f"sample_{b}/out_no_s_lvl_{level + 1}", prefix)

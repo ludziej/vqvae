@@ -115,6 +115,7 @@ noise_log_intervals = flatten([
 ])
 
 default_diffusion_params = Hparams(
+    batch_size=0,
     model_type="diffusion",
     autenc_params=default_diffusion_autenc_params,
     diff_params=default_diffusion_train_params,
@@ -140,6 +141,7 @@ default_diffusion_params = Hparams(
     stats_momentum=0.9,
     renormalize_loss=False,
     no_stochastic_prep=True,
+    skip_valid_logs=True,
     sample_cfgw=2,
     ckpt_freq=1000,
     log_intervals=noise_log_intervals,

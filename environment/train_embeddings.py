@@ -43,23 +43,23 @@ def collate(batch):  # TODO this is bad written, refactor
     return new_data, new_infos
 
 
-def get_dataloaders(train_data, batch_size, num_workers, shuffle_data, test_perc, prefetch_data, test_path=None):
+def get_dataloaders(train_data, num_workers, shuffle_data, test_perc, prefetch_data, test_path=None):
     if test_path is not None:
         raise Exception("Not implemented")
         test_data = MusicDataset(test_path, sample_len=sample_len, sr=sr, logger=logger)
     else:
         train_data, test_data = train_data.split_into_two(test_perc=test_perc)
-    train_dataloader = DataLoader(train_data, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle_data,
-                                  prefetch_factor=prefetch_data, collate_fn=collate)
-    test_dataloader = DataLoader(test_data, batch_size=batch_size, num_workers=num_workers, shuffle=False,
-                                 prefetch_factor=prefetch_data, collate_fn=collate)
+    train_dataloader = lambda bs: DataLoader(train_data, batch_size=bs, num_workers=num_workers, shuffle=shuffle_data,
+                                             prefetch_factor=prefetch_data, collate_fn=collate)
+    test_dataloader = lambda bs: DataLoader(test_data, batch_size=bs, num_workers=num_workers, shuffle=False,
+                                            prefetch_factor=prefetch_data, collate_fn=collate)
     return train_dataloader, test_dataloader
 
 
-def get_model_with_data(batch_size, sample_len, num_workers, sr, shuffle_data, logger, test_perc, prefetch_data,
+def get_model_with_data(sample_len, num_workers, sr, shuffle_data, logger, test_perc, prefetch_data,
                         test_path=None, with_train_data=False, **params):
     model, train_data = get_model(sample_len, sr, with_train_data=True, logger=logger, **params)
-    train_dataloader, test_dataloader = get_dataloaders(train_data, batch_size, num_workers, shuffle_data, test_perc,
+    train_dataloader, test_dataloader = get_dataloaders(train_data, num_workers, shuffle_data, test_perc,
                                                         prefetch_data, test_path)
     return (model, train_dataloader, test_dataloader) if not with_train_data else \
         (model, train_dataloader, test_dataloader, train_data)
@@ -70,4 +70,4 @@ def train(hparams):
     model, train_dataloader, test_dataloader =\
         get_model_with_data(**hparams.compressor, train_path=hparams.train_path, test_path=hparams.test_path,
                             logger=logger)
-    generic_train(model, hparams, train_dataloader, test_dataloader, hparams.compressor, root_dir)
+    generic_train(model, hparams, train_dataloader, test_dataloader, hparams.compressor, root_dir, logger)

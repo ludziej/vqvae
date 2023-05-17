@@ -6,6 +6,7 @@ import pytorch_lightning as pl
 from pytorch_lightning import Trainer
 from pytorch_lightning import loggers as pl_loggers
 from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar, LearningRateMonitor, DeviceStatsMonitor
+from pytorch_lightning.tuner.tuning import Tuner
 from pathlib import Path
 import json
 import sys
@@ -73,7 +74,7 @@ def get_data_logger(root_dir, hparams, model_hparams):
         raise Exception(f"Unknown logger type {hparams.logger_type}")
 
 
-def generic_train(model, hparams, train, test, model_hparams, root_dir):
+def generic_train(model, hparams, train, test, model_hparams, root_dir, logger):
     data_logger = get_data_logger(root_dir, hparams, model_hparams)
     checkpoint_callback = ModelCheckpoint(dirpath=root_dir / model_hparams.ckpt_dir, save_top_k=0,
                                           filename=model_hparams.distinct_ckpt_name,
@@ -86,21 +87,29 @@ def generic_train(model, hparams, train, test, model_hparams, root_dir):
 
     precision = 16 if hparams.fp16 else 32
     use_gpu = len(hparams.gpus) > 0
-    trainer = Trainer(devices=hparams.gpus if use_gpu else None, profiler="simple", max_epochs=hparams.max_epochs,
-                      max_steps=hparams.max_steps if hparams.max_steps != 0 else -1,
-                      gradient_clip_val=hparams.gradient_clip_val, callbacks=callbacks,
-                      log_every_n_steps=hparams.log_every_n_steps, accelerator="gpu" if use_gpu else "cpu",
-                      logger=data_logger, strategy=hparams.accelerator,
-                      detect_anomaly=hparams.detect_anomaly, precision=precision,
-                      default_root_dir=root_dir / model_hparams.default_ckpt_root,
-                      check_val_every_n_epoch=hparams.check_val_every_n_epoch)
     restore_path = root_dir / model_hparams.ckpt_dir / model_hparams.restore_ckpt \
         if model_hparams.restore_ckpt is not None and hparams.restore_training else None
     restore_path = restore_path if restore_path is not None and os.path.exists(restore_path) else None
-
+    model.set_dataloaders(train, test)
     # supress rank_zero_only/sync_dist warning when logging
     warnings.filterwarnings("ignore", message=".*sync_dist")
-    trainer.fit(model, train_dataloaders=train, val_dataloaders=test, ckpt_path=restore_path)
+    get_trainer = lambda force_single: \
+        Trainer(devices=(hparams.gpus if not force_single else hparams.gpus[:1]) if use_gpu else None,
+                profiler="simple", max_epochs=hparams.max_epochs,
+                max_steps=hparams.max_steps if hparams.max_steps != 0 else -1,
+                gradient_clip_val=hparams.gradient_clip_val, callbacks=callbacks,
+                log_every_n_steps=hparams.log_every_n_steps, accelerator="gpu" if use_gpu else "cpu",
+                logger=data_logger, strategy=hparams.accelerator if not force_single else None,
+                detect_anomaly=hparams.detect_anomaly, precision=precision,
+                default_root_dir=root_dir / model_hparams.default_ckpt_root,
+                check_val_every_n_epoch=hparams.check_val_every_n_epoch)
+    if model.batch_size == 0:
+        tuner = Tuner(get_trainer(True))
+        model.batch_size = 2
+        tuner.scale_batch_size(model, mode="binsearch")
+        logger.info(f"Batch size set to {model.batch_size}")
+    trainer = get_trainer(False)
+    trainer.fit(model, ckpt_path=restore_path)
 
 
 def get_last_path(main_dir, ckpt_dir, best_ckpt, return_non_existing=False):
