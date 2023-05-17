@@ -54,12 +54,11 @@ class EncoderConvBlock(nn.Module):
 class DecoderConvBock(nn.Module):
     def __init__(self, output_emb_width, down_t, stride_t, skip_connections, width, depth, res_scale=False,
                  reverse_decoder_dilation=False, rezero=False, channel_increase=1, condition_size=None,
-                 self_attn_from=None,  max_width=1000000, min_width=0, rezero_in_attn=False, biggan_skip=False,
+                 self_attn_from=None, max_width=1000000, min_width=0, rezero_in_attn=False, biggan_skip=False,
                  last_emb_fixed=True, skip_with_rezero=False, skip_reshape=False, **params):
         super().__init__()
-        self.last_width =  clamp(width, min_width, max_width) if last_emb_fixed else output_emb_width
+        self.last_width = clamp(width, min_width, max_width) if last_emb_fixed else output_emb_width
         self.skip_connections = skip_connections
-        self.max_width = max_width
         blocks = []
         res_scale = (1.0 if not res_scale else 1.0 / math.sqrt(depth)) if isinstance(res_scale, bool) else res_scale
         if down_t > 0:

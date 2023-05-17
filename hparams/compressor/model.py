@@ -61,6 +61,7 @@ big_vqvae_model_params = default_vqvae_model_params.update(
     spectral=0.0,
     multispectral=1.0,
     multipliers=(2, 1, 1),
+    last_emb_fixed=False,
     width=32,
     depth=4,
     dilation_growth_rate=3,
